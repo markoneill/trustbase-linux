@@ -11,6 +11,7 @@
 #include <linux/slab.h>
 
 #include "connection_state.h"
+//#include "secure_handshake_parser.h"
 #include "utils.h"
 
 // Forward delcarations
@@ -100,11 +101,12 @@ long new_sys_send(int sockfd, void __user * buf, size_t len, unsigned flags) {
 }
 
 long new_sys_sendto(int sockfd, void __user * buf, size_t len, unsigned flags, struct sockaddr __user * dest_addr, int addrlen) {
-	char firstByte = ((char *)buf)[0];
 	long ret = ref_sys_sendto(sockfd, buf, len, flags, dest_addr, addrlen);
-	if (firstByte == 0x16) {
-		print_call_info(sockfd, "in sendto() and may be doing SSL handshake");
+	if (ret < 0) {
+		return ret;
 	}
+	//th_read(current->pid, sockfd, (char*)buf, ret);
+	print_call_info(sockfd, "in sendto()");
 	return ret;
 }
 
@@ -127,7 +129,7 @@ long new_sys_socket(int family, int type, int protocol) {
 		return ret;
 	}
 	print_call_info(ret, "creating socket");
-	th_create_conn_state(current->pid, ret);
+	th_conn_state_create(current->pid, ret);
 	th_conn_state_print_all();
 	return ret;
 }
