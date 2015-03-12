@@ -11,7 +11,7 @@
 #include <linux/slab.h>
 
 #include "connection_state.h"
-//#include "secure_handshake_parser.h"
+#include "secure_handshake_parser.h"
 #include "utils.h"
 
 // Forward delcarations
@@ -22,6 +22,7 @@ static unsigned long **sys_call_table;
 static unsigned long original_cr0;
 
 // Storage for original system calls
+asmlinkage long (*ref_sys_socketcall)(int call, unsigned long *args);
 asmlinkage long (*ref_sys_write)(unsigned int fd, const char __user *buf, size_t count);
 asmlinkage long (*ref_sys_close)(unsigned int fd);
 asmlinkage long (*ref_sys_read)(unsigned int fd, char __user *buf, size_t count);
@@ -36,6 +37,7 @@ asmlinkage long (*ref_sys_sendmmsg)(int sockfd, struct mmsghdr __user *msg, unsi
 asmlinkage long (*ref_sys_socket)(int family, int type, int protocol);
 
 // Replacement system calls
+asmlinkage long new_sys_socketcall(int call, unsigned long *args);
 asmlinkage long new_sys_write(unsigned int fd, const char __user *buf, size_t count);
 asmlinkage long new_sys_close(unsigned int fd);
 asmlinkage long new_sys_read(unsigned int fd, char __user *buf, size_t count);
@@ -58,11 +60,20 @@ module_init(interceptor_start);
 module_exit(interceptor_end);
 MODULE_LICENSE("GPL");
 
+long new_sys_socketcall(int call, unsigned long *args) {
+	long ret;
+	ret = ref_sys_socketcall(call, args);
+	print_call_info(call, "socketcall: ");
+	return ret;
+}
+
 long new_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 	long ret = ref_sys_write(fd, buf, count);
-	if (buf && buf[0] == 0x16) {
-		print_call_info(fd, "writing to socket");
+	if (ret < 0) {
+		return ret;
 	}
+	//print_call_info(fd, "writing to socket");
+	th_read(current->pid, fd, (char*)buf, ret);
 	return ret;
 }
 
@@ -70,7 +81,7 @@ long new_sys_close(unsigned int fd) {
 	long ret;
 	ret = ref_sys_close(fd);
 	if (th_conn_state_delete(current->pid, fd)) {
-		print_call_info(fd, "closing socket");
+		//print_call_info(fd, "closing socket");
 	}
 	return ret;
 }
@@ -105,13 +116,15 @@ long new_sys_sendto(int sockfd, void __user * buf, size_t len, unsigned flags, s
 	if (ret < 0) {
 		return ret;
 	}
-	//th_read(current->pid, sockfd, (char*)buf, ret);
-	print_call_info(sockfd, "in sendto()");
+	th_read(current->pid, sockfd, (char*)buf, ret);
+	//print_call_info(sockfd, "in sendto()");
 	return ret;
 }
 
 long new_sys_sendmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags) {
         long ret = ref_sys_sendmsg(sockfd, msg, flags);
+	th_read(current->pid, sockfd, (char*)msg, ret);
+	//print_call_info(sockfd, "you all end up here anyway");
 	return ret;
 }
 
@@ -128,9 +141,9 @@ long new_sys_socket(int family, int type, int protocol) {
 		printk(KERN_ALERT "Socket creation failed");
 		return ret;
 	}
-	print_call_info(ret, "creating socket");
+	//print_call_info(ret, "creating socket");
 	th_conn_state_create(current->pid, ret);
-	th_conn_state_print_all();
+	//th_conn_state_print_all();
 	return ret;
 }
 
@@ -163,12 +176,14 @@ int __init interceptor_start(void) {
 	ref_sys_sendmsg = (void *)sys_call_table[__NR_sendmsg];
 	ref_sys_write = (void *)sys_call_table[__NR_write];
 	ref_sys_close = (void *)sys_call_table[__NR_close];
+	//ref_sys_socketcall = (void *)sys_call_table[__NR_socketcall];
 	sys_call_table[__NR_socket] = (unsigned long *)new_sys_socket;
 	sys_call_table[__NR_recvfrom] = (unsigned long *)new_sys_recvfrom;
 	sys_call_table[__NR_sendto] = (unsigned long *)new_sys_sendto;
 	sys_call_table[__NR_sendmsg] = (unsigned long *)new_sys_sendmsg;
 	sys_call_table[__NR_write] = (unsigned long *)new_sys_write;
 	sys_call_table[__NR_close] = (unsigned long *)new_sys_close;
+	//sys_call_table[__NR_socketcall] = (unsigned long *)new_sys_socketcall;
 	write_cr0(original_cr0);
 
 	return 0;
@@ -186,6 +201,7 @@ void __exit interceptor_end(void) {
 	sys_call_table[__NR_sendmsg] = (unsigned long *)ref_sys_sendmsg;
 	sys_call_table[__NR_write] = (unsigned long *)ref_sys_write;
 	sys_call_table[__NR_close] = (unsigned long *)ref_sys_close;
+	//sys_call_table[__NR_socketcall] = (unsigned long *)ref_sys_socketcall;
 	write_cr0(original_cr0);
 
 	// Free up conn state memory

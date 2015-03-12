@@ -2,6 +2,7 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include "connection_state.h"
+#include "secure_handshake_parser.h"
 #include "utils.h"
 
 extern unsigned int allocsminusfrees;
@@ -20,8 +21,6 @@ conn_state_t* th_conn_state_get(pid_t pid, int fd) {
 	conn_state_t* conn_state_it;
         hash_for_each_possible(conn_table, conn_state_it, hash, pid ^ fd) {
                 if (conn_state_it->pid == pid && conn_state_it->socketfd == fd) {
-                        hash_del(&conn_state_it->hash);
-                        th_conn_state_free(conn_state_it);
                         conn_state = conn_state_it;
                         break;
                 }
@@ -45,6 +44,7 @@ void th_conn_state_create(pid_t pid, unsigned int socketfd) {
 	new_conn_state->state = UNKNOWN;
 	new_conn_state->buf = NULL;
 	new_conn_state->data_length = 0;
+	new_conn_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 
 	// Add to hash table
 	hash_add(conn_table, &new_conn_state->hash, new_conn_state->key);
