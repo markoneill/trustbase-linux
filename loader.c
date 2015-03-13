@@ -15,7 +15,7 @@
 #include "utils.h"
 
 // Forward delcarations
-struct user_msghdr;
+//struct user_msghdr;
 
 // Needed for system call override
 static unsigned long **sys_call_table;
@@ -28,11 +28,11 @@ asmlinkage long (*ref_sys_close)(unsigned int fd);
 asmlinkage long (*ref_sys_read)(unsigned int fd, char __user *buf, size_t count);
 asmlinkage long (*ref_sys_recv)(int sockfd, void __user * buf, size_t len, unsigned flags);
 asmlinkage long (*ref_sys_recvfrom)(int sockfd, void __user * buf, size_t len, unsigned flags, struct sockaddr __user * src_addr, int __user * addrlen);
-asmlinkage long (*ref_sys_recvmsg)(int sockfd, struct user_msghdr __user *msg, unsigned flags);
+asmlinkage long (*ref_sys_recvmsg)(int sockfd, struct msghdr __user *msg, unsigned flags);
 asmlinkage long (*ref_sys_recvmmsg)(int sockfd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags, struct timespec __user *timeout);
 asmlinkage long (*ref_sys_send)(int sockfd, void __user * buf, size_t len, unsigned flags);
 asmlinkage long (*ref_sys_sendto)(int sockfd, void __user * buf, size_t len, unsigned flags, struct sockaddr __user * dest_addr, int addrlen);
-asmlinkage long (*ref_sys_sendmsg)(int sockfd, struct user_msghdr __user *msg, unsigned flags);
+asmlinkage long (*ref_sys_sendmsg)(int sockfd, struct msghdr __user *msg, unsigned flags);
 asmlinkage long (*ref_sys_sendmmsg)(int sockfd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags);
 asmlinkage long (*ref_sys_socket)(int family, int type, int protocol);
 
@@ -43,11 +43,11 @@ asmlinkage long new_sys_close(unsigned int fd);
 asmlinkage long new_sys_read(unsigned int fd, char __user *buf, size_t count);
 asmlinkage long new_sys_recv(int sockfd, void __user * buf, size_t len, unsigned flags);
 asmlinkage long new_sys_recvfrom(int sockfd, void __user * buf, size_t len, unsigned flags, struct sockaddr __user * src_addr, int __user * addrlen);
-asmlinkage long new_sys_recvmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags);
+asmlinkage long new_sys_recvmsg(int sockfd, struct msghdr __user *msg, unsigned flags);
 asmlinkage long new_sys_recvmmsg(int sockfd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags, struct timespec __user *timeout);
 asmlinkage long new_sys_send(int sockfd, void __user * buf, size_t len, unsigned flags);
 asmlinkage long new_sys_sendto(int sockfd, void __user * buf, size_t len, unsigned flags, struct sockaddr __user * dest_addr, int addrlen);
-asmlinkage long new_sys_sendmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags);
+asmlinkage long new_sys_sendmsg(int sockfd, struct msghdr __user *msg, unsigned flags);
 asmlinkage long new_sys_sendmmsg(int sockfd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags);
 asmlinkage long new_sys_socket(int family, int type, int protocol);
 
@@ -88,7 +88,10 @@ long new_sys_close(unsigned int fd) {
 
 long new_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	long ret = ref_sys_read(fd, buf, count);
-	
+	if (ret < 0) {
+		return ret;
+	}
+	th_read_response(current->pid, fd, buf, ret);
 	return ret;
 }
 
@@ -105,8 +108,13 @@ long new_sys_recvfrom(int sockfd, void __user * buf, size_t len, unsigned flags,
 	return ret;
 }
 
-long new_sys_recvmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags) {
-	return ref_sys_recvmsg(sockfd, msg, flags);
+long new_sys_recvmsg(int sockfd, struct msghdr __user *msg, unsigned flags) {
+	long ret = ref_sys_recvmsg(sockfd, msg, flags);
+	if (ret < 0) {
+		return ret;
+	}
+	//th_read_response(current->pid, sockfd, (char*)msg->msg_control, ret);
+	return ret;
 }
 
 long new_sys_recvmmsg(int sockfd, struct mmsghdr __user *msg, unsigned int vlen, unsigned flags, struct timespec __user *timeout) {
@@ -127,9 +135,9 @@ long new_sys_sendto(int sockfd, void __user * buf, size_t len, unsigned flags, s
 	return ret;
 }
 
-long new_sys_sendmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags) {
+long new_sys_sendmsg(int sockfd, struct msghdr __user *msg, unsigned flags) {
         long ret = ref_sys_sendmsg(sockfd, msg, flags);
-	th_read_request(current->pid, sockfd, (char*)msg, ret);
+	//th_read_request(current->pid, sockfd, (char*)msg->msg_control, ret);
 	//print_call_info(sockfd, "you all end up here anyway");
 	return ret;
 }
