@@ -2,10 +2,12 @@
 #define _TH_CONNECTION_STATE_H
 
 typedef enum state_t {
-	UNKNOWN,
 	IRRELEVANT,
-	TLS_NEW,
+	TLS_CLIENT_UNKNOWN,
+	TLS_CLIENT_NEW,
 	TLS_CLIENT_HELLO,
+	TLS_SERVER_UNKNOWN,
+	TLS_SERVER_NEW,
 	TLS_SERVER_HELLO,
 	TLS_SERVER_CERTIFICATE,
 	TLS_ESTABLISHED
@@ -17,9 +19,12 @@ typedef struct conn_state_t {
         unsigned int socketfd;
         struct hlist_node hash;
 	state_t state;
-	size_t data_length;
-	size_t bytes_to_read;
-	char* buf;
+	size_t send_buf_length;
+	size_t recv_buf_length;
+	size_t send_bytes_to_read;
+	size_t recv_bytes_to_read;
+	char* send_buf;
+	char* recv_buf;
 } conn_state_t;
 
 void th_conn_state_free(conn_state_t* conn_state);

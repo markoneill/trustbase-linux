@@ -73,7 +73,7 @@ long new_sys_write(unsigned int fd, const char __user *buf, size_t count) {
 		return ret;
 	}
 	//print_call_info(fd, "writing to socket");
-	th_read(current->pid, fd, (char*)buf, ret);
+	th_read_request(current->pid, fd, (char*)buf, ret);
 	return ret;
 }
 
@@ -88,6 +88,7 @@ long new_sys_close(unsigned int fd) {
 
 long new_sys_read(unsigned int fd, char __user *buf, size_t count) {
 	long ret = ref_sys_read(fd, buf, count);
+	
 	return ret;
 }
 
@@ -96,7 +97,12 @@ long new_sys_recv(int sockfd, void __user * buf, size_t len, unsigned flags) {
 }
 
 long new_sys_recvfrom(int sockfd, void __user * buf, size_t len, unsigned flags, struct sockaddr __user * src_addr, int __user * addrlen) {
-	return ref_sys_recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
+	long ret = ref_sys_recvfrom(sockfd, buf, len, flags, src_addr, addrlen);
+	if (ret < 0) {
+		return ret;
+	}
+	th_read_response(current->pid, sockfd, buf, ret);
+	return ret;
 }
 
 long new_sys_recvmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags) {
@@ -116,14 +122,14 @@ long new_sys_sendto(int sockfd, void __user * buf, size_t len, unsigned flags, s
 	if (ret < 0) {
 		return ret;
 	}
-	th_read(current->pid, sockfd, (char*)buf, ret);
+	th_read_request(current->pid, sockfd, (char*)buf, ret);
 	//print_call_info(sockfd, "in sendto()");
 	return ret;
 }
 
 long new_sys_sendmsg(int sockfd, struct user_msghdr __user *msg, unsigned flags) {
         long ret = ref_sys_sendmsg(sockfd, msg, flags);
-	th_read(current->pid, sockfd, (char*)msg, ret);
+	th_read_request(current->pid, sockfd, (char*)msg, ret);
 	//print_call_info(sockfd, "you all end up here anyway");
 	return ret;
 }

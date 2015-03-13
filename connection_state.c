@@ -10,7 +10,8 @@ extern unsigned int allocsminusfrees;
 DEFINE_HASHTABLE(conn_table, HASH_TABLE_BITSIZE);
 
 void th_conn_state_free(conn_state_t* conn_state) {
-	kfree(conn_state->buf);
+	kfree(conn_state->send_buf);
+	kfree(conn_state->recv_buf);
 	kfree(conn_state);
 	allocsminusfrees--;
 	return;
@@ -41,10 +42,13 @@ void th_conn_state_create(pid_t pid, unsigned int socketfd) {
 	//if ((new_conn_state->buf = kmalloc(TH_TLS_RECORD_HEADER_SIZE, GFP_KERNEL)) == NULL) {
 	//	printk(KERN_ALERT "kmalloc failed when creating connection state buffer");
 	//}
-	new_conn_state->state = UNKNOWN;
-	new_conn_state->buf = NULL;
-	new_conn_state->data_length = 0;
-	new_conn_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
+	new_conn_state->state = TLS_CLIENT_UNKNOWN;
+	new_conn_state->send_buf = NULL;
+	new_conn_state->recv_buf = NULL;
+	new_conn_state->send_buf_length = 0;
+	new_conn_state->recv_buf_length = 0;
+	new_conn_state->send_bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
+	new_conn_state->recv_bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 
 	// Add to hash table
 	hash_add(conn_table, &new_conn_state->hash, new_conn_state->key);

@@ -5,6 +5,7 @@
 #define TH_TLS_RECORD_HEADER_SIZE		5
 #define TH_TLS_HANDSHAKE_IDENTIFIER_SIZE	1
 
-void th_read(pid_t pid, int sockfd, char* buf, long ret);
+void th_read_request(pid_t pid, int sockfd, char* buf, long ret);
+void th_read_response(pid_t pid, int sockfd, char* buf, long ret);
 
 #endif
