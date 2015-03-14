@@ -156,7 +156,7 @@ long new_sys_socket(int family, int type, int protocol) {
 
 	// Only continue if the socket creation suceeded
 	if (ret == -1) {
-		printk(KERN_ALERT "Socket creation failed");
+		//printk(KERN_ALERT "Socket creation failed");
 		return ret;
 	}
 	//print_call_info(ret, "creating socket");

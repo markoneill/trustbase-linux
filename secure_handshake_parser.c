@@ -34,7 +34,7 @@ void th_read_request(pid_t pid, int sockfd, char* buf, long ret) {
 		update_send_state(conn_state);
 	}
 	if (conn_state->state == IRRELEVANT) {
-		print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");
+		//print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");
 		th_conn_state_delete(pid, sockfd);
 	}
 	return;
@@ -62,7 +62,7 @@ void th_read_response(pid_t pid, int sockfd, char* buf, long ret) {
                 update_recv_state(conn_state);
         }
         if (conn_state->state == IRRELEVANT) {
-                print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");      
+		//print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");      
                 th_conn_state_delete(pid, sockfd);
         }	
 	return;
@@ -77,7 +77,7 @@ void update_send_state(conn_state_t* conn_state) {
 	switch (conn_state->state) {
 		case TLS_CLIENT_UNKNOWN:
 			if (conn_state->send_buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-				print_call_info(sockfd, "may be doing SSL");
+				//print_call_info(sockfd, "may be doing SSL");
 				conn_state->state = TLS_CLIENT_NEW;
 				conn_state->send_bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			}
@@ -87,7 +87,7 @@ void update_send_state(conn_state_t* conn_state) {
 			break;
 		case TLS_CLIENT_NEW:
 			cs_buf = conn_state->send_buf;
-			printbuf(cs_buf, TH_TLS_RECORD_HEADER_SIZE);
+			//printbuf(cs_buf, TH_TLS_RECORD_HEADER_SIZE);
 			tls_major_version = cs_buf[1];
 			tls_minor_version = cs_buf[2];
 			tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
@@ -96,7 +96,7 @@ void update_send_state(conn_state_t* conn_state) {
 			conn_state->state = TLS_CLIENT_HELLO;
 			break;
 		case TLS_CLIENT_HELLO:
-			print_call_info(sockfd, "read all of CLIENT_HELLO");
+			print_call_info(sockfd, "Sent a Client Hello");
 			conn_state->state = TLS_SERVER_UNKNOWN;
 			conn_state->recv_bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 			break;
@@ -119,7 +119,7 @@ void update_recv_state(conn_state_t* conn_state) {
 	switch(conn_state->state) {
 		case TLS_SERVER_UNKNOWN:
                         if (conn_state->recv_buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-                                print_call_info(sockfd, "remote may be doing SSL");
+                                //print_call_info(sockfd, "remote may be doing SSL");
                                 conn_state->state = TLS_SERVER_NEW;
                                 conn_state->recv_bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 				//printk(KERN_ALERT "recv buf length is %u and toread is: %d", conn_state->recv_buf_length, conn_state->recv_bytes_to_read);
@@ -130,7 +130,7 @@ void update_recv_state(conn_state_t* conn_state) {
 			break;
 		case TLS_SERVER_NEW:
                         cs_buf = conn_state->recv_buf;
-                        printbuf(cs_buf, TH_TLS_RECORD_HEADER_SIZE);
+                        //printbuf(cs_buf, TH_TLS_RECORD_HEADER_SIZE);
                         tls_major_version = cs_buf[1];
                         tls_minor_version = cs_buf[2];
                         tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
@@ -140,7 +140,7 @@ void update_recv_state(conn_state_t* conn_state) {
 			break;
 		case TLS_SERVER_HELLO:
 			conn_state->state = IRRELEVANT;
-			print_call_info(sockfd, "read all of SERVER_HELLO");
+			print_call_info(sockfd, "Sent a Server Hello");
 			break;
 		case TLS_CLIENT_UNKNOWN: // temporarily just ignore connections made asyncronously
 		case TLS_CLIENT_NEW:
