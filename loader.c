@@ -190,7 +190,7 @@ int __init interceptor_start(void) {
 	write_cr0(original_cr0 & ~0x00010000);
 	ref_sys_socket = (void *)sys_call_table[__NR_socket];
 	ref_sys_recvfrom = (void *)sys_call_table[__NR_recvfrom];
-	ref_sys_recvfrom = (void *)sys_call_table[__NR_recvmsg];
+	ref_sys_recvmsg = (void *)sys_call_table[__NR_recvmsg];
 	ref_sys_read = (void *)sys_call_table[__NR_read];
 	ref_sys_sendto = (void *)sys_call_table[__NR_sendto];
 	ref_sys_sendmsg = (void *)sys_call_table[__NR_sendmsg];
