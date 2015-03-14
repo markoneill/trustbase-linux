@@ -109,11 +109,13 @@ long new_sys_recvfrom(int sockfd, void __user * buf, size_t len, unsigned flags,
 }
 
 long new_sys_recvmsg(int sockfd, struct msghdr __user *msg, unsigned flags) {
+	struct iovec iov;
 	long ret = ref_sys_recvmsg(sockfd, msg, flags);
 	if (ret < 0) {
 		return ret;
 	}
-	//th_read_response(current->pid, sockfd, (char*)msg->msg_control, ret);
+	iov = *msg->msg_iov;
+	th_read_response(current->pid, sockfd, (char*)iov.iov_base, ret);
 	return ret;
 }
 
@@ -136,8 +138,10 @@ long new_sys_sendto(int sockfd, void __user * buf, size_t len, unsigned flags, s
 }
 
 long new_sys_sendmsg(int sockfd, struct msghdr __user *msg, unsigned flags) {
+	struct iovec iov;
         long ret = ref_sys_sendmsg(sockfd, msg, flags);
-	//th_read_request(current->pid, sockfd, (char*)msg->msg_control, ret);
+	iov = *msg->msg_iov;
+	th_read_request(current->pid, sockfd, (char*)iov.iov_base, ret);
 	//print_call_info(sockfd, "you all end up here anyway");
 	return ret;
 }
@@ -186,6 +190,8 @@ int __init interceptor_start(void) {
 	write_cr0(original_cr0 & ~0x00010000);
 	ref_sys_socket = (void *)sys_call_table[__NR_socket];
 	ref_sys_recvfrom = (void *)sys_call_table[__NR_recvfrom];
+	ref_sys_recvfrom = (void *)sys_call_table[__NR_recvmsg];
+	ref_sys_read = (void *)sys_call_table[__NR_read];
 	ref_sys_sendto = (void *)sys_call_table[__NR_sendto];
 	ref_sys_sendmsg = (void *)sys_call_table[__NR_sendmsg];
 	ref_sys_write = (void *)sys_call_table[__NR_write];
@@ -193,6 +199,8 @@ int __init interceptor_start(void) {
 	//ref_sys_socketcall = (void *)sys_call_table[__NR_socketcall];
 	sys_call_table[__NR_socket] = (unsigned long *)new_sys_socket;
 	sys_call_table[__NR_recvfrom] = (unsigned long *)new_sys_recvfrom;
+	sys_call_table[__NR_recvmsg] = (unsigned long *)new_sys_recvmsg;
+	sys_call_table[__NR_read] = (unsigned long *)new_sys_read;
 	sys_call_table[__NR_sendto] = (unsigned long *)new_sys_sendto;
 	sys_call_table[__NR_sendmsg] = (unsigned long *)new_sys_sendmsg;
 	sys_call_table[__NR_write] = (unsigned long *)new_sys_write;
@@ -211,6 +219,8 @@ void __exit interceptor_end(void) {
 	write_cr0(original_cr0 & ~0x00010000);
 	sys_call_table[__NR_socket] = (unsigned long *)ref_sys_socket;
 	sys_call_table[__NR_recvfrom] = (unsigned long *)ref_sys_recvfrom;
+	sys_call_table[__NR_recvmsg] = (unsigned long *)ref_sys_recvmsg;
+	sys_call_table[__NR_read] = (unsigned long *)ref_sys_read;
 	sys_call_table[__NR_sendto] = (unsigned long *)ref_sys_sendto;
 	sys_call_table[__NR_sendmsg] = (unsigned long *)ref_sys_sendmsg;
 	sys_call_table[__NR_write] = (unsigned long *)ref_sys_write;
