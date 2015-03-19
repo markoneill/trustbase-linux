@@ -14,9 +14,9 @@ typedef enum state_t {
 } state_t;
 
 typedef struct conn_state_t {
-        unsigned int key;
+        unsigned long key;
         pid_t pid;
-        unsigned int socketfd;
+	struct socket* sock;
         struct hlist_node hash;
 	state_t state;
 	size_t send_buf_length;
@@ -28,11 +28,11 @@ typedef struct conn_state_t {
 } conn_state_t;
 
 void th_conn_state_free(conn_state_t* conn_state);
-void th_conn_state_create(pid_t pid, unsigned int socketfd);
-conn_state_t* th_conn_state_get(pid_t pid, int fd);
+void th_conn_state_create(pid_t pid, struct socket* sock);
+conn_state_t* th_conn_state_get(pid_t pid, struct socket* sock);
 void th_conn_state_free_all(void);
 void th_conn_state_init_all(void);
 void th_conn_state_print_all(void);
-int th_conn_state_delete(pid_t pid, unsigned int fd);
+int th_conn_state_delete(pid_t pid, struct socket* sock);
 
 #endif

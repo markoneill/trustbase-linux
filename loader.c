@@ -48,36 +48,58 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 // Wrapper definitions
 int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	int ret;
+	struct socket* sock;
+	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
+	//printk(KERN_INFO "TCP over IPv4 connection detected");
+	th_conn_state_create(current->pid, sock);
+	print_call_info(sock, "TCP IPv4 connect");
 	return ret;
 }
 
 int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	int ret;
+	struct socket* sock;
+	sock = sk->sk_socket;
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
+	//printk(KERN_INFO "TCP over IPv6 connection detected");
+	th_conn_state_create(current->pid, sock);
+	print_call_info(sock, "TCP IPv6 connect");
 	return ret;
 }
 
 int new_tcp_disconnect(struct sock *sk, int flags) {
 	int ret;
 	ret = ref_tcp_disconnect(sk, flags);
+	printk(KERN_INFO "TCP disconnect detected");
 	return ret;
 }
 
 void new_tcp_close(struct sock *sk, long timeout) {
+	struct socket* sock;
+	sock = sk->sk_socket;
+	//printk(KERN_INFO "TCP close detected");
+	if (th_conn_state_delete(current->pid, sock)) {
+		print_call_info(sock, "TCP close");
+	}
 	ref_tcp_close(sk, timeout);
 	return;
 }
 
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size) {
+	struct iovec iov;
 	int ret;
 	ret = ref_tcp_sendmsg(iocb, sk, msg, size);
+        iov = *msg->msg_iov;
+	th_read_response(current->pid, sock, (char*)iov.iov_base, ret);
+	//printk(KERN_INFO "TCP send detected");
 	return ret;
 }
 
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len) {
 	int ret;
 	ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+	//printk(KERN_INFO "TCP recv detected");
 	return ret;
 }
 
@@ -89,6 +111,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 //static unsigned long original_cr0;
 
 // Storage for original system calls
+/*
 asmlinkage long (*ref_sys_socketcall)(int call, unsigned long *args);
 asmlinkage long (*ref_sys_write)(unsigned int fd, const char __user *buf, size_t count);
 asmlinkage long (*ref_sys_close)(unsigned int fd);
@@ -120,6 +143,7 @@ asmlinkage long new_sys_socket(int family, int type, int protocol);
 
 // Helpers
 asmlinkage unsigned long **aquire_sys_call_table(void);
+*/
 static int __init interceptor_start(void);
 static void __exit interceptor_end(void);
 
@@ -127,6 +151,7 @@ module_init(interceptor_start);
 module_exit(interceptor_end);
 MODULE_LICENSE("GPL");
 
+/*
 long new_sys_socketcall(int call, unsigned long *args) {
 	long ret;
 	ret = ref_sys_socketcall(call, args);
@@ -243,6 +268,7 @@ unsigned long **acquire_sys_call_table(void) {
 	}
 	return NULL;
 }
+*/
 
 int __init interceptor_start(void) {
 	/*

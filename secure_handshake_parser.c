@@ -2,6 +2,7 @@
 #include <linux/slab.h>
 #include <linux/byteorder/generic.h>
 #include <asm/byteorder.h>
+#include <linux/net.h>
 
 #include "secure_handshake_parser.h"
 #include "connection_state.h"
@@ -18,9 +19,9 @@ void printbuf(char* buf, int length) {
 	}
 }
 
-void th_read_request(pid_t pid, int sockfd, char* buf, long ret) {
+void th_read_request(pid_t pid, struct socket* sock, char* buf, long ret) {
         conn_state_t* conn_state;
-	if ((conn_state = th_conn_state_get(pid, sockfd)) == NULL) {
+	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
 		//printk(KERN_INFO "someone is sending from an unregistered socket");
 		return;
 	}
@@ -35,19 +36,19 @@ void th_read_request(pid_t pid, int sockfd, char* buf, long ret) {
 	}
 	if (conn_state->state == IRRELEVANT) {
 		//print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");
-		th_conn_state_delete(pid, sockfd);
+		th_conn_state_delete(pid, sock);
 	}
 	return;
 }
 
-void th_read_response(pid_t pid, int sockfd, char* buf, long ret) {
+void th_read_response(pid_t pid, struct socket* sock, char* buf, long ret) {
 	conn_state_t* conn_state;
-	if ((conn_state = th_conn_state_get(pid, sockfd)) == NULL) {
+	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
 		return;
 	}
 	if (ret == 0) {
-		print_call_info(sockfd, "remote host closed socket");
-		th_conn_state_delete(pid, sockfd);
+		print_call_info(sock, "remote host closed socket");
+		th_conn_state_delete(pid, sock);
 		return;
 	}
         if ((conn_state->recv_buf = krealloc(conn_state->recv_buf, conn_state->recv_buf_length + ret, GFP_KERNEL)) == NULL) {
@@ -63,14 +64,14 @@ void th_read_response(pid_t pid, int sockfd, char* buf, long ret) {
         }
         if (conn_state->state == IRRELEVANT) {
 		//print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");      
-                th_conn_state_delete(pid, sockfd);
+                th_conn_state_delete(pid, sock);
         }	
 	return;
 }
 
 void update_send_state(conn_state_t* conn_state) {
 	char* cs_buf = NULL;
-	int sockfd = conn_state->socketfd;
+	struct socket* sock = conn_state->sock;
 	unsigned char tls_major_version;
 	unsigned char tls_minor_version;
 	unsigned short tls_record_length;
@@ -96,7 +97,7 @@ void update_send_state(conn_state_t* conn_state) {
 			conn_state->state = TLS_CLIENT_HELLO;
 			break;
 		case TLS_CLIENT_HELLO:
-			print_call_info(sockfd, "Sent a Client Hello");
+			print_call_info(sock, "Sent a Client Hello");
 			conn_state->state = TLS_SERVER_UNKNOWN;
 			conn_state->recv_bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 			break;
@@ -112,7 +113,7 @@ void update_send_state(conn_state_t* conn_state) {
 
 void update_recv_state(conn_state_t* conn_state) {
         char* cs_buf = NULL;
-        int sockfd = conn_state->socketfd;
+        struct socket* sock = conn_state->sock;
         unsigned char tls_major_version;
         unsigned char tls_minor_version;
         unsigned short tls_record_length;
@@ -140,7 +141,7 @@ void update_recv_state(conn_state_t* conn_state) {
 			break;
 		case TLS_SERVER_HELLO:
 			conn_state->state = IRRELEVANT;
-			print_call_info(sockfd, "Sent a Server Hello");
+			print_call_info(sock, "Sent a Server Hello");
 			break;
 		case TLS_CLIENT_UNKNOWN: // temporarily just ignore connections made asyncronously
 		case TLS_CLIENT_NEW:
