@@ -9,6 +9,7 @@
 #include <linux/socket.h>
 #include <linux/hashtable.h>
 #include <linux/slab.h>
+#include <linux/tcp.h>
 
 #include "connection_state.h"
 #include "secure_handshake_parser.h"
@@ -17,9 +18,75 @@
 // Forward delcarations
 //struct user_msghdr;
 
+
+// New approach
+extern struct proto tcp_prot;
+//extern struct proto tcpv6_prot;
+struct proto * tcpv6_prot_ptr;
+
+// TCP IPv4-specific reference functions
+int (*ref_tcp_v4_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+// TCP IPv4-specific wrapper functions
+int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+
+// TCP IPv6-specific reference functions
+int (*ref_tcp_v6_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+// TCP IPv6-specific wrapper functions
+int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+
+// TCP General reference functions
+int (*ref_tcp_disconnect)(struct sock *sk, int flags);
+void (*ref_tcp_close)(struct sock *sk, long timeout);
+int (*ref_tcp_sendmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
+int (*ref_tcp_recvmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+// TCP General wrapper functions
+int new_tcp_disconnect(struct sock *sk, int flags);
+void new_tcp_close(struct sock *sk, long timeout);
+int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
+int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+
+// Wrapper definitions
+int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
+	int ret;
+	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
+	return ret;
+}
+
+int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
+	int ret;
+	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
+	return ret;
+}
+
+int new_tcp_disconnect(struct sock *sk, int flags) {
+	int ret;
+	ret = ref_tcp_disconnect(sk, flags);
+	return ret;
+}
+
+void new_tcp_close(struct sock *sk, long timeout) {
+	ref_tcp_close(sk, timeout);
+	return;
+}
+
+int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size) {
+	int ret;
+	ret = ref_tcp_sendmsg(iocb, sk, msg, size);
+	return ret;
+}
+
+int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len) {
+	int ret;
+	ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+	return ret;
+}
+
+
+// End New approach
+
 // Needed for system call override
-static unsigned long **sys_call_table;
-static unsigned long original_cr0;
+//static unsigned long **sys_call_table;
+//static unsigned long original_cr0;
 
 // Storage for original system calls
 asmlinkage long (*ref_sys_socketcall)(int call, unsigned long *args);
@@ -52,7 +119,7 @@ asmlinkage long new_sys_sendmmsg(int sockfd, struct mmsghdr __user *msg, unsigne
 asmlinkage long new_sys_socket(int family, int type, int protocol);
 
 // Helpers
-static unsigned long **aquire_sys_call_table(void);
+asmlinkage unsigned long **aquire_sys_call_table(void);
 static int __init interceptor_start(void);
 static void __exit interceptor_end(void);
 
@@ -165,7 +232,7 @@ long new_sys_socket(int family, int type, int protocol) {
 	return ret;
 }
 
-unsigned long **aquire_sys_call_table(void) {
+unsigned long **acquire_sys_call_table(void) {
 	unsigned long int offset = PAGE_OFFSET;
 	unsigned long **sct;
 	while (offset < ULLONG_MAX) {
@@ -178,13 +245,41 @@ unsigned long **aquire_sys_call_table(void) {
 }
 
 int __init interceptor_start(void) {
+	/*
 	// Try to get the system call table
 	if(!(sys_call_table = aquire_sys_call_table()))
 		return -1;
-	
+
+	*/	
+
 	// Initialize buckets in hash table
 	th_conn_state_init_all();
 
+	// Save all references to original TCP functionality and override them with wrappers
+	printk(KERN_INFO "address of tcp_prot is %p", &tcp_prot);
+	ref_tcp_v4_connect = (void *)tcp_prot.connect;
+	ref_tcp_disconnect = (void *)tcp_prot.disconnect;
+	ref_tcp_close = (void *)tcp_prot.close;
+	ref_tcp_sendmsg = (void *)tcp_prot.sendmsg;
+	ref_tcp_recvmsg = (void *)tcp_prot.recvmsg;
+	tcp_prot.connect = new_tcp_v4_connect;
+	tcp_prot.disconnect = new_tcp_disconnect;
+	tcp_prot.close = new_tcp_close;
+	tcp_prot.sendmsg = new_tcp_sendmsg;
+	tcp_prot.recvmsg = new_tcp_recvmsg;
+	if ((tcpv6_prot_ptr = (void *)kallsyms_lookup_name("tcpv6_prot")) == 0) {
+		printk(KERN_ALERT "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
+	}
+	else {
+		printk(KERN_INFO "tcpv6_prot lookup succeeded, address is %p", tcpv6_prot_ptr);
+		ref_tcp_v6_connect = (void *)tcpv6_prot_ptr->connect;
+		tcpv6_prot_ptr->connect = new_tcp_v6_connect;
+		tcpv6_prot_ptr->disconnect = new_tcp_disconnect;
+		tcpv6_prot_ptr->close = new_tcp_close;
+		tcpv6_prot_ptr->sendmsg = new_tcp_sendmsg;
+		tcpv6_prot_ptr->recvmsg = new_tcp_recvmsg;
+	}
+	/*
 	// Override system calls
 	original_cr0 = read_cr0();
 	write_cr0(original_cr0 & ~0x00010000);
@@ -207,12 +302,26 @@ int __init interceptor_start(void) {
 	sys_call_table[__NR_close] = (unsigned long *)new_sys_close;
 	//sys_call_table[__NR_socketcall] = (unsigned long *)new_sys_socketcall;
 	write_cr0(original_cr0);
-
+	*/
 	return 0;
 }
 
 void __exit interceptor_end(void) {
-	if(!sys_call_table) {
+
+	// Restore original TCP functions
+	tcp_prot.connect = ref_tcp_v4_connect;
+	tcp_prot.disconnect = ref_tcp_disconnect;
+	tcp_prot.close = ref_tcp_close;
+	tcp_prot.sendmsg = ref_tcp_sendmsg;
+	tcp_prot.recvmsg = ref_tcp_recvmsg;
+	if (tcpv6_prot_ptr != 0) {
+		tcpv6_prot_ptr->connect = ref_tcp_v6_connect;
+		tcpv6_prot_ptr->disconnect = ref_tcp_disconnect;
+		tcpv6_prot_ptr->close = ref_tcp_close;
+		tcpv6_prot_ptr->sendmsg = ref_tcp_sendmsg;
+		tcpv6_prot_ptr->recvmsg = ref_tcp_recvmsg;
+	}
+	/*if(!sys_call_table) {
 		return;
 	}
 	
@@ -229,6 +338,7 @@ void __exit interceptor_end(void) {
 	write_cr0(original_cr0);
 
 	// Free up conn state memory
+	*/
 	th_conn_state_free_all();
 
 	msleep(2000);
