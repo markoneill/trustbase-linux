@@ -59,13 +59,15 @@ void th_read_response(pid_t pid, struct socket* sock, char* buf, long ret) {
         conn_state->recv_buf_length += ret;
 	//printk(KERN_ALERT "recv_buf_length is %u", conn_state->recv_buf_length);
 
+	//printbuf(conn_state->recv_buf, conn_state->recv_buf_length);
         while (conn_state->state != IRRELEVANT && conn_state->recv_buf_length >= conn_state->recv_bytes_to_read) {
+		//printk(KERN_INFO "heyu");
                 update_recv_state(conn_state);
         }
         if (conn_state->state == IRRELEVANT) {
 		//print_call_info(sockfd, "No longer interested in socket, ceasing monitoring");      
                 th_conn_state_delete(pid, sock);
-        }	
+        }
 	return;
 }
 
@@ -119,8 +121,9 @@ void update_recv_state(conn_state_t* conn_state) {
         unsigned short tls_record_length;
 	switch(conn_state->state) {
 		case TLS_SERVER_UNKNOWN:
+			printk(KERN_INFO "recveived: %02X hai", conn_state->recv_buf[0]);
                         if (conn_state->recv_buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-                                //print_call_info(sockfd, "remote may be doing SSL");
+				print_call_info(sock, "remote may be doing SSL");
                                 conn_state->state = TLS_SERVER_NEW;
                                 conn_state->recv_bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 				//printk(KERN_ALERT "recv buf length is %u and toread is: %d", conn_state->recv_buf_length, conn_state->recv_bytes_to_read);

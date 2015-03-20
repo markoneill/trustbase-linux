@@ -87,19 +87,65 @@ void new_tcp_close(struct sock *sk, long timeout) {
 }
 
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size) {
-	struct iovec iov;
+	struct socket* sock;
 	int ret;
+	//printk("sendmsg fs is: %p", oldfs);
 	ret = ref_tcp_sendmsg(iocb, sk, msg, size);
-        iov = *msg->msg_iov;
-	th_read_response(current->pid, sock, (char*)iov.iov_base, ret);
+
+        if (ret < 0) {
+                return ret;
+        }
+
+	sock = sk->sk_socket;
+	printk(KERN_INFO "send returned: %s", (char*)msg->msg_iov->iov_base);
+	//th_read_request(current->pid, sock, (char*)iov.iov_base, ret);
 	//printk(KERN_INFO "TCP send detected");
 	return ret;
 }
 
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len) {
 	int ret;
-	ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
-	//printk(KERN_INFO "TCP recv detected");
+	mm_segment_t oldfs;
+	struct iovec iov;
+	struct msghdr kmsg;
+	char buffer[1024];
+
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+
+	kmsg.msg_control = NULL;
+	kmsg.msg_controllen = 0;
+	kmsg.msg_iovlen = 1;
+	kmsg.msg_iov = msg->msg_iov;
+	iov.iov_len = len;
+	iov.iov_base = buffer;
+	kmsg.msg_name = 0;
+	kmsg.msg_namelen = 0;
+
+	ret = ref_tcp_recvmsg(iocb, sk, &kmsg, len, nonblock, flags, addr_len);
+	//ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+
+	//if (ret == -EIOCBQUEUED) {
+	//	ret = wait_on_sync_kiocb(iocb);
+	//}
+
+	//if (((char*)msg->msg_iov->iov_base)[0] == 0x16) {
+	//	printk(KERN_ALERT "omgosh");
+	//}
+	//printk("recv returned: %s", (char*)msg->msg_name);
+	//if (ret >= 0 && msg
+	//memcpy_toiovec(msg->msg_iov->iov_base, iov.iov_base, iov.iov_len);
+	set_fs(oldfs);
+	if (ret < 0) {
+		return ret;
+	}
+	//si = kiocb_to_siocb(iocb);
+	//printk(KERN_ALERT "omg");
+	//printk(KERN_ALERT "iovlength is: %u, ret is %d, len is %u", si->msg->msg_iov->iov_len, ret, len);
+	printk(KERN_INFO "recv returned: %s", (char*)(msg->msg_iov->iov_base));
+	//printk(KERN_INFO "recv returned: %s", (char*)(iov.iov_base));
+	//th_read_response(current->pid, sock, (char*)iov.iov_base, ret);
+	//printk(KERN_INFO "TCP recv detected on socket %p", sock);
 	return ret;
 }
 
@@ -247,7 +293,8 @@ long new_sys_socket(int family, int type, int protocol) {
 	ret = ref_sys_socket(family, type, protocol);
 
 	// Only continue if the socket creation suceeded
-	if (ret == -1) {
+	
+		return ret;if (ret == -1) {
 		//printk(KERN_ALERT "Socket creation failed");
 		return ret;
 	}
@@ -367,6 +414,6 @@ void __exit interceptor_end(void) {
 	*/
 	th_conn_state_free_all();
 
-	msleep(2000);
+	//msleep(2000);
 }
 
