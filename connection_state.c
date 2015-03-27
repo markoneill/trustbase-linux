@@ -9,9 +9,15 @@ extern unsigned int allocsminusfrees;
 #define HASH_TABLE_BITSIZE	8
 DEFINE_HASHTABLE(conn_table, HASH_TABLE_BITSIZE);
 
+static void th_buf_state_init(buf_state_t* buf_state);
+
 void th_conn_state_free(conn_state_t* conn_state) {
-	kfree(conn_state->send_buf);
-	kfree(conn_state->recv_buf);
+	if (conn_state->send_state.buf != NULL) {
+		kfree(conn_state->send_state.buf);
+	}
+	if (conn_state->recv_state.buf != NULL) {
+		kfree(conn_state->recv_state.buf);
+	}
 	kfree(conn_state);
 	allocsminusfrees--;
 	return;
@@ -39,17 +45,8 @@ void th_conn_state_create(pid_t pid, struct socket* sock) {
 	new_conn_state->pid = pid;
 	new_conn_state->sock = sock;
 	new_conn_state->key = pid ^ (unsigned long)sock;
-	//if ((new_conn_state->buf = kmalloc(TH_TLS_RECORD_HEADER_SIZE, GFP_KERNEL)) == NULL) {
-	//	printk(KERN_ALERT "kmalloc failed when creating connection state buffer");
-	//}
-	new_conn_state->state = TLS_CLIENT_UNKNOWN;
-	new_conn_state->send_buf = NULL;
-	new_conn_state->recv_buf = NULL;
-	new_conn_state->send_buf_length = 0;
-	new_conn_state->recv_buf_length = 0;
-	new_conn_state->send_bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
-	new_conn_state->recv_bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
-
+	th_buf_state_init(&new_conn_state->send_state);
+	th_buf_state_init(&new_conn_state->recv_state);
 	// Add to hash table
 	hash_add(conn_table, &new_conn_state->hash, new_conn_state->key);
 	return;
@@ -96,5 +93,24 @@ int th_conn_state_delete(pid_t pid, struct socket* sock) {
 		}
 	}
 	return found;
+}
+
+size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state) {
+	return buf_state->buf_length - buf_state->bytes_read;
+}
+
+int th_buf_state_can_transition(buf_state_t* buf_state) {
+	size_t unread = th_buf_state_get_num_bytes_unread(buf_state);
+	printk(KERN_ALERT "Unread: %u", unread);
+	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
+}
+
+void th_buf_state_init(buf_state_t* buf_state) {
+	buf_state->buf_length = 0;
+	buf_state->bytes_read = 0;
+	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
+	buf_state->buf = NULL;
+	buf_state->state = UNKNOWN;
+	return;
 }
 

@@ -98,7 +98,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	sock = sk->sk_socket;
 	//printk(KERN_INFO "send returned: %s", (char*)msg->msg_iov->iov_base);
-	//th_read_request(current->pid, sock, (char*)iov.iov_base, ret);
+	th_read_request(current->pid, sock, (char*)msg->msg_iov->iov_base, ret);
 	//printk(KERN_INFO "TCP send detected");
 	return ret;
 }
@@ -109,9 +109,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	struct iovec iov;
 	struct msghdr kmsg;
 	void* buffer;
+	struct socket* sock;
+	conn_state_t* conn_state;
+
+	sock = sk->sk_socket;
+
+	// Early breakout if we aren't monitoring this connection
+	if ((conn_state = th_conn_state_get(current->pid, sock)) == NULL) {
+		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		return ret;
+	}
 
 	buffer = kmalloc(len, GFP_KERNEL);
-
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
 
@@ -131,7 +140,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	kmsg.msg_control = NULL;
 	kmsg.msg_controllen = 0;
 	kmsg.msg_iovlen = 1;
-	//kmsg.msg_iov = msg->msg_iov;
 	kmsg.msg_iov = &iov;
 	iov.iov_len = len;
 	iov.iov_base = buffer;
@@ -139,32 +147,23 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	kmsg.msg_namelen = 0;
 
 	ret = ref_tcp_recvmsg(iocb, sk, &kmsg, len, nonblock, flags, addr_len);
-	//ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 
 	if (ret == -EIOCBQUEUED) {
 		ret = wait_on_sync_kiocb(iocb);
 	}
 
-	//msleep(2000);
-	//if (((char*)msg->msg_iov->iov_base)[0] == 0x16) {
-	//	printk(KERN_ALERT "omgosh");
-	//}
-	//printk("recv returned: %s", (char*)msg->msg_name);
-	//if (ret >= 0 && msg
-	//memcpy_toiovec(msg->msg_iov->iov_base, iov.iov_base, iov.iov_len);
 	set_fs(oldfs);
 	if (ret < 0) {
 		return ret;
 	}
 
+	// F UP ANYTHING YOU WANT.  IT'S YOURS.
+	//th_read_response(current->pid, sock, (char*)buffer, ret);
+
 	if (copy_to_user((void __user *)msg->msg_iov->iov_base, buffer, len) != 0) {
 		printk(KERN_ALERT "yikes! couldn't copy all the data!");
 	}
-	//si = kiocb_to_siocb(iocb);
-	//printk(KERN_ALERT "omg");
-	//printk(KERN_ALERT "iovlength is: %u, ret is %d, len is %u", si->msg->msg_iov->iov_len, ret, len);
 	//printk(KERN_INFO "After:");
-	((char*)buffer)[ret] = 0; // this is jsut to test something...def don't keep it
 	//printk(KERN_INFO "recv returned: %s", (char*)(buffer));
 	kfree(buffer);
 	/*printk(KERN_INFO "msg->msg_control: %p", kmsg.msg_control);
@@ -178,10 +177,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	printk(KERN_INFO "msg->msg_name: %p", kmsg.msg_name);
 	printk(KERN_INFO "msg->msg_namelen: %d", kmsg.msg_namelen);
 	*/
-
-	//printk(KERN_INFO "recv returned: %s", (char*)(iov.iov_base));
-	//th_read_response(current->pid, sock, (char*)iov.iov_base, ret);
-	//printk(KERN_INFO "TCP recv detected on socket %p", sock);
 	return ret;
 }
 
