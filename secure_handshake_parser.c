@@ -13,6 +13,7 @@ static void update_state(conn_state_t* conn_state, buf_state_t* buf_state);
 static void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state);
 static void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_state);
+static void handle_certificates(char* buf);
 
 void printbuf(char* buf, int length) {
 	int i;
@@ -50,59 +51,6 @@ void th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int 
 	return;
 }
 
-/*void th_read_response(pid_t pid, struct socket* sock, char* buf, long ret) {
-	conn_state_t* conn_state;
-	if (ret <= 0) {
-		return;
-	}
-        if ((conn_state->recv_buf = krealloc(conn_state->recv_buf, conn_state->recv_buf_length + ret, GFP_KERNEL)) == NULL) {
-                printk(KERN_ALERT "Oh noes!  krealloc failed!");
-                return;
-        }
-        memcpy(conn_state->recv_buf + conn_state->recv_buf_length, buf, ret);
-        conn_state->recv_buf_length += ret;
-        
-	while (th_conn_state_can_transition_recv(conn_state)) {
-		update_recv_state(conn_state);
-        }
-
-        if (conn_state->state == IRRELEVANT) {
-        	print_call_info(sock, "No longer interested in socket, cease monitoring");
-                th_conn_state_delete(pid, sock);
-        }
-        return;
-}*/
-
-/*void th_read_response(pid_t pid, struct socket* sock, char* buf, long ret) {
-	conn_state_t* conn_state;
-	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
-		return;
-	}
-	if (ret == 0) {
-		print_call_info(sock, "remote host closed socket");
-		th_conn_state_delete(pid, sock);
-		return;
-	}
-        if ((conn_state->recv_buf = krealloc(conn_state->recv_buf, conn_state->recv_buf_length + ret, GFP_KERNEL)) == NULL) {
-                printk(KERN_ALERT "Oh noes!  krealloc failed!");
-                return;
-        }
-        memcpy(conn_state->recv_buf + conn_state->recv_buf_length, buf, ret);
-        conn_state->recv_buf_length += ret;
-	//printk(KERN_ALERT "recv_buf_length is %u", conn_state->recv_buf_length);
-
-	//printbuf(conn_state->recv_buf, conn_state->recv_buf_length);
-        while (conn_state->state != IRRELEVANT && conn_state->recv_buf_length >= conn_state->recv_bytes_to_read) {
-		//printk(KERN_INFO "heyu");
-                update_recv_state(conn_state);
-        }
-        if (conn_state->state == IRRELEVANT) {
-		print_call_info(sock, "No longer interested in socket, ceasing monitoring");      
-                th_conn_state_delete(pid, sock);
-        }
-	return;
-}*/
-
 void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
@@ -123,68 +71,12 @@ void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
 	return;
 }
 
-/*void update_recv_state(conn_state_t* conn_state) {
-	switch(conn_state->recv_state) {
-		case 
-	}
-	return;
-}*/
-
-/*void update_recv_state(conn_state_t* conn_state) {
-        char* cs_buf = NULL;
-        struct socket* sock = conn_state->sock;
-        unsigned char tls_major_version;
-        unsigned char tls_minor_version;
-        unsigned short tls_record_length;
-	switch(conn_state->state) {
-		case TLS_SERVER_UNKNOWN:
-			//printk(KERN_INFO "recveived: %02X hai", conn_state->recv_buf[0]);
-                        if (conn_state->recv_buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-				//print_call_info(sock, "remote may be doing SSL");
-                                conn_state->state = TLS_SERVER_NEW;
-                                conn_state->recv_bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
-				//printk(KERN_ALERT "recv buf length is %u and toread is: %d", conn_state->recv_buf_length, conn_state->recv_bytes_to_read);
-                        }
-                        else {
-                                conn_state->state = IRRELEVANT;
-                        }
-			break;
-		case TLS_SERVER_NEW:
-                        cs_buf = conn_state->recv_buf;
-                        //printbuf(cs_buf, TH_TLS_RECORD_HEADER_SIZE);
-                        tls_major_version = cs_buf[1];
-                        tls_minor_version = cs_buf[2];
-                        tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
-                        printk(KERN_INFO "Remote: SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
-                        conn_state->recv_bytes_to_read = tls_record_length;
-			conn_state->state = TLS_SERVER_HELLO;
-			break;
-		case TLS_SERVER_HELLO:
-			conn_state->state = TLS_SERVER_CERTIFICATE;
-			print_call_info(sock, "Sent a Server Hello");
-			break;
-		case TLS_SERVER_CERTIFICATE:
-			print_call_info(sock, "Received Server Certificate");
-		case TLS_CLIENT_UNKNOWN: // temporarily just ignore connections made asyncronously
-		case TLS_CLIENT_NEW:
-		case TLS_CLIENT_HELLO:
-			conn_state->state = IRRELEVANT;
-			break;
-		case TLS_ESTABLISHED:
-		default:
-			printk(KERN_ALERT "Unknown connection state!");
-			conn_state->state = IRRELEVANT;
-			break;
-	}
-	return;
-}*/
-
 void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state) {
-	buf_state->bytes_read += buf_state->bytes_to_read;
+	//buf_state->bytes_read += buf_state->bytes_to_read; // XXX this is intentionally commented out.  We shouldn't increment our read state in this one case so we can enter the record layer state and act like we've never read any part of it.  This is essentially a "peek" to support early ignoring of non-TLS connections
 	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
 		print_call_info(conn_state->sock, "may be doing SSL");
 		buf_state->state = RECORD_LAYER;
-		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE-1; // minus one because we've just read the first byte (to support early failure)
+		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 	}
 	else {
 		buf_state->bytes_to_read = 0;
@@ -199,10 +91,11 @@ void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state)
 	unsigned char tls_minor_version;
 	unsigned short tls_record_length;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
-	tls_major_version = cs_buf[0];
-	tls_minor_version = cs_buf[1];
-	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+2));
+	tls_major_version = cs_buf[1];
+	tls_minor_version = cs_buf[2];
+	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
 	printk(KERN_INFO "SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
+	// XXX To continue verifying that this is indeed a real SSL/TLS connection we should fail out here if its not a valid SSL/TLS version number. (it's possible that they're just happening to send the write bytes to appear like a TLS connection)
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
 	buf_state->bytes_to_read = tls_record_length;
@@ -218,13 +111,18 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 		buf_state->bytes_to_read = 0;
 		buf_state->state = CLIENT_HELLO_SENT;
 	}
-	else if (cs_buf[0] == 0x02) {
+	else if (cs_buf[0] == 0x02) { // XXX add something here to check to see if the certificate message (or part of it) is contained within this same record
 		print_call_info(conn_state->sock, "Received a Server Hello");
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 		buf_state->state = RECORD_LAYER;
 	}
-	else if (cs_buf[0] == 0x0b) {
-		print_call_info(conn_state->sock, "Received a Certificate");
+	else if (cs_buf[0] == 0x0b) { // XXX add something here to check to see if additional certificates are contained within this record?
+		handle_certificates(cs_buf);
+		//printk(KERN_ALERT "length is %u", handshake_message_length);
+		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
+		//handle_certificate
+		//buf_state->bytes_to_read
+		print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
 	}
@@ -232,6 +130,32 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
 		print_call_info(conn_state->sock, "Someone sent a weird thing");
+	}
+	return;
+}
+
+void handle_certificates(char* buf) {
+	char* bufptr;
+	unsigned int handshake_message_length;
+	unsigned int certificates_length;
+	unsigned int cert_length;
+	bufptr = buf;
+	int i = 0;
+	handshake_message_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);	// XXX This assumes a little endian CPU, can we make it not?
+	bufptr += 3; // handshake identifier + 24bit length of protocol message
+	certificates_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);
+	bufptr += 4; // 24-bit length of certificates
+	printk(KERN_ALERT "length of msg is %u", handshake_message_length);
+	printk(KERN_ALERT "length of certs is %u", certificates_length);
+	// XXX add some extra conditions to force this loop to terminate if we have a douchebag trying to hang the system
+	while (certificates_length > 0) {
+		cert_length = be32_to_cpu(*(unsigned int*)(bufptr-1) & 0xFFFFFF00);
+		bufptr += 3; // 24-bit length of indidividual cert
+		certificates_length -= 3;
+		bufptr += cert_length;
+		certificates_length -= cert_length;
+		//handle_certificate(bufptr);
+		printk(KERN_ALERT "length of one cert is %u", cert_length);
 	}
 	return;
 }
