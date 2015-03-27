@@ -101,7 +101,7 @@ size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state) {
 
 int th_buf_state_can_transition(buf_state_t* buf_state) {
 	size_t unread = th_buf_state_get_num_bytes_unread(buf_state);
-	printk(KERN_ALERT "Unread: %u", unread);
+	//printk(KERN_ALERT "Unread: %u", unread);
 	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
 }
 

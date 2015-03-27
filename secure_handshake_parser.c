@@ -9,8 +9,10 @@
 #include "utils.h"
 
 
-static void update_send_state(conn_state_t* conn_state);
-static void update_recv_state(conn_state_t* conn_state);
+static void update_state(conn_state_t* conn_state, buf_state_t* buf_state);
+static void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state);
+static void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state);
+static void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_state);
 
 void printbuf(char* buf, int length) {
 	int i;
@@ -19,14 +21,19 @@ void printbuf(char* buf, int length) {
 	}
 }
 
-void th_read_request(pid_t pid, struct socket* sock, char* new_buf, long ret) {
+void th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int sendrecv) {
         conn_state_t* conn_state;
 	buf_state_t* buf_state;
 	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
 		//printk(KERN_INFO "someone is sending from an unregistered socket");
 		return;
 	}
-	buf_state = &conn_state->send_state;
+	if (sendrecv == TH_RECV) {
+		buf_state = &conn_state->recv_state;
+	}
+	else {
+		buf_state = &conn_state->send_state;
+	}
 	if ((buf_state->buf = krealloc(buf_state->buf, buf_state->buf_length + ret, GFP_KERNEL)) == NULL) {
 		printk(KERN_ALERT "Oh noes!  krealloc failed!");
 		return;
@@ -34,7 +41,7 @@ void th_read_request(pid_t pid, struct socket* sock, char* new_buf, long ret) {
 	memcpy(buf_state->buf + buf_state->buf_length, new_buf, ret);
 	buf_state->buf_length += ret;
 	while (th_buf_state_can_transition(buf_state)) {
-		update_send_state(conn_state);
+		update_state(conn_state, buf_state);
 	}
 	if (buf_state->state == IRRELEVANT) {
 		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
@@ -96,53 +103,19 @@ void th_read_request(pid_t pid, struct socket* sock, char* new_buf, long ret) {
 	return;
 }*/
 
-void update_send_state(conn_state_t* conn_state) {
-	char* cs_buf = NULL;
-	struct socket* sock;
-	unsigned char tls_major_version;
-	unsigned char tls_minor_version;
-	unsigned short tls_record_length;
-	buf_state_t* buf_state;
-	buf_state = &conn_state->send_state;
-	sock = conn_state->sock;
+void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
-			buf_state->bytes_read += buf_state->bytes_to_read;
-			if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-				print_call_info(sock, "may be doing SSL");
-				buf_state->state = RECORD_LAYER;
-				buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE-1; // minus one because we've just read the first byte (to support early failure)
-			}
-			else {
-				buf_state->bytes_to_read = 0;
-				buf_state->state = IRRELEVANT;
-			}
+			handle_state_unknown(conn_state, buf_state);
 			break;
 		case RECORD_LAYER:
-			cs_buf = buf_state->buf;
-			tls_major_version = cs_buf[1];
-			tls_minor_version = cs_buf[2];
-			tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
-			printk(KERN_INFO "SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
-			buf_state->state = HANDSHAKE_LAYER;
-			buf_state->bytes_read += buf_state->bytes_to_read;
-			buf_state->bytes_to_read = tls_record_length;
+			handle_state_record_layer(conn_state, buf_state);
 			break;
 		case HANDSHAKE_LAYER:
-			cs_buf = buf_state->buf;
-			if (cs_buf[buf_state->bytes_read] == 0x01) {
-				print_call_info(sock, "Sent a Client Hello");
-			}
-			else {
-				print_call_info(sock, "Someone sent a weird thing");
-			}
-			buf_state->bytes_read += buf_state->bytes_to_read;
-			buf_state->bytes_to_read = 0;
-			buf_state->state = IRRELEVANT;
+			handle_state_handshake_layer(conn_state, buf_state);
 			break;
 		case IRRELEVANT:
 			// Should never get here
-			break;
 		default:
 			printk(KERN_ALERT "Unknown connection state!");
 			break;
@@ -206,3 +179,59 @@ void update_send_state(conn_state_t* conn_state) {
 	return;
 }*/
 
+void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state) {
+	buf_state->bytes_read += buf_state->bytes_to_read;
+	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
+		print_call_info(conn_state->sock, "may be doing SSL");
+		buf_state->state = RECORD_LAYER;
+		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE-1; // minus one because we've just read the first byte (to support early failure)
+	}
+	else {
+		buf_state->bytes_to_read = 0;
+		buf_state->state = IRRELEVANT;
+	}
+	return;
+}
+
+void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state) {
+	char* cs_buf;
+	unsigned char tls_major_version;
+	unsigned char tls_minor_version;
+	unsigned short tls_record_length;
+	cs_buf = &buf_state->buf[buf_state->bytes_read];
+	tls_major_version = cs_buf[0];
+	tls_minor_version = cs_buf[1];
+	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+2));
+	printk(KERN_INFO "SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
+	buf_state->state = HANDSHAKE_LAYER;
+	buf_state->bytes_read += buf_state->bytes_to_read;
+	buf_state->bytes_to_read = tls_record_length;
+	return;
+}
+
+void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_state) {
+	char* cs_buf;
+	cs_buf = &buf_state->buf[buf_state->bytes_read];
+	buf_state->bytes_read += buf_state->bytes_to_read;
+	if (cs_buf[0] == 0x01) {
+		print_call_info(conn_state->sock, "Sent a Client Hello");
+		buf_state->bytes_to_read = 0;
+		buf_state->state = CLIENT_HELLO_SENT;
+	}
+	else if (cs_buf[0] == 0x02) {
+		print_call_info(conn_state->sock, "Received a Server Hello");
+		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+		buf_state->state = RECORD_LAYER;
+	}
+	else if (cs_buf[0] == 0x0b) {
+		print_call_info(conn_state->sock, "Received a Certificate");
+		buf_state->bytes_to_read = 0;
+		buf_state->state = IRRELEVANT;
+	}
+	else {
+		buf_state->bytes_to_read = 0;
+		buf_state->state = IRRELEVANT;
+		print_call_info(conn_state->sock, "Someone sent a weird thing");
+	}
+	return;
+}

@@ -5,6 +5,7 @@ typedef enum state_t {
 	UNKNOWN,
 	HANDSHAKE_LAYER,
 	RECORD_LAYER,
+	CLIENT_HELLO_SENT,
 	IRRELEVANT
 } state_t;
 

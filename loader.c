@@ -98,7 +98,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	sock = sk->sk_socket;
 	//printk(KERN_INFO "send returned: %s", (char*)msg->msg_iov->iov_base);
-	th_read_request(current->pid, sock, (char*)msg->msg_iov->iov_base, ret);
+	th_parse_comm(current->pid, sock, (char*)msg->msg_iov->iov_base, ret, TH_SEND);
 	//printk(KERN_INFO "TCP send detected");
 	return ret;
 }
@@ -158,7 +158,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 
 	// F UP ANYTHING YOU WANT.  IT'S YOURS.
-	//th_read_response(current->pid, sock, (char*)buffer, ret);
+	th_parse_comm(current->pid, sock, (char*)buffer, ret, TH_RECV);
 
 	if (copy_to_user((void __user *)msg->msg_iov->iov_base, buffer, len) != 0) {
 		printk(KERN_ALERT "yikes! couldn't copy all the data!");
