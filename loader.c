@@ -13,6 +13,7 @@
 
 #include "connection_state.h"
 #include "secure_handshake_parser.h"
+#include "communications.h"
 #include "utils.h"
 
 // New approach
@@ -184,6 +185,13 @@ module_exit(interceptor_end);
 MODULE_LICENSE("GPL");
 
 int __init interceptor_start(void) {
+	// Set up IPC module-policyengine interaction
+	if (th_register_netlink() != 0) {
+		printk(KERN_ALERT "unable to register netlink family and ops");
+		return -1;
+	}
+
+
 	// Initialize buckets in hash table
 	th_conn_state_init_all();
 
@@ -232,6 +240,8 @@ void __exit interceptor_end(void) {
 
 	// Free up conn state memory
 	th_conn_state_free_all();
+	// Unregister the IPC 
+	th_unregister_netlink();
 	return;
 }
 

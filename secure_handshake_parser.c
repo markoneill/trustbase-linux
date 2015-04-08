@@ -6,6 +6,7 @@
 
 #include "secure_handshake_parser.h"
 #include "connection_state.h"
+#include "communications.h"
 #include "utils.h"
 
 
@@ -152,10 +153,13 @@ void handle_certificates(char* buf) {
 		cert_length = be32_to_cpu(*(unsigned int*)(bufptr-1) & 0xFFFFFF00);
 		bufptr += 3; // 24-bit length of indidividual cert
 		certificates_length -= 3;
-		bufptr += cert_length;
-		certificates_length -= cert_length;
 		//handle_certificate(bufptr);
 		printk(KERN_ALERT "length of one cert is %u", cert_length);
+		if (th_send_certificate_query(bufptr, cert_length) < 0) {
+			printk(KERN_ALERT "test failed");
+		}
+		bufptr += cert_length;
+		certificates_length -= cert_length;
 	}
 	return;
 }
