@@ -3,7 +3,7 @@ trusthub_linux-objs := loader.o connection_state.o secure_handshake_parser.o com
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
-	gcc -o policy_engine policy_engine.c -I/usr/include/libnl3 -lnl-3 -lnl-genl-3
+	gcc -o policy_engine policy_engine.c -I/usr/include/libnl3 -lnl-3 -lnl-genl-3 -lcrypto
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean

@@ -5,7 +5,8 @@
 int th_query(struct sk_buff* skb, struct genl_info* info);
 
 static const struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
-	[TRUSTHUB_A_MSG] = { .type = NLA_UNSPEC },
+	[TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
+	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_NUL_STRING },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
 };
 
@@ -70,9 +71,14 @@ int th_send_certificate_query(char* certificate, size_t length) {
 		printk(KERN_ALERT "failed in genlmsg_put");
 		return -1;
 	}
-	rc = nla_put(skb, TRUSTHUB_A_MSG, length, certificate);
+	rc = nla_put_string(skb, TRUSTHUB_A_HOSTNAME, "hosthere");
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put_string");
+		return -1;
+	}
+	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
+	if (rc != 0) {
+		printk(KERN_ALERT "failed in nla_put");
 		return -1;
 	}
 	genlmsg_end(skb, msg_head);

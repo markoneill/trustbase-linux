@@ -5,10 +5,11 @@ int th_register_netlink(void);
 void th_unregister_netlink(void);
 int th_send_certificate_query(char* certificate, size_t length);
 
-// Family
+// Attributes
 enum {
 	TRUSTHUB_A_UNSPEC,
-	TRUSTHUB_A_MSG,
+	TRUSTHUB_A_CERTCHAIN,
+	TRUSTHUB_A_HOSTNAME,
 	TRUSTHUB_A_RESULT,
 	__TRUSTHUB_A_MAX,
 };

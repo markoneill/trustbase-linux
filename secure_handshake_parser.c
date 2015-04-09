@@ -118,7 +118,7 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 		buf_state->state = RECORD_LAYER;
 	}
 	else if (cs_buf[0] == 0x0b) { // XXX add something here to check to see if additional certificates are contained within this record?
-		handle_certificates(cs_buf);
+		handle_certificates(&cs_buf[1]); // Certificates start here
 		//printk(KERN_ALERT "length is %u", handshake_message_length);
 		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
 		//handle_certificate
@@ -139,17 +139,21 @@ void handle_certificates(char* buf) {
 	char* bufptr;
 	unsigned int handshake_message_length;
 	unsigned int certificates_length;
-	unsigned int cert_length;
+	//unsigned int cert_length;
 	bufptr = buf;
-	int i = 0;
-	handshake_message_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);	// XXX This assumes a little endian CPU, can we make it not?
+	//int i = 0;
+	handshake_message_length = be24_to_cpu(*(__be24*)bufptr);
+
+	//th_send_certificate_query(
 	bufptr += 3; // handshake identifier + 24bit length of protocol message
-	certificates_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);
-	bufptr += 4; // 24-bit length of certificates
+	//certificates_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);
+	certificates_length = be24_to_cpu(*(__be24*)bufptr);
+	bufptr += 3; // 24-bit length of certificates
 	printk(KERN_ALERT "length of msg is %u", handshake_message_length);
 	printk(KERN_ALERT "length of certs is %u", certificates_length);
+	th_send_certificate_query(bufptr, certificates_length);
 	// XXX add some extra conditions to force this loop to terminate if we have a douchebag trying to hang the system
-	while (certificates_length > 0) {
+	/*while (certificates_length > 0) {
 		cert_length = be32_to_cpu(*(unsigned int*)(bufptr-1) & 0xFFFFFF00);
 		bufptr += 3; // 24-bit length of indidividual cert
 		certificates_length -= 3;
@@ -160,6 +164,6 @@ void handle_certificates(char* buf) {
 		}
 		bufptr += cert_length;
 		certificates_length -= cert_length;
-	}
+	}*/
 	return;
 }
