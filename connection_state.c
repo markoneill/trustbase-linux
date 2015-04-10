@@ -108,6 +108,9 @@ int th_buf_state_can_transition(buf_state_t* buf_state) {
 void th_buf_state_init(buf_state_t* buf_state) {
 	buf_state->buf_length = 0;
 	buf_state->bytes_read = 0;
+	buf_state->bytes_forwarded = 0;
+	buf_state->bytes_to_forward = 0;
+	buf_state->last_ret = 1; // Positive value required
 	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 	buf_state->buf = NULL;
 	buf_state->state = UNKNOWN;

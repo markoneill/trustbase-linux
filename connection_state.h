@@ -14,6 +14,9 @@ typedef struct buf_state_t {
 	size_t buf_length;
 	size_t bytes_read;
 	size_t bytes_to_read;
+	size_t bytes_forwarded;
+	size_t bytes_to_forward;
+	int last_ret;
 	char* buf;
 } buf_state_t;
 
@@ -24,6 +27,7 @@ typedef struct conn_state_t {
         struct hlist_node hash;
 	buf_state_t send_state;
 	buf_state_t recv_state;
+	buf_state_t send_state_backup;
 } conn_state_t;
 
 void th_conn_state_free(conn_state_t* conn_state);
@@ -35,5 +39,6 @@ void th_conn_state_print_all(void);
 int th_conn_state_delete(pid_t pid, struct socket* sock);
 inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
 inline int th_buf_state_can_transition(buf_state_t* buf_state);
+
 
 #endif

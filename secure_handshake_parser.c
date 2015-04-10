@@ -23,13 +23,85 @@ void printbuf(char* buf, int length) {
 	}
 }
 
-void th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int sendrecv) {
+/* New way */
+
+/* Append a buffer's contents to a connection state bufer.
+ * @param buf_state - pointer to a valid buf_state_t instance
+ * @param src_buf - source address of data
+ * @param length number of bytes to copy from source address
+ */
+int th_copy_to_state(buf_state_t* buf_state, void* src_buf, size_t length) {
+	if ((buf_state->buf = krealloc(buf_state->buf, buf_state->buf_length + length, GFP_KERNEL)) == NULL) {
+		printk(KERN_ALERT "krealloc failed in th_copy_to_state");
+		return -1;
+	}
+	memcpy(buf_state->buf + buf_state->buf_length, src_buf, length);
+	buf_state->buf_length += length;
+	//printk(KERN_INFO "sendbuf went from size %u to %u", buf_state->buf_length - length, buf_state->buf_length);
+	// XXX this is just specific to sending.  fix later
+	buf_state->bytes_to_forward += length;
+	//printk(KERN_INFO "before: bytes to forward is now %u", buf_state->bytes_to_forward);
+	return 0;
+}
+
+int th_update_conn_state(conn_state_t* conn_state, buf_state_t* buf_state) {
+        while (th_buf_state_can_transition(buf_state)) {
+                update_state(conn_state, buf_state);
+        }
+	return 0;
+}
+
+int th_fill_send_buffer(buf_state_t* buf_state, void** bufptr, size_t* length) {
+	*length = buf_state->bytes_to_forward;
+	*bufptr = buf_state->buf + buf_state->bytes_forwarded;
+	return 0;
+}
+
+int th_update_bytes_forwarded(buf_state_t* buf_state, size_t forwarded) {
+	buf_state->bytes_forwarded += forwarded;
+	buf_state->bytes_to_forward -= forwarded;
+	//printk(KERN_INFO "after: bytes to forward is now %u", buf_state->bytes_to_forward);
+
+	return 0;
+}
+/* End new way */
+
+int th_is_tracking(pid_t pid, struct socket* sock) {
+	conn_state_t* conn_state;
+	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
+		return 0;
+	}
+	return 1;
+}
+
+int th_restore_state(pid_t pid, struct socket* sock) {
+	conn_state_t* conn_state;
+	conn_state = th_conn_state_get(pid, sock);
+	conn_state->send_state = conn_state->send_state_backup;
+	return 0;
+}
+
+void* th_get_forwarding_base(pid_t pid, struct socket* sock) {
+	conn_state_t* conn_state;
+	size_t forwarded;
+	conn_state = th_conn_state_get(pid, sock);
+	forwarded = conn_state->send_state.bytes_forwarded;
+	return conn_state->send_state.buf + forwarded;
+}
+
+int th_optimistic_parse_send(pid_t pid, struct socket* sock, char* buf, long size) {
+	int ret;
+	conn_state_t* conn_state;
+	conn_state = th_conn_state_get(pid, sock);
+	conn_state->send_state_backup = conn_state->send_state;
+	ret = th_parse_comm(pid, sock, buf, size, TH_SEND);
+	return ret;
+}
+
+int th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int sendrecv) {
         conn_state_t* conn_state;
 	buf_state_t* buf_state;
-	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
-		//printk(KERN_INFO "someone is sending from an unregistered socket");
-		return;
-	}
+	conn_state = th_conn_state_get(pid, sock);
 	if (sendrecv == TH_RECV) {
 		buf_state = &conn_state->recv_state;
 	}
@@ -37,19 +109,19 @@ void th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int 
 		buf_state = &conn_state->send_state;
 	}
 	if ((buf_state->buf = krealloc(buf_state->buf, buf_state->buf_length + ret, GFP_KERNEL)) == NULL) {
-		printk(KERN_ALERT "Oh noes!  krealloc failed!");
-		return;
+		printk(KERN_ALERT "Oh noes!  krealloc failed! in parsecomm");
+		return -1;
 	}
 	memcpy(buf_state->buf + buf_state->buf_length, new_buf, ret);
 	buf_state->buf_length += ret;
 	while (th_buf_state_can_transition(buf_state)) {
 		update_state(conn_state, buf_state);
 	}
-	if (buf_state->state == IRRELEVANT) {
+	/*if (buf_state->state == IRRELEVANT) {
 		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-		th_conn_state_delete(pid, sock); // this isn't thread safe 
-	}
-	return;
+		th_conn_state_delete(pid, sock); // XXX this isn't thread safe 
+	}*/
+	return ret; // XXX for now just let everything go throug
 }
 
 void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
