@@ -97,7 +97,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
 
-	// Copy attributes of exising message into our custom one
+	// Copy attributes of existing message into our custom one
 	kmsg = *msg;
 	iov.iov_len = 0; // will be set later
 	iov.iov_base = NULL; // will be set later
@@ -144,33 +144,38 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	th_fill_send_buffer(&conn_state->send_state, &iov.iov_base, &iov.iov_len);
 
 	// 4) Forward what handler told us to forward, if anything
-	if (iov.iov_len > 0) {
-		// Use real tcp_sendmsg call to transmit
-		// but do it via the persona of the kernel
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		real_ret = ref_tcp_sendmsg(iocb, sk, &kmsg, iov.iov_len);
-		set_fs(oldfs);
-		// Record result
-		conn_state->send_state.last_ret = real_ret;
-		if (real_ret > 0) {
-			th_update_bytes_forwarded(&conn_state->send_state, real_ret);
-		}
-		if (real_ret != iov.iov_len) {
-			printk(KERN_ALERT "Kernel couldn't send everything we wanted to");
-		}
-
-		// If handler doesn't care about connection anymore then delete it
+	if (iov.iov_len <= 0) { //should never really be negative
 		if (conn_state->send_state.bytes_to_forward == 0 && conn_state->send_state.state == IRRELEVANT) {
 			print_call_info(sock, "No longer interested in socket, ceasing monitoring");
 			th_conn_state_delete(current->pid, sock); // XXX this isn't thread safe 
-                }
-		// Just tell the user we sent everything he wanted
-		// or an error code, if an error occurred
-		return real_ret > 0 ? size : real_ret;
+	        }
+		// Tell the user we sent everything he wanted
+		return size;
 	}
-	// Tell the user we sent everything he wanted
-	return size;
+	// Use real tcp_sendmsg call to transmit
+	// but do it via the persona of the kernel
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+	real_ret = ref_tcp_sendmsg(iocb, sk, &kmsg, iov.iov_len);
+	set_fs(oldfs);
+	// Record result
+	conn_state->send_state.last_ret = real_ret;
+	if (real_ret > 0) {
+		th_update_bytes_forwarded(&conn_state->send_state, real_ret);
+	}
+	if (real_ret != iov.iov_len) {
+		printk(KERN_ALERT "Kernel couldn't send everything we wanted to");
+		// XXX loop here to retry because this might be the last time we're ever called
+		// return -EAGAIN if this is nonblocking, call send again otherwise
+	}
+	// If handler doesn't care about connection anymore then delete it
+	if (conn_state->send_state.bytes_to_forward == 0 && conn_state->send_state.state == IRRELEVANT) {
+		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
+		th_conn_state_delete(current->pid, sock); // XXX this isn't thread safe 
+        }
+	// Just tell the user we sent everything he wanted
+	// or an error code, if an error occurred
+	return real_ret > 0 ? size : real_ret;
 
 /*
 	// Passthrough version	
