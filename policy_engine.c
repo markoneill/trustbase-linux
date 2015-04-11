@@ -10,6 +10,8 @@
 #define MAX_LENGTH	1024
 #define CERT_LENGTH_FIELD_SIZE	3
 
+int chains_received;
+
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
@@ -57,6 +59,8 @@ int handle_certchain(const unsigned char* data, size_t len) {
 		current_pos += length;
 	}
 	sk_X509_pop_free(chain, X509_free);
+	chains_received++;
+	printf("chains receieved: %d\n", chains_received);
 	return 0;
 }
 

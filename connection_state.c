@@ -7,7 +7,8 @@
 
 extern unsigned int allocsminusfrees;
 #define HASH_TABLE_BITSIZE	8
-DEFINE_HASHTABLE(conn_table, HASH_TABLE_BITSIZE);
+static DEFINE_HASHTABLE(conn_table, HASH_TABLE_BITSIZE);
+static DEFINE_SPINLOCK(conn_state_lock);
 
 static void th_buf_state_init(buf_state_t* buf_state);
 
@@ -48,7 +49,9 @@ void th_conn_state_create(pid_t pid, struct socket* sock) {
 	th_buf_state_init(&new_conn_state->send_state);
 	th_buf_state_init(&new_conn_state->recv_state);
 	// Add to hash table
+	spin_lock(&conn_state_lock);
 	hash_add(conn_table, &new_conn_state->hash, new_conn_state->key);
+	spin_unlock(&conn_state_lock);
 	return;
 }
 
@@ -72,11 +75,13 @@ void th_conn_state_free_all(void) {
 	conn_state_t* conn_state_it;
 	struct hlist_node tmp;
 	struct hlist_node* tmpptr = &tmp;
+	spin_lock(&conn_state_lock);
 	hash_for_each_safe(conn_table, bkt, tmpptr, conn_state_it, hash) {
 		printk(KERN_INFO "Deleting things in bucket [%d] with pid value %d and socket value %p", bkt, conn_state_it->pid, conn_state_it->sock);
 		hash_del(&conn_state_it->hash);
 		th_conn_state_free(conn_state_it);
 	}
+	spin_unlock(&conn_state_lock);
 	printk(KERN_INFO "kallocs minus kfrees: %i", allocsminusfrees);
 	return;
 }
@@ -84,6 +89,7 @@ void th_conn_state_free_all(void) {
 int th_conn_state_delete(pid_t pid, struct socket* sock) {
 	int found = 0;
 	conn_state_t* conn_state_it;
+	spin_lock(&conn_state_lock);
         hash_for_each_possible(conn_table, conn_state_it, hash, pid ^ (unsigned long)sock) {
 		if (conn_state_it->pid == pid && conn_state_it->sock == sock) {
 			hash_del(&conn_state_it->hash);
@@ -92,6 +98,7 @@ int th_conn_state_delete(pid_t pid, struct socket* sock) {
 			break;
 		}
 	}
+	spin_unlock(&conn_state_lock);
 	return found;
 }
 

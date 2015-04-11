@@ -50,7 +50,7 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv4 connection detected");
 	th_conn_state_create(current->pid, sock);
-	print_call_info(sock, "TCP IPv4 connect");
+	//print_call_info(sock, "TCP IPv4 connect");
 	return ret;
 }
 
@@ -61,7 +61,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv6 connection detected");
 	th_conn_state_create(current->pid, sock);
-	print_call_info(sock, "TCP IPv6 connect");
+	//print_call_info(sock, "TCP IPv6 connect");
 	return ret;
 }
 
@@ -146,8 +146,8 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// 4) Forward what handler told us to forward, if anything
 	if (iov.iov_len <= 0) { //should never really be negative
 		if (conn_state->send_state.bytes_to_forward == 0 && conn_state->send_state.state == IRRELEVANT) {
-			print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-			th_conn_state_delete(current->pid, sock); // XXX this isn't thread safe 
+			//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
+			th_conn_state_delete(current->pid, sock); 
 	        }
 		// Tell the user we sent everything he wanted
 		return size;
@@ -165,13 +165,28 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 	if (real_ret != iov.iov_len) {
 		printk(KERN_ALERT "Kernel couldn't send everything we wanted to");
-		// XXX loop here to retry because this might be the last time we're ever called
-		// return -EAGAIN if this is nonblocking, call send again otherwise
+		if (msg->msg_flags & MSG_DONTWAIT) { // nonblocking IO
+			// This forces a resend (dont need to delete here because we're
+			// still interested in socket, clearly)
+			conn_state->send_state.last_ret = -EAGAIN;
+			return -EAGAIN;
+		}
+		else { // blocking IO
+			// loop here to retry because this might be the last time we're ever called
+			while (conn_state->send_state.bytes_to_forward > 0) {
+				// Ask handler to update our pointer and length again
+				th_fill_send_buffer(&conn_state->send_state, &iov.iov_base, &iov.iov_len);
+				// Attempt send again
+				real_ret = ref_tcp_sendmsg(iocb, sk, &kmsg, iov.iov_len);
+				// Record bytes sent
+				th_update_bytes_forwarded(&conn_state->send_state, real_ret);
+			}
+		}
 	}
 	// If handler doesn't care about connection anymore then delete it
 	if (conn_state->send_state.bytes_to_forward == 0 && conn_state->send_state.state == IRRELEVANT) {
-		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-		th_conn_state_delete(current->pid, sock); // XXX this isn't thread safe 
+		//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
+		th_conn_state_delete(current->pid, sock); 
         }
 	// Just tell the user we sent everything he wanted
 	// or an error code, if an error occurred
@@ -189,7 +204,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	th_parse_comm(current->pid, sock, (char*)msg->msg_iov->iov_base, real_ret, TH_SEND);
 	if (conn_state->send_state.state == IRRELEVANT) {
 		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-		th_conn_state_delete(current->pid, sock); // XXX this isn't thread safe 
+		th_conn_state_delete(current->pid, sock); 
 	}
 	return real_ret;
 */
@@ -253,8 +268,8 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// F UP ANYTHING YOU WANT.  IT'S YOURS.
 	th_parse_comm(current->pid, sock, (char*)buffer, ret, TH_RECV);
 	if (conn_state->recv_state.bytes_to_forward == 0 && conn_state->recv_state.state == IRRELEVANT) {
-		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-		th_conn_state_delete(current->pid, sock); // XXX this isn't thread safe 
+		//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
+		th_conn_state_delete(current->pid, sock); 
 	}
 
 	if (copy_to_user((void __user *)msg->msg_iov->iov_base, buffer, len) != 0) {

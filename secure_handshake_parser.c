@@ -117,10 +117,6 @@ int th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int s
 	while (th_buf_state_can_transition(buf_state)) {
 		update_state(conn_state, buf_state);
 	}
-	/*if (buf_state->state == IRRELEVANT) {
-		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-		th_conn_state_delete(pid, sock); // XXX this isn't thread safe 
-	}*/
 	return ret; // XXX for now just let everything go throug
 }
 
@@ -147,7 +143,7 @@ void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
 void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state) {
 	//buf_state->bytes_read += buf_state->bytes_to_read; // XXX this is intentionally commented out.  We shouldn't increment our read state in this one case so we can enter the record layer state and act like we've never read any part of it.  This is essentially a "peek" to support early ignoring of non-TLS connections
 	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-		print_call_info(conn_state->sock, "may be doing SSL");
+		//print_call_info(conn_state->sock, "may be doing SSL");
 		buf_state->state = RECORD_LAYER;
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 	}
@@ -167,7 +163,7 @@ void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state)
 	tls_major_version = cs_buf[1];
 	tls_minor_version = cs_buf[2];
 	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
-	printk(KERN_INFO "SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
+	//printk(KERN_INFO "SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
 	// XXX To continue verifying that this is indeed a real SSL/TLS connection we should fail out here if its not a valid SSL/TLS version number. (it's possible that they're just happening to send the write bytes to appear like a TLS connection)
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -180,12 +176,12 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	buf_state->bytes_read += buf_state->bytes_to_read;
 	if (cs_buf[0] == 0x01) {
-		print_call_info(conn_state->sock, "Sent a Client Hello");
+		//print_call_info(conn_state->sock, "Sent a Client Hello");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = CLIENT_HELLO_SENT;
 	}
 	else if (cs_buf[0] == 0x02) { // XXX add something here to check to see if the certificate message (or part of it) is contained within this same record
-		print_call_info(conn_state->sock, "Received a Server Hello");
+		//print_call_info(conn_state->sock, "Received a Server Hello");
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 		buf_state->state = RECORD_LAYER;
 	}
@@ -195,7 +191,7 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
 		//handle_certificate
 		//buf_state->bytes_to_read
-		print_call_info(conn_state->sock, "Received a Certificate(s)");
+		//print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
 	}
