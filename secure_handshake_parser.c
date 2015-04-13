@@ -139,6 +139,9 @@ void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
 		case HANDSHAKE_LAYER:
 			handle_state_handshake_layer(conn_state, buf_state);
 			break;
+		case SERVER_CERTIFICATES_SENT:
+			// Do nothing...for now
+			break;
 		case IRRELEVANT:
 			// Should never get here
 		default:
@@ -201,7 +204,7 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 		//buf_state->bytes_to_read
 		//print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
-		buf_state->state = IRRELEVANT;
+		buf_state->state = SERVER_CERTIFICATES_SENT;
 	}
 	else {
 		buf_state->bytes_to_read = 0;

@@ -222,7 +222,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	int bytes_sent;
 	sock = sk->sk_socket;
 
-/* 	// New way
+ 	// New way
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = th_conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
@@ -234,34 +234,87 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	//    up to maxiumum user is requesting (len)
 	//    Make this conn_state->ops->get_bytes_to_forward() eventually
 	if (conn_state->recv_state.bytes_to_forward > 0) {
-		bytes_to_copy = conn_state->recv_state.bytes_to_forward > len ? len : conn_state->recv_state.bytes_to_forward();
+		bytes_to_copy = conn_state->recv_state.bytes_to_forward > len ? len : conn_state->recv_state.bytes_to_forward;
 		if (th_copy_to_user_buffer(&conn_state->recv_state, (void __user *)msg->msg_iov->iov_base, bytes_to_copy) != 0) {
 			printk(KERN_ALERT "failed to copy what we wanted to");
 			// XXX how do we fail here?
 		}
 		bytes_sent += bytes_to_copy;
+		th_update_bytes_forwarded(&conn_state->recv_state, bytes_sent);
 	}
 
-	// 2) If the user wants more than what we gave, see if we can get some more
-	if (bytes_sent < len) {
-		kmsg = *msg;
-		kmsg.iov = &iov;
+	if (bytes_sent)
+		printk(KERN_ALERT "I sent the user %d cached bytes", bytes_sent);
+	// 2) If we've already given the user everything he wants, end
+	if (bytes_sent == len) {
+		return len;
 	}
 
-	// 3) Use handler to update connection state to see if we can send anything else	
+	// At this point bytes_to_forward should be zero
 
-	// 4) If nonblocking IO, give up and return what we have now (which could be 0 bytes)
-	
-	// 5) If blocking IO and we've already sent something, return now
-	
-	// 6) If blocking IO, receive until we have some data to forward
+	// 3) Attempt to get more data from external sources
 	while (conn_state->recv_state.bytes_to_forward == 0) {
-		ref_tcp_recvmsg();
-		th_update_conn_state();
+		kmsg = *msg;
+		kmsg.msg_iov = &iov;
+	        buffer = kmalloc(conn_state->recv_state.bytes_to_read, GFP_KERNEL);
+		iov.iov_len = conn_state->recv_state.bytes_to_read;
+		iov.iov_base = buffer;
+
+		/*if (conn_state->recv_state.last_ret < 0 && bytes_sent == 0) {
+			ret = conn_state->recv_state.last_ret;
+			conn_state->recv_state.last_ret = 0;
+			//printk(KERN_ALERT "affected");
+			return ret;
+		}*/
+
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		ret = ref_tcp_recvmsg(iocb, sk, &kmsg, iov.iov_len, nonblock, flags, addr_len);
+		//printk(KERN_ALERT "real ret is %d", ret);
+		if (ret == -EIOCBQUEUED) {
+			ret = wait_on_sync_kiocb(iocb);
+		}
+		set_fs(oldfs);
+		
+		// 4) if operation failed then just return what we've sent so far
+		//    or the error code
+		conn_state->recv_state.last_ret = ret;
+		if (ret <= 0) {
+			return bytes_sent > 0 ? bytes_sent : ret;
+		}
+
+		// 5) If operation succeeded then copy to state and update state
+		if (th_copy_to_state(&conn_state->recv_state, buffer, ret) != 0) {
+			printk(KERN_ALERT "failed to copy to recv state");
+			// XXX how do we fail here?
+		}
+		kfree(buffer);
+		if (th_update_conn_state(conn_state, &conn_state->recv_state) != 0) {
+			printk(KERN_ALERT "failed to update recv state");
+			// XXX how do we fail here?
+		}
+
+		// 6) If this was a nonblocking call and we still don't have any
+		//    additional bytes to forward, break out early
+		if (nonblock && conn_state->recv_state.bytes_to_forward == 0) {
+			return bytes_sent;
+		}
+
+		// 7) Otherwise if this was a blocking call keep trying until we have
+		//    at least something to send back
 	}
 
-	// 7) copy to user what we received. return total number bytes sent
-*/
+	// 8) copy to user what we received. return total number bytes sent
+	bytes_to_copy = conn_state->recv_state.bytes_to_forward > len - bytes_sent ? len - bytes_sent : conn_state->recv_state.bytes_to_forward;
+	if (th_copy_to_user_buffer(&conn_state->recv_state, (void __user *)msg->msg_iov->iov_base + bytes_sent, bytes_to_copy) != 0) {
+		printk(KERN_ALERT "failed to copy what we wanted to");
+		// XXX how do we fail here?
+	}
+	th_update_bytes_forwarded(&conn_state->recv_state, bytes_to_copy);
+	bytes_sent += bytes_to_copy;
+	return bytes_sent;
+
+/*
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = th_conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
@@ -282,7 +335,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	kmsg.msg_namelen = 0;
 
 	ret = ref_tcp_recvmsg(iocb, sk, &kmsg, len, nonblock, flags, addr_len);
-
 	if (ret == -EIOCBQUEUED) {
 		ret = wait_on_sync_kiocb(iocb);
 	}
@@ -308,6 +360,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	kfree(buffer);
 
 	return ret;
+*/
 }
 
 static int __init interceptor_start(void);
