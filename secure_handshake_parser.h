@@ -21,4 +21,5 @@ int th_copy_to_state(buf_state_t* buf_state, void* src_buf, size_t length);
 int th_update_conn_state(conn_state_t* conn_state, buf_state_t* buf_state);
 int th_fill_send_buffer(buf_state_t* buf_state, void** bufptr, size_t* length);
 int th_update_bytes_forwarded(buf_state_t* buf_state, size_t forwarded);
+int th_copy_to_user_buffer(buf_state_t* buf_state, void __user *dst_buf, size_t length);
 #endif

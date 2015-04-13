@@ -218,9 +218,50 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	void* buffer;
 	struct socket* sock;
 	conn_state_t* conn_state;
-
+	int bytes_to_copy;
+	int bytes_sent;
 	sock = sk->sk_socket;
 
+/* 	// New way
+	// Early breakout if we aren't monitoring this connection
+	if ((conn_state = th_conn_state_get(current->pid, sock)) == NULL) {
+		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		return ret;
+	}
+
+	bytes_sent = 0;
+	// 1) Place into user's buffer any data already marked for fowarding
+	//    up to maxiumum user is requesting (len)
+	//    Make this conn_state->ops->get_bytes_to_forward() eventually
+	if (conn_state->recv_state.bytes_to_forward > 0) {
+		bytes_to_copy = conn_state->recv_state.bytes_to_forward > len ? len : conn_state->recv_state.bytes_to_forward();
+		if (th_copy_to_user_buffer(&conn_state->recv_state, (void __user *)msg->msg_iov->iov_base, bytes_to_copy) != 0) {
+			printk(KERN_ALERT "failed to copy what we wanted to");
+			// XXX how do we fail here?
+		}
+		bytes_sent += bytes_to_copy;
+	}
+
+	// 2) If the user wants more than what we gave, see if we can get some more
+	if (bytes_sent < len) {
+		kmsg = *msg;
+		kmsg.iov = &iov;
+	}
+
+	// 3) Use handler to update connection state to see if we can send anything else	
+
+	// 4) If nonblocking IO, give up and return what we have now (which could be 0 bytes)
+	
+	// 5) If blocking IO and we've already sent something, return now
+	
+	// 6) If blocking IO, receive until we have some data to forward
+	while (conn_state->recv_state.bytes_to_forward == 0) {
+		ref_tcp_recvmsg();
+		th_update_conn_state();
+	}
+
+	// 7) copy to user what we received. return total number bytes sent
+*/
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = th_conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
@@ -230,20 +271,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	buffer = kmalloc(len, GFP_KERNEL);
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
-
-	/*printk(KERN_INFO "Before:");
-	printk(KERN_INFO "msg->msg_control: %p", msg->msg_control);
-	printk(KERN_INFO "msg->controllen: %d", msg->msg_controllen);
-	printk(KERN_INFO "msg->msg_iovlen: %d", msg->msg_iovlen);
-	printk(KERN_INFO "msg->msg_iov: %p", msg->msg_iov);
 	
-	printk(KERN_INFO "msg->msg_iov->iov_len: %d", msg->msg_iov->iov_len);
-	printk(KERN_INFO "msg->msg_iov->iov_base: %p", msg->msg_iov->iov_base);
-
-	printk(KERN_INFO "msg->msg_name: %p", msg->msg_name);
-	printk(KERN_INFO "msg->msg_namelen: %d", msg->msg_namelen);
-	*/
-
 	kmsg.msg_control = NULL;
 	kmsg.msg_controllen = 0;
 	kmsg.msg_iovlen = 1;
@@ -279,17 +307,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	//printk(KERN_INFO "recv returned: %s", (char*)(buffer));
 	kfree(buffer);
 
-	/*printk(KERN_INFO "msg->msg_control: %p", kmsg.msg_control);
-	printk(KERN_INFO "msg->controllen: %d", kmsg.msg_controllen);
-	printk(KERN_INFO "msg->msg_iovlen: %d", kmsg.msg_iovlen);
-	printk(KERN_INFO "msg->msg_iov: %p", kmsg.msg_iov);
-
-	printk(KERN_INFO "msg->msg_iov->iov_len: %d", kmsg.msg_iov->iov_len);
-	printk(KERN_INFO "msg->msg_iov->iov_base: %p", kmsg.msg_iov->iov_base);
-
-	printk(KERN_INFO "msg->msg_name: %p", kmsg.msg_name);
-	printk(KERN_INFO "msg->msg_namelen: %d", kmsg.msg_namelen);
-	*/
 	return ret;
 }
 

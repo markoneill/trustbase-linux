@@ -2,6 +2,7 @@
 #include <linux/slab.h>
 #include <linux/byteorder/generic.h>
 #include <asm/byteorder.h>
+#include <asm/uaccess.h>
 #include <linux/net.h>
 
 #include "secure_handshake_parser.h"
@@ -62,6 +63,13 @@ int th_update_bytes_forwarded(buf_state_t* buf_state, size_t forwarded) {
 	buf_state->bytes_to_forward -= forwarded;
 	//printk(KERN_INFO "after: bytes to forward is now %u", buf_state->bytes_to_forward);
 
+	return 0;
+}
+
+int th_copy_to_user_buffer(buf_state_t* buf_state, void __user *dst_buf, size_t length) {
+	if (copy_to_user(dst_buf, buf_state->buf + buf_state->bytes_forwarded, length) != 0) {
+		return -1;
+	}
 	return 0;
 }
 /* End new way */

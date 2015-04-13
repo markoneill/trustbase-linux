@@ -64,26 +64,35 @@ int th_send_certificate_query(char* certificate, size_t length) {
 	skb = genlmsg_new(length, GFP_ATOMIC);
 	if (skb == NULL) {
 		printk(KERN_ALERT "failed in genlmsg");
+		nlmsg_free(skb);
 		return -1;
 	}
 	msg_head = genlmsg_put(skb, 0, 0, &th_family, 0, TRUSTHUB_C_QUERY);
 	if (msg_head == NULL) {
 		printk(KERN_ALERT "failed in genlmsg_put");
+		nlmsg_free(skb);
 		return -1;
 	}
 	rc = nla_put_string(skb, TRUSTHUB_A_HOSTNAME, "hosthere");
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put_string");
+		nlmsg_free(skb);
 		return -1;
 	}
 	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
 	if (rc != 0) {
-		printk(KERN_ALERT "failed in nla_put");
+		printk(KERN_ALERT "failed in nla_put: code is %d and length is %d", rc, length);
+		nlmsg_free(skb);
 		return -1;
 	}
 	genlmsg_end(skb, msg_head);
 
+	// skbs are freed by genlmsg_multicast
 	rc = genlmsg_multicast(&th_family, skb, 0, TRUSTHUB_QUERY, GFP_ATOMIC);
+	if (rc != 0) {
+		printk(KERN_ALERT "failed in genlmsg_multicast %d", rc);
+		return -1;
+	}
 	return 0;
 }
 
