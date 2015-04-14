@@ -205,6 +205,7 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 		//print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = SERVER_CERTIFICATES_SENT;
+		//buf_state->state = IRRELEVANT;
 	}
 	else {
 		buf_state->bytes_to_read = 0;

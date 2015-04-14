@@ -250,8 +250,35 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return len;
 	}
 
-	// At this point bytes_to_forward should be zero
+	// If we've not sent anything yet and the socket was closed last time
+	// we actually read, then delete state and return
+	if (bytes_sent == 0 && conn_state->recv_state.last_ret == 0) {
+		th_conn_state_delete(current->pid, sock);
+		return 0;
+	}
+	if (bytes_sent == 0 && conn_state->recv_state.last_ret < 0) {
+		ret = conn_state->recv_state.last_ret;
+		conn_state->recv_state.last_ret = 1; // pretend no error for next time
+		return ret;
+	}
 
+
+	// If we don't care to read any more bytes for this socket, stop now
+	if (conn_state->recv_state.bytes_to_read == 0) {
+		if (bytes_sent > 0) {
+			return bytes_sent;
+		}
+		else {
+			th_conn_state_delete(current->pid, sock);
+			return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		}
+	}
+
+	// At this point bytes_to_forward should be zero,
+	// last_ret should be positive, and bytes_to_read
+	// should be positive
+	
+	
 	// 3) Attempt to get more data from external sources
 	while (conn_state->recv_state.bytes_to_forward == 0) {
 		kmsg = *msg;
@@ -259,13 +286,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	        buffer = kmalloc(conn_state->recv_state.bytes_to_read, GFP_KERNEL);
 		iov.iov_len = conn_state->recv_state.bytes_to_read;
 		iov.iov_base = buffer;
-
-		/*if (conn_state->recv_state.last_ret < 0 && bytes_sent == 0) {
-			ret = conn_state->recv_state.last_ret;
-			conn_state->recv_state.last_ret = 0;
-			//printk(KERN_ALERT "affected");
-			return ret;
-		}*/
 
 		oldfs = get_fs();
 		set_fs(KERNEL_DS);
@@ -280,7 +300,16 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		//    or the error code
 		conn_state->recv_state.last_ret = ret;
 		if (ret <= 0) {
-			return bytes_sent > 0 ? bytes_sent : ret;
+			if (bytes_sent > 0) {
+				// error code is cached for next time
+				return bytes_sent; 
+			}
+			else {
+				// Pretend no error for next time since we're
+				// sending it now
+				conn_state->recv_state.last_ret = 1;
+				return ret;
+			}
 		}
 
 		// 5) If operation succeeded then copy to state and update state
@@ -297,7 +326,8 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && conn_state->recv_state.bytes_to_forward == 0) {
-			return bytes_sent;
+			printk(KERN_ALERT "returning at nonb with %d", bytes_sent);
+			return bytes_sent > 0 ? bytes_sent : -EAGAIN;
 		}
 
 		// 7) Otherwise if this was a blocking call keep trying until we have
@@ -312,6 +342,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 	th_update_bytes_forwarded(&conn_state->recv_state, bytes_to_copy);
 	bytes_sent += bytes_to_copy;
+	printk(KERN_ALERT "returning at end with %d", bytes_sent);
 	return bytes_sent;
 
 /*
@@ -325,14 +356,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
 	
-	kmsg.msg_control = NULL;
-	kmsg.msg_controllen = 0;
-	kmsg.msg_iovlen = 1;
+	//kmsg.msg_control = NULL;
+	//kmsg.msg_controllen = 0;
+	//kmsg.msg_iovlen = 1;
+	//kmsg.msg_iov = &iov;
+	//iov.iov_len = len;
+	//iov.iov_base = buffer;
+	//kmsg.msg_name = 0;
+	//kmsg.msg_namelen = 0;
+	kmsg = *msg;
 	kmsg.msg_iov = &iov;
 	iov.iov_len = len;
 	iov.iov_base = buffer;
-	kmsg.msg_name = 0;
-	kmsg.msg_namelen = 0;
 
 	ret = ref_tcp_recvmsg(iocb, sk, &kmsg, len, nonblock, flags, addr_len);
 	if (ret == -EIOCBQUEUED) {
@@ -340,15 +375,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 
 	set_fs(oldfs);
-	if (ret < 0) {
+	if (ret <= 0) {
 		kfree(buffer);
 		return ret;
 	}
 
 	// F UP ANYTHING YOU WANT.  IT'S YOURS.
-	th_parse_comm(current->pid, sock, (char*)buffer, ret, TH_RECV);
-	if (conn_state->recv_state.bytes_to_forward == 0 && conn_state->recv_state.state == IRRELEVANT) {
-		//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
+	if (th_parse_comm(current->pid, sock, (char*)buffer, ret, TH_RECV) < 0) {
+		th_conn_state_delete(current->pid, sock);
+		return 0;
+	}
+	if (conn_state->recv_state.state == IRRELEVANT) {
+		print_call_info(sock, "No longer interested in socket, ceasing monitoring");
 		th_conn_state_delete(current->pid, sock); 
 	}
 
