@@ -10,25 +10,6 @@
 #include "communications.h"
 #include "utils.h"
 
-conn_state_ops_t trusthub_ops = {
-	.send_state_init = th_buf_state_init,
-	.recv_state_init = th_buf_state_init,
-	.send_state_free = th_buf_state_free,
-	.recv_state_free = th_buf_state_free,
-	.send_to_proxy = th_send_to_proxy,
-	.update_send_state = th_update_state,
-	.update_recv_state = th_update_state,
-	.fill_send_buffer = th_fill_send_buffer,
-	.num_send_bytes_to_forward = th_num_bytes_to_forward,
-	.num_recv_bytes_to_forward = th_num_bytes_to_forward,
-	.inc_send_bytes_forwarded = th_update_bytes_forwarded,
-	.inc_recv_bytes_forwarded = th_update_bytes_forwarded,
-	.get_send_state = get_state,
-	.get_recv_state = get_state,
-	.copy_to_user = th_copy_to_user_buffer,
-	.bytes_to_read = get_bytes_to_read,
-};
-
 static void update_state(buf_state_t* buf_state);
 static void handle_state_unknown(buf_state_t* buf_state);
 static void handle_state_record_layer(buf_state_t* buf_state);
@@ -191,8 +172,9 @@ void handle_certificates(char* buf) {
 	//certificates_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);
 	certificates_length = be24_to_cpu(*(__be24*)bufptr);
 	bufptr += 3; // 24-bit length of certificates
-	printk(KERN_ALERT "length of msg is %u", handshake_message_length);
-	printk(KERN_ALERT "length of certs is %u", certificates_length);
+	//printk(KERN_ALERT "length of msg is %u", handshake_message_length);
+	//printk(KERN_ALERT "length of certs is %u", certificates_length);
+	printk(KERN_ALERT "sending some certificates to policy engine");
 	th_send_certificate_query(bufptr, certificates_length);
 	// XXX add some extra conditions to force this loop to terminate if we have a douchebag trying to hang the system
 	/*while (certificates_length > 0) {
@@ -220,7 +202,7 @@ int th_buf_state_can_transition(buf_state_t* buf_state) {
 	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
 }
 
-void* th_buf_state_init(void) {
+void* th_buf_state_init(pid_t pid) {
 	buf_state_t* buf_state = kmalloc(sizeof(buf_state_t), GFP_KERNEL);
 	buf_state->buf_length = 0;
 	buf_state->bytes_read = 0;
@@ -229,6 +211,7 @@ void* th_buf_state_init(void) {
 	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 	buf_state->buf = NULL;
 	buf_state->state = UNKNOWN;
+	buf_state->pid = pid;
 	return buf_state;
 }
 
@@ -242,11 +225,12 @@ int th_num_bytes_to_forward(void* buf_state) {
 	return ((buf_state_t*)buf_state)->bytes_to_forward;
 }
 
-int get_state(void* buf_state) {
-	return ((buf_state_t*)buf_state)->state;
+int th_get_state(void* buf_state) {
+	buf_state_t* bs = (buf_state_t*)buf_state;
+	return bs->state == IRRELEVANT ? 0 : 1;
 }
 
-int get_bytes_to_read(void* buf_state) {
+int th_get_bytes_to_read(void* buf_state) {
 	return ((buf_state_t*)buf_state)->bytes_to_read;
 }
 

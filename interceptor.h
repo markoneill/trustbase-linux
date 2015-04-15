@@ -1,19 +1,28 @@
 #ifndef _INTERCEPTOR_H
 #define _INTERCEPTOR_H
 
-#include <linux/socket.h>
 #include "connection_state.h"
 
-// TCP IPv4-specific reference functions
-int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+typedef struct proxy_handler_ops_t {
+	void* (*send_state_init)(pid_t pid);
+	void* (*recv_state_init)(pid_t pid);
+	void (*send_state_free)(void* send_state);
+	void (*recv_state_free)(void* recv_state);
+	int (*send_to_proxy)(void* send_state, void* src_buf, size_t length);
+	int (*update_send_state)(void* send_state);
+	int (*update_recv_state)(void* recv_state);
+	int (*fill_send_buffer)(void* send_state, void** bufptr, size_t* length);
+	int (*num_send_bytes_to_forward)(void* send_state);
+	int (*num_recv_bytes_to_forward)(void* recv_state);
+	int (*inc_send_bytes_forwarded)(void* send_state, size_t forwarded);
+	int (*inc_recv_bytes_forwarded)(void* recv_state, size_t forwarded);
+	int (*bytes_to_read)(void* recv_state);
+	int (*get_send_state)(void* send_state);
+	int (*get_recv_state)(void* recv_state);
+	int (*copy_to_user)(void* buf_state, void __user *dst_buf, size_t length);
+} proxy_handler_ops_t;
 
-// TCP IPv6-specific wrapper functions
-int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
-
-// TCP General wrapper functions
-int new_tcp_disconnect(struct sock *sk, int flags);
-void new_tcp_close(struct sock *sk, long timeout);
-int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
-int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+int proxy_register(proxy_handler_ops_t* ops);
+int proxy_unregister(void);
 
 #endif
