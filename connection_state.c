@@ -10,15 +10,9 @@ extern unsigned int allocsminusfrees;
 static DEFINE_HASHTABLE(conn_table, HASH_TABLE_BITSIZE);
 static DEFINE_SPINLOCK(conn_state_lock);
 
-static void th_buf_state_init(buf_state_t* buf_state);
-
 void th_conn_state_free(conn_state_t* conn_state) {
-	if (conn_state->send_state.buf != NULL) {
-		kfree(conn_state->send_state.buf);
-	}
-	if (conn_state->recv_state.buf != NULL) {
-		kfree(conn_state->recv_state.buf);
-	}
+	conn_state->ops->send_state_free(conn_state->send_state);
+	conn_state->ops->recv_state_free(conn_state->recv_state);
 	kfree(conn_state);
 	allocsminusfrees--;
 	return;
@@ -37,7 +31,7 @@ conn_state_t* th_conn_state_get(pid_t pid, struct socket* sock) {
 }
 
 
-void th_conn_state_create(pid_t pid, struct socket* sock) {
+void conn_state_create(pid_t pid, struct socket* sock, conn_state_ops_t* ops) {
 	conn_state_t* new_conn_state = NULL;
 	if ((new_conn_state = kmalloc(sizeof(conn_state_t), GFP_KERNEL)) == NULL) {
 		printk(KERN_ALERT "kmalloc failed when creating connection state");
@@ -46,8 +40,11 @@ void th_conn_state_create(pid_t pid, struct socket* sock) {
 	new_conn_state->pid = pid;
 	new_conn_state->sock = sock;
 	new_conn_state->key = pid ^ (unsigned long)sock;
-	th_buf_state_init(&new_conn_state->send_state);
-	th_buf_state_init(&new_conn_state->recv_state);
+	new_conn_state->send_state = ops->send_state_init();
+	new_conn_state->recv_state = ops->recv_state_init();
+	new_conn_state->ops = ops;
+	new_conn_state->queued_send_ret = 1; // this value needs to be positive initially
+	new_conn_state->queued_recv_ret = 1; // this value needs to be positive initially
 	// Add to hash table
 	spin_lock(&conn_state_lock);
 	hash_add(conn_table, &new_conn_state->hash, new_conn_state->key);
@@ -100,27 +97,5 @@ int th_conn_state_delete(pid_t pid, struct socket* sock) {
 	}
 	spin_unlock(&conn_state_lock);
 	return found;
-}
-
-size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state) {
-	return buf_state->buf_length - buf_state->bytes_read;
-}
-
-int th_buf_state_can_transition(buf_state_t* buf_state) {
-	size_t unread = th_buf_state_get_num_bytes_unread(buf_state);
-	//printk(KERN_ALERT "Unread: %u", unread);
-	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
-}
-
-void th_buf_state_init(buf_state_t* buf_state) {
-	buf_state->buf_length = 0;
-	buf_state->bytes_read = 0;
-	buf_state->bytes_forwarded = 0;
-	buf_state->bytes_to_forward = 0;
-	buf_state->last_ret = 1; // Positive value required
-	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
-	buf_state->buf = NULL;
-	buf_state->state = UNKNOWN;
-	return;
 }
 

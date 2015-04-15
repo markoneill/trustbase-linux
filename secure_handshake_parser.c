@@ -10,11 +10,29 @@
 #include "communications.h"
 #include "utils.h"
 
+conn_state_ops_t trusthub_ops = {
+	.send_state_init = th_buf_state_init,
+	.recv_state_init = th_buf_state_init,
+	.send_state_free = th_buf_state_free,
+	.recv_state_free = th_buf_state_free,
+	.send_to_proxy = th_send_to_proxy,
+	.update_send_state = th_update_state,
+	.update_recv_state = th_update_state,
+	.fill_send_buffer = th_fill_send_buffer,
+	.num_send_bytes_to_forward = th_num_bytes_to_forward,
+	.num_recv_bytes_to_forward = th_num_bytes_to_forward,
+	.inc_send_bytes_forwarded = th_update_bytes_forwarded,
+	.inc_recv_bytes_forwarded = th_update_bytes_forwarded,
+	.get_send_state = get_state,
+	.get_recv_state = get_state,
+	.copy_to_user = th_copy_to_user_buffer,
+	.bytes_to_read = get_bytes_to_read,
+};
 
-static void update_state(conn_state_t* conn_state, buf_state_t* buf_state);
-static void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state);
-static void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state);
-static void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_state);
+static void update_state(buf_state_t* buf_state);
+static void handle_state_unknown(buf_state_t* buf_state);
+static void handle_state_record_layer(buf_state_t* buf_state);
+static void handle_state_handshake_layer(buf_state_t* buf_state);
 static void handle_certificates(char* buf);
 
 void printbuf(char* buf, int length) {
@@ -24,120 +42,64 @@ void printbuf(char* buf, int length) {
 	}
 }
 
-/* New way */
-
 /* Append a buffer's contents to a connection state bufer.
  * @param buf_state - pointer to a valid buf_state_t instance
  * @param src_buf - source address of data
  * @param length number of bytes to copy from source address
  */
-int th_copy_to_state(buf_state_t* buf_state, void* src_buf, size_t length) {
-	if ((buf_state->buf = krealloc(buf_state->buf, buf_state->buf_length + length, GFP_KERNEL)) == NULL) {
-		printk(KERN_ALERT "krealloc failed in th_copy_to_state");
+int th_send_to_proxy(void* buf_state, void* src_buf, size_t length) {
+	buf_state_t* bs = (buf_state_t*)buf_state;
+	if ((bs->buf = krealloc(bs->buf, bs->buf_length + length, GFP_KERNEL)) == NULL) {
+		printk(KERN_ALERT "krealloc failed in th_send_to_proxy");
 		return -1;
 	}
-	memcpy(buf_state->buf + buf_state->buf_length, src_buf, length);
-	buf_state->buf_length += length;
-	//printk(KERN_INFO "sendbuf went from size %u to %u", buf_state->buf_length - length, buf_state->buf_length);
-	// XXX this is just specific to sending.  fix later
-	buf_state->bytes_to_forward += length;
-	//printk(KERN_INFO "before: bytes to forward is now %u", buf_state->bytes_to_forward);
+	memcpy(bs->buf + bs->buf_length, src_buf, length);
+	bs->buf_length += length;
+	// XXX this is just specific to trusthub
+	bs->bytes_to_forward += length;
 	return 0;
 }
 
-int th_update_conn_state(conn_state_t* conn_state, buf_state_t* buf_state) {
-        while (th_buf_state_can_transition(buf_state)) {
-                update_state(conn_state, buf_state);
+int th_update_state(void* buf_state) {
+	buf_state_t* bs = (buf_state_t*)buf_state;
+        while (th_buf_state_can_transition(bs)) {
+                update_state(bs);
         }
 	return 0;
 }
 
-int th_fill_send_buffer(buf_state_t* buf_state, void** bufptr, size_t* length) {
-	*length = buf_state->bytes_to_forward;
-	*bufptr = buf_state->buf + buf_state->bytes_forwarded;
+int th_fill_send_buffer(void* buf_state, void** bufptr, size_t* length) {
+	buf_state_t* bs = (buf_state_t*)buf_state;
+	*length = bs->bytes_to_forward;
+	*bufptr = bs->buf + bs->bytes_forwarded;
 	return 0;
 }
 
-int th_update_bytes_forwarded(buf_state_t* buf_state, size_t forwarded) {
-	buf_state->bytes_forwarded += forwarded;
-	buf_state->bytes_to_forward -= forwarded;
-	//printk(KERN_INFO "after: bytes to forward is now %u", buf_state->bytes_to_forward);
-
+int th_update_bytes_forwarded(void* buf_state, size_t forwarded) {
+	buf_state_t* bs = (buf_state_t*)buf_state;
+	bs->bytes_forwarded += forwarded;
+	bs->bytes_to_forward -= forwarded;
 	return 0;
 }
 
-int th_copy_to_user_buffer(buf_state_t* buf_state, void __user *dst_buf, size_t length) {
-	if (copy_to_user(dst_buf, buf_state->buf + buf_state->bytes_forwarded, length) != 0) {
+int th_copy_to_user_buffer(void* buf_state, void __user *dst_buf, size_t length) {
+	buf_state_t* bs = (buf_state_t*)buf_state;
+	if (copy_to_user(dst_buf, bs->buf + bs->bytes_forwarded, length) != 0) {
 		return -1;
 	}
 	return 0;
 }
-/* End new way */
 
-int th_is_tracking(pid_t pid, struct socket* sock) {
-	conn_state_t* conn_state;
-	if ((conn_state = th_conn_state_get(pid, sock)) == NULL) {
-		return 0;
-	}
-	return 1;
-}
-
-int th_restore_state(pid_t pid, struct socket* sock) {
-	conn_state_t* conn_state;
-	conn_state = th_conn_state_get(pid, sock);
-	conn_state->send_state = conn_state->send_state_backup;
-	return 0;
-}
-
-void* th_get_forwarding_base(pid_t pid, struct socket* sock) {
-	conn_state_t* conn_state;
-	size_t forwarded;
-	conn_state = th_conn_state_get(pid, sock);
-	forwarded = conn_state->send_state.bytes_forwarded;
-	return conn_state->send_state.buf + forwarded;
-}
-
-int th_optimistic_parse_send(pid_t pid, struct socket* sock, char* buf, long size) {
-	int ret;
-	conn_state_t* conn_state;
-	conn_state = th_conn_state_get(pid, sock);
-	conn_state->send_state_backup = conn_state->send_state;
-	ret = th_parse_comm(pid, sock, buf, size, TH_SEND);
-	return ret;
-}
-
-int th_parse_comm(pid_t pid, struct socket* sock, char* new_buf, long ret, int sendrecv) {
-        conn_state_t* conn_state;
-	buf_state_t* buf_state;
-	conn_state = th_conn_state_get(pid, sock);
-	if (sendrecv == TH_RECV) {
-		buf_state = &conn_state->recv_state;
-	}
-	else {
-		buf_state = &conn_state->send_state;
-	}
-	if ((buf_state->buf = krealloc(buf_state->buf, buf_state->buf_length + ret, GFP_KERNEL)) == NULL) {
-		printk(KERN_ALERT "Oh noes!  krealloc failed! in parsecomm");
-		return -1;
-	}
-	memcpy(buf_state->buf + buf_state->buf_length, new_buf, ret);
-	buf_state->buf_length += ret;
-	while (th_buf_state_can_transition(buf_state)) {
-		update_state(conn_state, buf_state);
-	}
-	return ret; // XXX for now just let everything go throug
-}
-
-void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
+void update_state(buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
-			handle_state_unknown(conn_state, buf_state);
+			handle_state_unknown(buf_state);
 			break;
 		case RECORD_LAYER:
-			handle_state_record_layer(conn_state, buf_state);
+			handle_state_record_layer(buf_state);
 			break;
 		case HANDSHAKE_LAYER:
-			handle_state_handshake_layer(conn_state, buf_state);
+			handle_state_handshake_layer(buf_state);
 			break;
 		case SERVER_CERTIFICATES_SENT:
 			// Do nothing...for now
@@ -151,7 +113,7 @@ void update_state(conn_state_t* conn_state, buf_state_t* buf_state) {
 	return;
 }
 
-void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state) {
+void handle_state_unknown(buf_state_t* buf_state) {
 	//buf_state->bytes_read += buf_state->bytes_to_read; // XXX this is intentionally commented out.  We shouldn't increment our read state in this one case so we can enter the record layer state and act like we've never read any part of it.  This is essentially a "peek" to support early ignoring of non-TLS connections
 	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
 		//print_call_info(conn_state->sock, "may be doing SSL");
@@ -165,7 +127,7 @@ void handle_state_unknown(conn_state_t* conn_state, buf_state_t* buf_state) {
 	return;
 }
 
-void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state) {
+void handle_state_record_layer(buf_state_t* buf_state) {
 	char* cs_buf;
 	unsigned char tls_major_version;
 	unsigned char tls_minor_version;
@@ -182,7 +144,7 @@ void handle_state_record_layer(conn_state_t* conn_state, buf_state_t* buf_state)
 	return;
 }
 
-void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_state) {
+void handle_state_handshake_layer(buf_state_t* buf_state) {
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -210,7 +172,7 @@ void handle_state_handshake_layer(conn_state_t* conn_state, buf_state_t* buf_sta
 	else {
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
-		print_call_info(conn_state->sock, "Someone sent a weird thing");
+		printk(KERN_ALERT "Someone sent a weird thing");
 	}
 	return;
 }
@@ -247,3 +209,44 @@ void handle_certificates(char* buf) {
 	}*/
 	return;
 }
+
+size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state) {
+	return buf_state->buf_length - buf_state->bytes_read;
+}
+
+int th_buf_state_can_transition(buf_state_t* buf_state) {
+	size_t unread = th_buf_state_get_num_bytes_unread(buf_state);
+	//printk(KERN_ALERT "Unread: %u", unread);
+	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
+}
+
+void* th_buf_state_init(void) {
+	buf_state_t* buf_state = kmalloc(sizeof(buf_state_t), GFP_KERNEL);
+	buf_state->buf_length = 0;
+	buf_state->bytes_read = 0;
+	buf_state->bytes_forwarded = 0;
+	buf_state->bytes_to_forward = 0;
+	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
+	buf_state->buf = NULL;
+	buf_state->state = UNKNOWN;
+	return buf_state;
+}
+
+void th_buf_state_free(void* buf_state) {
+	if (((buf_state_t*)buf_state)->buf != NULL) {
+		kfree(((buf_state_t*)buf_state)->buf);
+	}
+}
+
+int th_num_bytes_to_forward(void* buf_state) {
+	return ((buf_state_t*)buf_state)->bytes_to_forward;
+}
+
+int get_state(void* buf_state) {
+	return ((buf_state_t*)buf_state)->state;
+}
+
+int get_bytes_to_read(void* buf_state) {
+	return ((buf_state_t*)buf_state)->bytes_to_read;
+}
+

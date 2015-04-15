@@ -81,7 +81,7 @@ int th_send_certificate_query(char* certificate, size_t length) {
 	}
 	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
 	if (rc != 0) {
-		printk(KERN_ALERT "failed in nla_put: code is %d and length is %d", rc, length);
+		printk(KERN_ALERT "failed in nla_put");
 		nlmsg_free(skb);
 		return -1;
 	}

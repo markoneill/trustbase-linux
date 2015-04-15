@@ -1,5 +1,5 @@
 obj-m += trusthub_linux.o
-trusthub_linux-objs := loader.o connection_state.o secure_handshake_parser.o communications.o utils.o
+trusthub_linux-objs := loader.o interceptor.o connection_state.o secure_handshake_parser.o communications.o utils.o
 
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
