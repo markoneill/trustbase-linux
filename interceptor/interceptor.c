@@ -1,4 +1,5 @@
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/syscalls.h> // For kallsyms lookups
 #include <linux/sched.h> // For current (pointer to task)
 #include <linux/pid.h> // For pid_t
@@ -171,10 +172,16 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	kmsg = *msg;
 	iov.iov_len = 0; // will be set later
 	iov.iov_base = NULL; // will be set later
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+	kmsg.msg_iter.iov = &iov;
+	// Pointer to data being sent by user.
+	new_data = msg->msg_iter.iov->iov_base;
+	#else
 	kmsg.msg_iov = &iov;
-
 	// Pointer to data being sent by user.
 	new_data = msg->msg_iov->iov_base;
+	#endif
+
 
 	// 0) If last send attempt was an error, don't copy or update state
 	if (conn_state->queued_send_ret > 0) {
@@ -277,6 +284,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	int bytes_sent;
 	int b_to_forward;
 	int b_to_read;
+	void __user* user_buffer;
 	sock = sk->sk_socket;
 
  	// New way
@@ -286,13 +294,19 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ret;
 	}
 
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+	user_buffer = (void __user*)msg->msg_iter.iov->iov_base;
+	#else
+	user_buffer = (void __user *)msg->msg_iov->iov_base;
+	#endif
+
 	bytes_sent = 0;
 	// 1) Place into user's buffer any data already marked for fowarding
 	//    up to maxiumum user is requesting (len)
 	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->recv_state);
 	if (b_to_forward > 0) {
 		bytes_to_copy = b_to_forward > len ? len : b_to_forward;
-		if (ops->copy_to_user(conn_state->recv_state, (void __user *)msg->msg_iov->iov_base, bytes_to_copy) != 0) {
+		if (ops->copy_to_user(conn_state->recv_state, user_buffer, bytes_to_copy) != 0) {
 			printk(KERN_ALERT "failed to copy what we wanted to");
 			// XXX how do we fail here?
 		}
@@ -339,7 +353,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// 3) Attempt to get more data from external sources
 	while (ops->num_recv_bytes_to_forward(conn_state->recv_state) == 0) {
 		kmsg = *msg;
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+		kmsg.msg_iter.iov = &iov;
+		#else
 		kmsg.msg_iov = &iov;
+		#endif
 		b_to_read = ops->bytes_to_read(conn_state->recv_state);
 	        buffer = kmalloc(b_to_read, GFP_KERNEL);
 		iov.iov_len = b_to_read;
@@ -395,7 +413,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// 8) copy to user what we received. return total number bytes sent
 	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->recv_state);
 	bytes_to_copy = b_to_forward > len - bytes_sent ? len - bytes_sent : b_to_forward;
-	if (ops->copy_to_user(conn_state->recv_state, (void __user *)msg->msg_iov->iov_base + bytes_sent, bytes_to_copy) != 0) {
+	if (ops->copy_to_user(conn_state->recv_state, user_buffer + bytes_sent, bytes_to_copy) != 0) {
 		printk(KERN_ALERT "failed to copy what we wanted to");
 		// XXX how do we fail here?
 	}
