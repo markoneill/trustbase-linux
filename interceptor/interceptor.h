@@ -1,8 +1,6 @@
 #ifndef _INTERCEPTOR_H
 #define _INTERCEPTOR_H
 
-#include "connection_state.h"
-
 typedef struct proxy_handler_ops_t {
 	void* (*send_state_init)(pid_t pid);
 	void* (*recv_state_init)(pid_t pid);

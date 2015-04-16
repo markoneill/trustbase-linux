@@ -1,10 +1,9 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 
-#include "loader.h"
-#include "interceptor.h" // For registering/unregistering proxy functions
-#include "communications.h" // For registering/unregistering netlink family
-#include "secure_handshake_parser.h" // For referencing proxy functions
+#include "interceptor/interceptor.h" // For registering/unregistering proxy functions
+#include "handshake-handler/communications.h" // For registering/unregistering netlink family
+#include "handshake-handler/handshake_handler.h" // For referencing proxy functions
 
 // TrustHub interception operations
 proxy_handler_ops_t trusthub_ops;

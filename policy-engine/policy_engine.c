@@ -5,7 +5,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/bio.h>
-#include "communications.h"
+#include "../handshake-handler/communications.h"
 
 #define MAX_LENGTH	1024
 #define CERT_LENGTH_FIELD_SIZE	3

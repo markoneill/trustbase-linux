@@ -5,10 +5,9 @@
 #include <asm/uaccess.h>
 #include <linux/net.h>
 
-#include "secure_handshake_parser.h"
-#include "connection_state.h"
+#include "handshake_handler.h"
 #include "communications.h"
-#include "utils.h"
+#include "../util/utils.h"
 
 static void update_state(buf_state_t* buf_state);
 static void handle_state_unknown(buf_state_t* buf_state);

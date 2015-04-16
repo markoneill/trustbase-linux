@@ -1,7 +1,5 @@
-#ifndef _SECURE_HANDSHAKE_PARSER_H
-#define _SECURE_HANDSHKAE_PARSER_H
-
-#include "connection_state.h"
+#ifndef _HANDSHAKE_HANDLER_H
+#define _HANDSHAKE_HANDLER_H
 
 #define TH_TLS_HANDSHAKE_IDENTIFIER	0x16
 #define TH_TLS_RECORD_HEADER_SIZE		5
