@@ -2,7 +2,7 @@
 #include <linux/slab.h> // For allocations
 #include "connection_state.h"
 
-extern unsigned int allocsminusfrees;
+unsigned int allocsminusfrees;
 #define HASH_TABLE_BITSIZE	8
 static DEFINE_HASHTABLE(conn_table, HASH_TABLE_BITSIZE);
 static DEFINE_SPINLOCK(conn_state_lock);
