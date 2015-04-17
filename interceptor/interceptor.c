@@ -1,3 +1,6 @@
+#ifndef KBUILD_MODNAME
+#	define KBUILD_MODNAME KBUILD_STR(trusthub_linux)
+#endif
 #include <linux/kernel.h>
 #include <linux/version.h>
 #include <linux/syscalls.h> // For kallsyms lookups
