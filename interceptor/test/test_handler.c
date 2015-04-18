@@ -12,6 +12,8 @@ typedef struct buf_state_t {
 	size_t bytes_to_read;
 	size_t bytes_forwarded;
 	size_t bytes_to_forward;
+	size_t last_payload_size;
+	int buf_type;
 	char* buf;
 } buf_state_t;
 
@@ -23,9 +25,12 @@ void* state_init(pid_t pid) {
 		.pid = pid,
 		.buf_length = 0,
 		.bytes_read = 0,
-		.bytes_to_read = 0,
+		.bytes_to_read = 1, // XXX This should be separate from the interface
+					// Maybe make an is_handler_interested() bool instead
 		.bytes_forwarded = 0,
 		.bytes_to_forward = 0,
+		.last_payload_size = 0,
+		.buf_type = 0, /// XXX you need a way to figure out crap
 		.buf = NULL,
 	};
 	return buf_state;
@@ -44,19 +49,21 @@ int copy_to_handler(void* buf_state, void* src_buf, size_t length) {
 	}
 	memcpy(bs->buf + bs->buf_length, src_buf, length);
 	bs->buf_length += length;
+	bs->last_payload_size = length;
 	return 0;
 }
 int update_state(void* buf_state) {
 	int max_compare;
 	buf_state_t* bs = (buf_state_t*)buf_state;
 	max_compare = bs->buf_length < 4 ? bs->buf_length : 4;
-	bs->bytes_to_read = 4;
-	if (strncmp(bs->buf, "test",max_compare) != 0) {
-		bs->bytes_to_forward = bs->buf_length;
+	if (strncmp(bs->buf, "test", max_compare) != 0) {
+		bs->bytes_to_forward += bs->buf_length;
 		bs->state = 0;
-		printk(KERN_ALERT "Not interested in socket anymore");
+		bs->bytes_to_read = 0;
+		//printk(KERN_ALERT "Not interested in socket anymore");
 		return 0;
 	}
+	printk(KERN_ALERT "Performing some tomfoolery on ur dataz");
 	replace_bytes(bs, 'e', 'b');
 	bs->bytes_to_read = 0;
 	bs->state = 0;
@@ -83,6 +90,7 @@ int num_bytes_to_forward(void* buf_state) {
 int update_bytes_forwarded(void* buf_state, size_t forwarded) {
 	buf_state_t* bs = (buf_state_t*)buf_state;
 	bs->bytes_forwarded += forwarded;
+	bs->bytes_to_forward -= forwarded;
 	return 0;
 }
 int get_state(void* buf_state) {

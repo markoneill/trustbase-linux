@@ -40,6 +40,7 @@ conn_state_t* conn_state_create(pid_t pid, struct socket* sock) {
 	new_conn_state->key = pid ^ (unsigned long)sock;
 	new_conn_state->queued_send_ret = 1; // this value needs to be positive initially
 	new_conn_state->queued_recv_ret = 1; // this value needs to be positive initially
+	new_conn_state->state = NULL;
 	// Add to hash table
 	spin_lock(&conn_state_lock);
 	hash_add(conn_table, &new_conn_state->hash, new_conn_state->key);

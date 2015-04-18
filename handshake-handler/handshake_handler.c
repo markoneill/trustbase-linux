@@ -9,68 +9,144 @@
 #include "communications.h"
 #include "../util/utils.h"
 
-static void update_state(buf_state_t* buf_state);
+inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
+inline int th_buf_state_can_transition(buf_state_t* buf_state);
+static void* buf_state_init(buf_state_t* buf_state);
+
+// Interception helpers
+static inline int copy_to_buf_state(buf_state_t* buf_state, void* src_buf, size_t length);
+
+// State machine handling
+static void update_buf_state(buf_state_t* buf_state);
 static void handle_state_unknown(buf_state_t* buf_state);
 static void handle_state_record_layer(buf_state_t* buf_state);
 static void handle_state_handshake_layer(buf_state_t* buf_state);
 static void handle_certificates(char* buf);
 
-void printbuf(char* buf, int length) {
-	int i;
-	for (i = 0; i < length; i++) {
-		printk(KERN_INFO "%02X", buf[i]);
+// Main proxy functionality
+void* th_state_init(pid_t pid) {
+	handler_state_t* state;
+	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
+	if (state != NULL) {
+		state->pid = pid;
+		state->interest = INTERESTED;
+		buf_state_init(&state->send_state);
+		buf_state_init(&state->recv_state);
 	}
+	return state;
 }
 
-/* Append a buffer's contents to a connection state bufer.
- * @param buf_state - pointer to a valid buf_state_t instance
- * @param src_buf - source address of data
- * @param length number of bytes to copy from source address
- */
-int th_send_to_proxy(void* buf_state, void* src_buf, size_t length) {
-	buf_state_t* bs = (buf_state_t*)buf_state;
-	if ((bs->buf = krealloc(bs->buf, bs->buf_length + length, GFP_KERNEL)) == NULL) {
-		printk(KERN_ALERT "krealloc failed in th_send_to_proxy");
-		return -1;
-	}
-	memcpy(bs->buf + bs->buf_length, src_buf, length);
-	bs->buf_length += length;
-	// XXX this is just specific to trusthub
-	bs->bytes_to_forward += length;
-	return 0;
+void* buf_state_init(buf_state_t* buf_state) {
+	buf_state->buf_length = 0;
+	buf_state->bytes_read = 0;
+	buf_state->bytes_forwarded = 0;
+	buf_state->bytes_to_forward = 0;
+	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
+	buf_state->buf = NULL;
+	buf_state->state = UNKNOWN;
+	return buf_state;
 }
 
-int th_update_state(void* buf_state) {
-	buf_state_t* bs = (buf_state_t*)buf_state;
+void th_state_free(void* state) {
+	handler_state_t* s = (handler_state_t*)state;
+	if (s->send_state.buf != NULL) {
+		kfree(s->send_state.buf);
+	}
+	if (s->recv_state.buf != NULL) {
+		kfree(s->recv_state.buf);
+	}
+	kfree(s);
+	return;
+}
+
+int th_get_state(void* state) {
+	handler_state_t* s = (handler_state_t*)state;
+	return s->interest == INTERESTED ? 1 : 0;
+}
+
+int th_give_to_handler_send(void* state, void* src_buf, size_t length) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->send_state;
+	return copy_to_buf_state(bs, src_buf, length);
+}
+
+int th_give_to_handler_recv(void* state, void* src_buf, size_t length) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->recv_state;
+	return copy_to_buf_state(bs, src_buf, length);
+}
+
+int th_update_state_send(void* state) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->send_state;
         while (th_buf_state_can_transition(bs)) {
-                update_state(bs);
+                update_buf_state(bs);
         }
 	return 0;
 }
 
-int th_fill_send_buffer(void* buf_state, void** bufptr, size_t* length) {
-	buf_state_t* bs = (buf_state_t*)buf_state;
+int th_update_state_recv(void* state) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->recv_state;
+        while (th_buf_state_can_transition(bs)) {
+                update_buf_state(bs);
+        }
+	return 0;
+}
+
+// XXX change this to set_buffer_send
+int th_fill_send_buffer(void* state, void** bufptr, size_t* length) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->send_state;
 	*length = bs->bytes_to_forward;
 	*bufptr = bs->buf + bs->bytes_forwarded;
 	return 0;
 }
 
-int th_update_bytes_forwarded(void* buf_state, size_t forwarded) {
-	buf_state_t* bs = (buf_state_t*)buf_state;
-	bs->bytes_forwarded += forwarded;
-	bs->bytes_to_forward -= forwarded;
-	return 0;
-}
-
-int th_copy_to_user_buffer(void* buf_state, void __user *dst_buf, size_t length) {
-	buf_state_t* bs = (buf_state_t*)buf_state;
+// XXX change this (and semantics) to set_buffer_recv
+int th_copy_to_user_buffer(void* state, void __user *dst_buf, size_t length) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->recv_state;
 	if (copy_to_user(dst_buf, bs->buf + bs->bytes_forwarded, length) != 0) {
 		return -1;
 	}
 	return 0;
 }
 
-void update_state(buf_state_t* buf_state) {
+int th_num_bytes_to_forward_send(void* state) {
+	return ((handler_state_t*)state)->send_state.bytes_to_forward;
+}
+
+int th_num_bytes_to_forward_recv(void* state) {
+	return ((handler_state_t*)state)->recv_state.bytes_to_forward;
+}
+
+int th_update_bytes_forwarded_send(void* state, size_t forwarded) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->send_state;
+	bs->bytes_forwarded += forwarded;
+	bs->bytes_to_forward -= forwarded;
+	return 0;
+}
+
+int th_update_bytes_forwarded_recv(void* state, size_t forwarded) {
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->recv_state;
+	bs->bytes_forwarded += forwarded;
+	bs->bytes_to_forward -= forwarded;
+	return 0;
+}
+
+int th_get_bytes_to_read_send(void* state) {
+	return ((handler_state_t*)state)->send_state.bytes_to_read;
+}
+
+int th_get_bytes_to_read_recv(void* state) {
+	return ((handler_state_t*)state)->recv_state.bytes_to_read;
+}
+
+// State Machine functionality
+void update_buf_state(buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
 			handle_state_unknown(buf_state);
@@ -201,35 +277,21 @@ int th_buf_state_can_transition(buf_state_t* buf_state) {
 	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
 }
 
-void* th_buf_state_init(pid_t pid) {
-	buf_state_t* buf_state = kmalloc(sizeof(buf_state_t), GFP_KERNEL);
-	buf_state->buf_length = 0;
-	buf_state->bytes_read = 0;
-	buf_state->bytes_forwarded = 0;
-	buf_state->bytes_to_forward = 0;
-	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
-	buf_state->buf = NULL;
-	buf_state->state = UNKNOWN;
-	buf_state->pid = pid;
-	return buf_state;
-}
-
-void th_buf_state_free(void* buf_state) {
-	if (((buf_state_t*)buf_state)->buf != NULL) {
-		kfree(((buf_state_t*)buf_state)->buf);
+// Support routines
+void printbuf(char* buf, int length) {
+	int i;
+	for (i = 0; i < length; i++) {
+		printk(KERN_INFO "%02X", buf[i]);
 	}
 }
 
-int th_num_bytes_to_forward(void* buf_state) {
-	return ((buf_state_t*)buf_state)->bytes_to_forward;
+int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
+	if ((bs->buf = krealloc(bs->buf, bs->buf_length + length, GFP_KERNEL)) == NULL) {
+		printk(KERN_ALERT "krealloc failed in th_send_to_proxy");
+		return -1;
+	}
+	memcpy(bs->buf + bs->buf_length, src_buf, length);
+	bs->buf_length += length;
+	bs->bytes_to_forward += length; // XXX temp location - this should be in update_state
+	return 0;
 }
-
-int th_get_state(void* buf_state) {
-	buf_state_t* bs = (buf_state_t*)buf_state;
-	return bs->state == IRRELEVANT ? 0 : 1;
-}
-
-int th_get_bytes_to_read(void* buf_state) {
-	return ((buf_state_t*)buf_state)->bytes_to_read;
-}
-

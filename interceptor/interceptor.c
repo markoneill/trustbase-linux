@@ -102,15 +102,13 @@ conn_state_t* start_conn_state(pid_t pid, struct socket* sock) {
 	conn_state_t* ret;
 	ret = conn_state_create(pid, sock);
 	if (ret != NULL) {
-		ret->send_state = ops->send_state_init(ret->pid);
-		ret->recv_state = ops->recv_state_init(ret->pid);
+		ret->state = ops->state_init(ret->pid);
 	}
 	return ret;
 }
 
 int stop_conn_state(conn_state_t* conn_state) {
-	ops->send_state_free(conn_state->send_state);
-	ops->recv_state_free(conn_state->recv_state);
+	ops->state_free(conn_state->state);
 	return conn_state_delete(conn_state->pid, conn_state->sock);
 }
 
@@ -189,7 +187,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// 0) If last send attempt was an error, don't copy or update state
 	if (conn_state->queued_send_ret > 0) {
 		// 1) Copy data from user to our connection state buffer
-		if (ops->send_to_proxy(conn_state->send_state, new_data, size) != 0) {
+		if (ops->give_to_handler_send(conn_state->state, new_data, size) != 0) {
 			printk(KERN_ALERT "failed to copy data to handler");
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
@@ -197,7 +195,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			return ref_tcp_sendmsg(iocb, sk, msg, size);
 		}
 		// 2) Update handler's state now that it has new data
-		if (ops->update_send_state(conn_state->send_state) != 0) {
+		if (ops->update_send_state(conn_state->state) != 0) {
 			printk(KERN_ALERT "failed to update state");
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
@@ -223,11 +221,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// 3) Have handler tell us what we should forward
 	//    This will be the same as last time if an error occurred
-	ops->fill_send_buffer(conn_state->send_state, &iov.iov_base, &iov.iov_len);
+	ops->fill_send_buffer(conn_state->state, &iov.iov_base, &iov.iov_len);
 
 	// 4) Forward what handler told us to forward, if anything
 	if (iov.iov_len <= 0) { //should never really be negative
-		if (ops->num_send_bytes_to_forward(conn_state->send_state) == 0 && ops->get_send_state(conn_state->send_state) == 0) {
+		if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
 			//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
 			stop_conn_state(conn_state); 
 	        }
@@ -243,7 +241,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// Record result
 	conn_state->queued_send_ret = real_ret;
 	if (real_ret > 0) {
-		ops->inc_send_bytes_forwarded(conn_state->send_state, real_ret);
+		ops->inc_send_bytes_forwarded(conn_state->state, real_ret);
 	}
 	if (real_ret != iov.iov_len) {
 		printk(KERN_ALERT "Kernel couldn't send everything we wanted to");
@@ -255,18 +253,18 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		}
 		else { // blocking IO
 			// loop here to retry because this might be the last time we're ever called
-			while (ops->num_send_bytes_to_forward(conn_state->send_state) > 0) {
+			while (ops->num_send_bytes_to_forward(conn_state->state) > 0) {
 				// Ask handler to update our pointer and length again
-				ops->fill_send_buffer(conn_state->send_state, &iov.iov_base, &iov.iov_len);
+				ops->fill_send_buffer(conn_state->state, &iov.iov_base, &iov.iov_len);
 				// Attempt send again
 				real_ret = ref_tcp_sendmsg(iocb, sk, &kmsg, iov.iov_len);
 				// Record bytes sent
-				ops->inc_send_bytes_forwarded(conn_state->send_state, real_ret);
+				ops->inc_send_bytes_forwarded(conn_state->state, real_ret);
 			}
 		}
 	}
 	// If handler doesn't care about connection anymore then delete it
-	if (ops->num_send_bytes_to_forward(conn_state->send_state) == 0 && ops->get_send_state(conn_state->send_state) == 0) {
+	if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
 		//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
 		stop_conn_state(conn_state); 
         }
@@ -306,15 +304,15 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	bytes_sent = 0;
 	// 1) Place into user's buffer any data already marked for fowarding
 	//    up to maxiumum user is requesting (len)
-	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->recv_state);
+	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->state);
 	if (b_to_forward > 0) {
 		bytes_to_copy = b_to_forward > len ? len : b_to_forward;
-		if (ops->copy_to_user(conn_state->recv_state, user_buffer, bytes_to_copy) != 0) {
+		if (ops->copy_to_user(conn_state->state, user_buffer, bytes_to_copy) != 0) {
 			printk(KERN_ALERT "failed to copy what we wanted to");
 			// XXX how do we fail here?
 		}
 		bytes_sent += bytes_to_copy;
-		ops->inc_recv_bytes_forwarded(conn_state->recv_state, bytes_sent);
+		ops->inc_recv_bytes_forwarded(conn_state->state, bytes_sent);
 	}
 
 	if (bytes_sent)
@@ -338,7 +336,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 
 	// If we don't care to read any more bytes for this socket, stop now
-	if (ops->bytes_to_read(conn_state->recv_state) == 0) {
+	if (ops->bytes_to_read_recv(conn_state->state) == 0) {
 		if (bytes_sent > 0) {
 			return bytes_sent;
 		}
@@ -349,19 +347,19 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 
 	// At this point bytes_to_forward should be zero,
-	// queued_recv_ret should be positive, and bytes_to_read
+	// queued_recv_ret should be positive, and bytes_to_read_recv
 	// should be positive
 	
 	
 	// 3) Attempt to get more data from external sources
-	while (ops->num_recv_bytes_to_forward(conn_state->recv_state) == 0) {
+	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
 		kmsg = *msg;
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 		kmsg.msg_iter.iov = &iov;
 		#else
 		kmsg.msg_iov = &iov;
 		#endif
-		b_to_read = ops->bytes_to_read(conn_state->recv_state);
+		b_to_read = ops->bytes_to_read_recv(conn_state->state);
 	        buffer = kmalloc(b_to_read, GFP_KERNEL);
 		iov.iov_len = b_to_read;
 		iov.iov_base = buffer;
@@ -392,19 +390,19 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		}
 
 		// 5) If operation succeeded then copy to state and update state
-		if (ops->send_to_proxy(conn_state->recv_state, buffer, ret) != 0) {
+		if (ops->give_to_handler_recv(conn_state->state, buffer, ret) != 0) {
 			printk(KERN_ALERT "failed to copy to recv state");
 			// XXX how do we fail here?
 		}
 		kfree(buffer);
-		if (ops->update_recv_state(conn_state->recv_state) != 0) {
+		if (ops->update_recv_state(conn_state->state) != 0) {
 			printk(KERN_ALERT "failed to update recv state");
 			// XXX how do we fail here?
 		}
 
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
-		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->recv_state) == 0) {
+		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
 			//printk(KERN_ALERT "returning at nonb with %d", bytes_sent);
 			return bytes_sent > 0 ? bytes_sent : -EAGAIN;
 		}
@@ -414,13 +412,13 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 
 	// 8) copy to user what we received. return total number bytes sent
-	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->recv_state);
+	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->state);
 	bytes_to_copy = b_to_forward > len - bytes_sent ? len - bytes_sent : b_to_forward;
-	if (ops->copy_to_user(conn_state->recv_state, user_buffer + bytes_sent, bytes_to_copy) != 0) {
+	if (ops->copy_to_user(conn_state->state, user_buffer + bytes_sent, bytes_to_copy) != 0) {
 		printk(KERN_ALERT "failed to copy what we wanted to");
 		// XXX how do we fail here?
 	}
-	ops->inc_recv_bytes_forwarded(conn_state->recv_state, bytes_to_copy);
+	ops->inc_recv_bytes_forwarded(conn_state->state, bytes_to_copy);
 	bytes_sent += bytes_to_copy;
 	//printk(KERN_ALERT "returning at end with %d", bytes_sent);
 	return bytes_sent;

@@ -23,22 +23,21 @@ int __init loader_start(void) {
 	}
 
 	trusthub_ops = (proxy_handler_ops_t) {
-		.send_state_init = th_buf_state_init,
-		.recv_state_init = th_buf_state_init,
-		.send_state_free = th_buf_state_free,
-		.recv_state_free = th_buf_state_free,
-		.send_to_proxy = th_send_to_proxy,
-		.update_send_state = th_update_state,
-		.update_recv_state = th_update_state,
-		.fill_send_buffer = th_fill_send_buffer,
-		.num_send_bytes_to_forward = th_num_bytes_to_forward,
-		.num_recv_bytes_to_forward = th_num_bytes_to_forward,
-		.inc_send_bytes_forwarded = th_update_bytes_forwarded,
-		.inc_recv_bytes_forwarded = th_update_bytes_forwarded,
-		.get_send_state = th_get_state,
-		.get_recv_state = th_get_state,
-		.copy_to_user = th_copy_to_user_buffer,
-		.bytes_to_read = th_get_bytes_to_read,
+		.state_init = th_state_init,
+		.state_free = th_state_free,
+		.get_state = th_get_state,
+		.give_to_handler_send = th_give_to_handler_send,
+		.give_to_handler_recv = th_give_to_handler_recv,
+		.update_send_state = th_update_state_send,
+		.update_recv_state = th_update_state_recv,
+		.fill_send_buffer = th_fill_send_buffer, // XXX rename this
+		.copy_to_user = th_copy_to_user_buffer, // XXX rename this
+		.num_send_bytes_to_forward = th_num_bytes_to_forward_send,
+		.num_recv_bytes_to_forward = th_num_bytes_to_forward_recv,
+		.inc_send_bytes_forwarded = th_update_bytes_forwarded_send,
+		.inc_recv_bytes_forwarded = th_update_bytes_forwarded_recv,
+		.bytes_to_read_send = th_get_bytes_to_read_send,
+		.bytes_to_read_recv = th_get_bytes_to_read_recv,
 	};
 
 	proxy_register(&trusthub_ops);

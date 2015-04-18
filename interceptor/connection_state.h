@@ -6,8 +6,7 @@ typedef struct conn_state_t {
         pid_t pid;
 	struct socket* sock;
         struct hlist_node hash;
-	void* send_state;
-	void* recv_state;
+	void* state;
 	int queued_send_ret;
 	int queued_recv_ret;
 } conn_state_t;
