@@ -8,9 +8,10 @@ trusthub_linux-objs := loader.o \
 test_interceptor-objs := interceptor/test/test_loader.o \
 		         interceptor/interceptor.o \
 		         interceptor/connection_state.o \
-			 interceptor/test/test_handler.o
+			 interceptor/test/test_handler.o \
+			 util/utils.o
 
-#obj-m += test_interceptor.o
+obj-m += test_interceptor.o
 obj-m += trusthub_linux.o
 all:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules

@@ -3,13 +3,18 @@
 
 void* state_init(pid_t pid);
 void state_free(void* buf_state);
-int copy_to_handler(void* buf_state, void* src_buf, size_t length);
-int update_state(void* buf_state);
-int copy_to_send_buffer(void* buf_state, void** bufptr, size_t* length);
-int copy_to_user_buffer(void* buf_state, void __user *dst_buf, size_t length);
-int num_bytes_to_forward(void* buf_state);
-int update_bytes_forwarded(void* buf_state, size_t forwarded);
-int get_state(void* buf_state);
-int get_bytes_to_read(void* buf_state);
+int get_state(void* state);
+int give_to_handler_send(void* state, void* src_buf, size_t length);
+int give_to_handler_recv(void* state, void* src_buf, size_t length);
+int update_state_send(void* state);
+int update_state_recv(void* state);
+int fill_send_buffer(void* state, void** bufptr, size_t* length);
+int copy_to_user_buffer(void* state, void __user *dst_buf, size_t length);
+int num_bytes_to_forward_send(void* state);
+int num_bytes_to_forward_recv(void* state);
+int update_bytes_forwarded_send(void* state, size_t forwarded);
+int update_bytes_forwarded_recv(void* state, size_t forwarded);
+int get_bytes_to_read_send(void* state);
+int get_bytes_to_read_recv(void* state);
 
 #endif

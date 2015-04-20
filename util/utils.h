@@ -16,5 +16,5 @@ typedef struct { __u8 b[3]; } __be24, __le24;
 #define be24_to_cpu	__be24_to_cpu
 #endif
 
-void print_call_info(struct socket* sock, const char* str);
+void print_call_info(const char* str);
 #endif

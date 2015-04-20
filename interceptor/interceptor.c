@@ -347,6 +347,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 
 	// At this point bytes_to_forward should be zero,
+	BUG_ON(ops->num_recv_bytes_to_forward(conn_state->state) != 0);
 	// queued_recv_ret should be positive, and bytes_to_read_recv
 	// should be positive
 	
