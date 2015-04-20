@@ -103,7 +103,7 @@ int update_state_send(void* state) {
                 return 0;
         }
         printk(KERN_ALERT "Performing some tomfoolery on ur dataz");
-        //replace_bytes(bs, 'e', 'b');
+        replace_bytes(bs, 'e', 'b');
         bs->bytes_to_read = 0;
         bs->state = 0;
 	bs->bytes_to_forward += bs->last_payload_size;
