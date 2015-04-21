@@ -56,7 +56,7 @@ int send_response(struct nl_sock* sock, uint64_t stptr) {
 		printf("failed in nla_put_u64\n");
 		return -1;
 	}
-	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, 5);
+	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, 1); // Statically report things are good (for now)
 	if (rc != 0) {
 		printf("failed in nla_put_u32\n");
 		return -1;
@@ -109,7 +109,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			handle_certchain(nla_data(attrs[TRUSTHUB_A_CERTCHAIN]), chain_length);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
-			printf("Got state pointer value of %p\n",(void*)stptr);
+			//printf("Got state pointer value of %p\n",(void*)stptr);
 			printf("Got a certificate chain for %s of %d bytes\n", nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]), chain_length);
 			printf("sending response\n");
 			send_response(arg, stptr);

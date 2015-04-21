@@ -68,8 +68,8 @@ int th_response(struct sk_buff* skb, struct genl_info* info) {
 	}
 	statedata = nla_get_u64(na);
 	state = (struct handler_state_t*)statedata;
-	printk(KERN_ALERT "I received a state ptr value of %p", state);
-	printk(KERN_ALERT "sending a wakeup up");
+	//printk(KERN_ALERT "I received a state ptr value of %p", state);
+	//printk(KERN_ALERT "sending a wakeup up");
 	up(&state->sem);
 	return 0;
 }
@@ -119,7 +119,7 @@ int th_send_certificate_query(handler_state_t* state, char* certificate, size_t 
 
 	sema_init(&state->sem, 0);
 	rc = nla_put_u64(skb, TRUSTHUB_A_STATE_PTR, (uint64_t)state);
-	printk(KERN_ALERT "Putting in pointer value %p", state);
+	//printk(KERN_ALERT "Putting in pointer value %p", state);
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put (sem)");
 		nlmsg_free(skb);
@@ -135,9 +135,9 @@ int th_send_certificate_query(handler_state_t* state, char* certificate, size_t 
 	}
 
 	// Pause execution and wait for a response
-	printk(KERN_ALERT "sleeping after send");
+	//printk(KERN_ALERT "sleeping after send");
 	down(&state->sem);
-	printk(KERN_ALERT "woken up!");
+	//printk(KERN_ALERT "woken up!");
 	return 0;
 }
 

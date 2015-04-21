@@ -33,7 +33,6 @@ enum {
 // Multicast group
 enum trusthub_groups {
 	TRUSTHUB_QUERY,
-	TRUSTHUB_RESPONSE,
 };
 
 

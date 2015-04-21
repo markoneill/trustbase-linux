@@ -82,6 +82,7 @@ int th_update_state_send(void* state) {
         while (th_buf_state_can_transition(bs)) {
                 update_buf_state(state, bs);
         }
+	bs->bytes_to_forward += bs->last_payload_length;
 	return 0;
 }
 
@@ -91,6 +92,7 @@ int th_update_state_recv(void* state) {
         while (th_buf_state_can_transition(bs)) {
                 update_buf_state(state, bs);
         }
+	bs->bytes_to_forward += bs->last_payload_length;
 	return 0;
 }
 
@@ -251,20 +253,6 @@ void handle_certificates(handler_state_t* state, char* buf) {
 	//printk(KERN_ALERT "length of certs is %u", certificates_length);
 	printk(KERN_ALERT "sending some certificates to policy engine");
 	th_send_certificate_query(state, bufptr, certificates_length);
-	
-	// XXX add some extra conditions to force this loop to terminate if we have a douchebag trying to hang the system
-	/*while (certificates_length > 0) {
-		cert_length = be32_to_cpu(*(unsigned int*)(bufptr-1) & 0xFFFFFF00);
-		bufptr += 3; // 24-bit length of indidividual cert
-		certificates_length -= 3;
-		//handle_certificate(bufptr);
-		printk(KERN_ALERT "length of one cert is %u", cert_length);
-		if (th_send_certificate_query(bufptr, cert_length) < 0) {
-			printk(KERN_ALERT "test failed");
-		}
-		bufptr += cert_length;
-		certificates_length -= cert_length;
-	}*/
 	return;
 }
 
@@ -293,6 +281,6 @@ int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 	}
 	memcpy(bs->buf + bs->buf_length, src_buf, length);
 	bs->buf_length += length;
-	bs->bytes_to_forward += length; // XXX temp location - this should be in update_state
+	bs->last_payload_length = length;
 	return 0;
 }
