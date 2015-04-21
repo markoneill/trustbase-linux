@@ -11,6 +11,7 @@
 #define CERT_LENGTH_FIELD_SIZE	3
 
 int chains_received;
+int family;
 
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
@@ -19,8 +20,7 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 };
 
 static int handle_certchain(const unsigned char* data, size_t len);
-static int recv_query(struct nl_msg *msg, void *arg);
-static void print_certificate(X509* cert);
+static int send_response(struct nl_sock* sock);
 
 static int ntoh24(const unsigned char* data) {
 	int ret = (data[0] << 16) | (data[1] << 8) | data[2];
@@ -34,6 +34,33 @@ static void print_certificate(X509* cert) {
 	X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
 	printf("subject: %s\n", subj);
 	printf("issuer: %s\n", issuer);
+}
+
+int send_response(struct nl_sock* sock) {
+	int rc;
+	struct nl_msg* msg;
+	void* msg_head;
+	msg = nlmsg_alloc();
+	if (msg == NULL) {
+		printf("failed to allocate message buffer\n");
+		return -1;
+	}
+	msg_head = genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_RESPONSE, 1);
+	if (msg_head == NULL) {
+		printf("failed in genlmsg_put\n");
+		return -1;
+	}
+	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, 5);
+	if (rc != 0) {
+		printf("failed in nla_put_u32\n");
+		return -1;
+	}
+	rc = nl_send(sock, msg); 
+	if (rc < 0) {
+		printf("failed in nl send with error code %d\n", rc);
+		return -1;
+	}
+	return 0;	
 }
 
 int handle_certchain(const unsigned char* data, size_t len) {
@@ -75,6 +102,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			handle_certchain(nla_data(attrs[TRUSTHUB_A_CERTCHAIN]), chain_length);
 			printf("Got a certificate chain for %s of %d bytes\n", nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]), chain_length);
+			printf("sending response\n");
+			send_response(arg);
 			break;
 		default:
 			printf("Got something unusual...\n");
@@ -84,7 +113,6 @@ int recv_query(struct nl_msg *msg, void *arg) {
 }
 
 int main() {
-	int family;
 	int group;
 	struct nl_sock* sock = nl_socket_alloc();
 

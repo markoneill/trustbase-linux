@@ -4,6 +4,10 @@
 
 int th_query(struct sk_buff* skb, struct genl_info* info);
 
+struct netlink_kernel_cfg cfg = {
+	.input = th_query,
+};
+
 static const struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 	[TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_NUL_STRING },
@@ -40,6 +44,7 @@ static const struct genl_multicast_group th_grps[] = {
 };
 
 int th_query(struct sk_buff* skb, struct genl_info* info) {
+	printk(KERN_ALERT "is anything happening here?");
 	return 0;
 }
 
@@ -58,6 +63,8 @@ void th_unregister_netlink() {
 }
 
 int th_send_certificate_query(char* certificate, size_t length) {
+	struct nl_sock* nl_sk;
+	//nl_sk = netlink_kernel_create(&init_net, NETLINK_GENERIC, &cfg);
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
