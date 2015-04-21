@@ -1,6 +1,8 @@
 #ifndef _HANDSHAKE_HANDLER_H
 #define _HANDSHAKE_HANDLER_H
 
+#include <linux/semaphore.h>
+
 #define TH_TLS_HANDSHAKE_IDENTIFIER	0x16
 #define TH_TLS_RECORD_HEADER_SIZE		5
 #define TH_TLS_HANDSHAKE_IDENTIFIER_SIZE	1
@@ -30,6 +32,7 @@ typedef enum interest_state_t {
 } interest_state_t;
 
 typedef struct handler_state_t {
+	struct semaphore sem;
 	interest_state_t interest;
 	pid_t pid;
 	buf_state_t recv_state;

@@ -1,9 +1,11 @@
 #ifndef _TH_COMMUNICATIONS_H
 #define _TH_COMMUNICATIONS_H
 
+struct handler_state_t;
+
 int th_register_netlink(void);
 void th_unregister_netlink(void);
-int th_send_certificate_query(char* certificate, size_t length);
+int th_send_certificate_query(struct handler_state_t* state, char* certificate, size_t length);
 //int th_get_certificate_response(void);
 
 // Attributes
@@ -12,6 +14,7 @@ enum {
 	TRUSTHUB_A_CERTCHAIN,
 	TRUSTHUB_A_HOSTNAME,
 	TRUSTHUB_A_RESULT,
+	TRUSTHUB_A_STATE_PTR,
 	__TRUSTHUB_A_MAX,
 };
 

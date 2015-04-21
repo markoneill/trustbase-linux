@@ -17,10 +17,11 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
         [TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
+        [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
 static int handle_certchain(const unsigned char* data, size_t len);
-static int send_response(struct nl_sock* sock);
+static int send_response(struct nl_sock* sock, uint64_t stptr);
 
 static int ntoh24(const unsigned char* data) {
 	int ret = (data[0] << 16) | (data[1] << 8) | data[2];
@@ -36,7 +37,7 @@ static void print_certificate(X509* cert) {
 	printf("issuer: %s\n", issuer);
 }
 
-int send_response(struct nl_sock* sock) {
+int send_response(struct nl_sock* sock, uint64_t stptr) {
 	int rc;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -45,9 +46,14 @@ int send_response(struct nl_sock* sock) {
 		printf("failed to allocate message buffer\n");
 		return -1;
 	}
-	msg_head = genlmsg_put(msg, NL_AUTO_PORT, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_RESPONSE, 1);
+	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_RESPONSE, 1);
 	if (msg_head == NULL) {
 		printf("failed in genlmsg_put\n");
+		return -1;
+	}
+	rc = nla_put_u64(msg, TRUSTHUB_A_STATE_PTR, stptr);
+	if (rc != 0) {
+		printf("failed in nla_put_u64\n");
 		return -1;
 	}
 	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, 5);
@@ -55,7 +61,7 @@ int send_response(struct nl_sock* sock) {
 		printf("failed in nla_put_u32\n");
 		return -1;
 	}
-	rc = nl_send(sock, msg); 
+	rc = nl_send_auto(sock, msg);
 	if (rc < 0) {
 		printf("failed in nl send with error code %d\n", rc);
 		return -1;
@@ -96,14 +102,17 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	struct genlmsghdr* gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
 	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
 	int chain_length;
+	uint64_t stptr;
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
 		case TRUSTHUB_C_QUERY:
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			handle_certchain(nla_data(attrs[TRUSTHUB_A_CERTCHAIN]), chain_length);
+			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
+			printf("Got state pointer value of %p\n",(void*)stptr);
 			printf("Got a certificate chain for %s of %d bytes\n", nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]), chain_length);
 			printf("sending response\n");
-			send_response(arg);
+			send_response(arg, stptr);
 			break;
 		default:
 			printf("Got something unusual...\n");
@@ -118,7 +127,6 @@ int main() {
 
 	nl_socket_disable_seq_check(sock);
 	nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, recv_query, (void*)sock);
-
 	if (sock == NULL) {
 		fprintf(stderr, "Failed to allocate socket\n");
 		return -1;

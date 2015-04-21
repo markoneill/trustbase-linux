@@ -17,11 +17,11 @@ static void* buf_state_init(buf_state_t* buf_state);
 static inline int copy_to_buf_state(buf_state_t* buf_state, void* src_buf, size_t length);
 
 // State machine handling
-static void update_buf_state(buf_state_t* buf_state);
+static void update_buf_state(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_unknown(buf_state_t* buf_state);
-static void handle_state_record_layer(buf_state_t* buf_state);
-static void handle_state_handshake_layer(buf_state_t* buf_state);
-static void handle_certificates(char* buf);
+static void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state);
+static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
+static void handle_certificates(handler_state_t* state, char* buf);
 
 // Main proxy functionality
 void* th_state_init(pid_t pid) {
@@ -80,7 +80,7 @@ int th_update_state_send(void* state) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->send_state;
         while (th_buf_state_can_transition(bs)) {
-                update_buf_state(bs);
+                update_buf_state(state, bs);
         }
 	return 0;
 }
@@ -89,7 +89,7 @@ int th_update_state_recv(void* state) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->recv_state;
         while (th_buf_state_can_transition(bs)) {
-                update_buf_state(bs);
+                update_buf_state(state, bs);
         }
 	return 0;
 }
@@ -146,16 +146,16 @@ int th_get_bytes_to_read_recv(void* state) {
 }
 
 // State Machine functionality
-void update_buf_state(buf_state_t* buf_state) {
+void update_buf_state(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
 			handle_state_unknown(buf_state);
 			break;
 		case RECORD_LAYER:
-			handle_state_record_layer(buf_state);
+			handle_state_record_layer(state, buf_state);
 			break;
 		case HANDSHAKE_LAYER:
-			handle_state_handshake_layer(buf_state);
+			handle_state_handshake_layer(state, buf_state);
 			break;
 		case SERVER_CERTIFICATES_SENT:
 			// Do nothing...for now
@@ -183,7 +183,7 @@ void handle_state_unknown(buf_state_t* buf_state) {
 	return;
 }
 
-void handle_state_record_layer(buf_state_t* buf_state) {
+void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	char* cs_buf;
 	unsigned char tls_major_version;
 	unsigned char tls_minor_version;
@@ -200,7 +200,7 @@ void handle_state_record_layer(buf_state_t* buf_state) {
 	return;
 }
 
-void handle_state_handshake_layer(buf_state_t* buf_state) {
+void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state) {
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -215,7 +215,7 @@ void handle_state_handshake_layer(buf_state_t* buf_state) {
 		buf_state->state = RECORD_LAYER;
 	}
 	else if (cs_buf[0] == 0x0b) { // XXX add something here to check to see if additional certificates are contained within this record?
-		handle_certificates(&cs_buf[1]); // Certificates start here
+		handle_certificates(state, &cs_buf[1]); // Certificates start here
 		//printk(KERN_ALERT "length is %u", handshake_message_length);
 		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
 		//handle_certificate
@@ -233,7 +233,7 @@ void handle_state_handshake_layer(buf_state_t* buf_state) {
 	return;
 }
 
-void handle_certificates(char* buf) {
+void handle_certificates(handler_state_t* state, char* buf) {
 	char* bufptr;
 	unsigned int handshake_message_length;
 	unsigned int certificates_length;
@@ -250,7 +250,8 @@ void handle_certificates(char* buf) {
 	//printk(KERN_ALERT "length of msg is %u", handshake_message_length);
 	//printk(KERN_ALERT "length of certs is %u", certificates_length);
 	printk(KERN_ALERT "sending some certificates to policy engine");
-	th_send_certificate_query(bufptr, certificates_length);
+	th_send_certificate_query(state, bufptr, certificates_length);
+	
 	// XXX add some extra conditions to force this loop to terminate if we have a douchebag trying to hang the system
 	/*while (certificates_length > 0) {
 		cert_length = be32_to_cpu(*(unsigned int*)(bufptr-1) & 0xFFFFFF00);
