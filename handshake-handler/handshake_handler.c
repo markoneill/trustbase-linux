@@ -17,9 +17,12 @@ static void* buf_state_init(buf_state_t* buf_state);
 static inline int copy_to_buf_state(buf_state_t* buf_state, void* src_buf, size_t length);
 
 // State machine handling
-static void update_buf_state(handler_state_t* state, buf_state_t* buf_state);
+static void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state);
+static void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_unknown(buf_state_t* buf_state);
 static void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state);
+static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_state);
+static void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static void handle_certificates(handler_state_t* state, char* buf);
 
@@ -39,8 +42,8 @@ void* th_state_init(pid_t pid) {
 void* buf_state_init(buf_state_t* buf_state) {
 	buf_state->buf_length = 0;
 	buf_state->bytes_read = 0;
-	buf_state->bytes_forwarded = 0;
-	buf_state->bytes_to_forward = 0;
+	buf_state->user_cur = 0;
+	buf_state->user_cur_max = 0;
 	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
 	buf_state->buf = NULL;
 	buf_state->state = UNKNOWN;
@@ -80,9 +83,8 @@ int th_update_state_send(void* state) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->send_state;
         while (th_buf_state_can_transition(bs)) {
-                update_buf_state(state, bs);
+                update_buf_state_send(state, bs);
         }
-	bs->bytes_to_forward += bs->last_payload_length;
 	return 0;
 }
 
@@ -90,9 +92,8 @@ int th_update_state_recv(void* state) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->recv_state;
         while (th_buf_state_can_transition(bs)) {
-                update_buf_state(state, bs);
+                update_buf_state_recv(state, bs);
         }
-	bs->bytes_to_forward += bs->last_payload_length;
 	return 0;
 }
 
@@ -100,8 +101,8 @@ int th_update_state_recv(void* state) {
 int th_fill_send_buffer(void* state, void** bufptr, size_t* length) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->send_state;
-	*length = bs->bytes_to_forward;
-	*bufptr = bs->buf + bs->bytes_forwarded;
+	*length = bs->user_cur_max - bs->user_cur;
+	*bufptr = bs->buf + bs->user_cur;
 	return 0;
 }
 
@@ -109,33 +110,35 @@ int th_fill_send_buffer(void* state, void** bufptr, size_t* length) {
 int th_copy_to_user_buffer(void* state, void __user *dst_buf, size_t length) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->recv_state;
-	if (copy_to_user(dst_buf, bs->buf + bs->bytes_forwarded, length) != 0) {
+	if (copy_to_user(dst_buf, bs->buf + bs->user_cur, length) != 0) {
 		return -1;
 	}
 	return 0;
 }
 
 int th_num_bytes_to_forward_send(void* state) {
-	return ((handler_state_t*)state)->send_state.bytes_to_forward;
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->send_state;
+	return bs->user_cur_max - bs->user_cur;
 }
 
 int th_num_bytes_to_forward_recv(void* state) {
-	return ((handler_state_t*)state)->recv_state.bytes_to_forward;
+	buf_state_t* bs;
+	bs = &((handler_state_t*)state)->recv_state;
+	return bs->user_cur_max - bs->user_cur;
 }
 
 int th_update_bytes_forwarded_send(void* state, size_t forwarded) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->send_state;
-	bs->bytes_forwarded += forwarded;
-	bs->bytes_to_forward -= forwarded;
+	bs->user_cur += forwarded;
 	return 0;
 }
 
 int th_update_bytes_forwarded_recv(void* state, size_t forwarded) {
 	buf_state_t* bs;
 	bs = &((handler_state_t*)state)->recv_state;
-	bs->bytes_forwarded += forwarded;
-	bs->bytes_to_forward -= forwarded;
+	bs->user_cur += forwarded;
 	return 0;
 }
 
@@ -148,7 +151,29 @@ int th_get_bytes_to_read_recv(void* state) {
 }
 
 // State Machine functionality
-void update_buf_state(handler_state_t* state, buf_state_t* buf_state) {
+void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state) {
+	switch (buf_state->state) {
+		case UNKNOWN:
+			handle_state_unknown(buf_state);
+			break;
+		case RECORD_LAYER:
+			handle_state_record_layer(state, buf_state);
+			break;
+		case HANDSHAKE_LAYER:
+			handle_state_handshake_layer(state, buf_state);
+			break;
+		case CLIENT_HELLO_SENT:
+			handle_state_client_hello_sent(state, buf_state);
+			break;
+		case IRRELEVANT:
+			// Should never get here
+		default:
+			printk(KERN_ALERT "Unknown connection state!");
+			break;
+	}
+	return;
+}
+void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
 			handle_state_unknown(buf_state);
@@ -160,7 +185,7 @@ void update_buf_state(handler_state_t* state, buf_state_t* buf_state) {
 			handle_state_handshake_layer(state, buf_state);
 			break;
 		case SERVER_CERTIFICATES_SENT:
-			// Do nothing...for now
+			handle_state_certificates_sent(state, buf_state);
 			break;
 		case IRRELEVANT:
 			// Should never get here
@@ -181,6 +206,7 @@ void handle_state_unknown(buf_state_t* buf_state) {
 	else {
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
+		buf_state->user_cur_max = buf_state->buf_length;
 	}
 	return;
 }
@@ -202,6 +228,16 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	return;
 }
 
+void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_state) {
+	buf_state->user_cur_max = buf_state->buf_length;
+	return;
+}
+
+void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state) {
+	buf_state->user_cur_max = buf_state->buf_length;
+	return;
+}
+
 void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state) {
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
@@ -210,6 +246,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//print_call_info(conn_state->sock, "Sent a Client Hello");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = CLIENT_HELLO_SENT;
+		buf_state->user_cur_max = buf_state->bytes_read;
 	}
 	else if (cs_buf[0] == 0x02) { // XXX add something here to check to see if the certificate message (or part of it) is contained within this same record
 		//print_call_info(conn_state->sock, "Received a Server Hello");
@@ -225,11 +262,13 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = SERVER_CERTIFICATES_SENT;
+		buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
 		//buf_state->state = IRRELEVANT;
 	}
 	else {
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
+		buf_state->user_cur_max = buf_state->buf_length;
 		printk(KERN_ALERT "Someone sent a weird thing");
 	}
 	return;
@@ -276,7 +315,7 @@ void printbuf(char* buf, int length) {
 
 int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 	if ((bs->buf = krealloc(bs->buf, bs->buf_length + length, GFP_KERNEL)) == NULL) {
-		printk(KERN_ALERT "krealloc failed in th_send_to_proxy");
+		printk(KERN_ALERT "krealloc failed in copy_to_buf_state");
 		return -1;
 	}
 	memcpy(bs->buf + bs->buf_length, src_buf, length);

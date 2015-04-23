@@ -21,8 +21,8 @@ typedef struct buf_state_t {
 	size_t buf_length;
 	size_t bytes_read;
 	size_t bytes_to_read;
-	size_t bytes_forwarded;
-	size_t bytes_to_forward;
+	size_t user_cur;
+	size_t user_cur_max;
 	size_t last_payload_length;
 	char* buf;
 } buf_state_t;
