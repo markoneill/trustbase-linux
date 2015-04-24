@@ -36,8 +36,10 @@ typedef struct handler_state_t {
 	struct semaphore sem;
 	interest_state_t interest;
 	pid_t pid;
+	char* hostname;
 	buf_state_t recv_state;
 	buf_state_t send_state;
+	int is_attack;
 } handler_state_t;
 
 void* th_state_init(pid_t pid);

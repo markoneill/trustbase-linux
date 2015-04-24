@@ -25,6 +25,7 @@ static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* 
 static void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static void handle_certificates(handler_state_t* state, char* buf);
+static void set_state_hostname(handler_state_t* state, char* buf);
 
 // Main proxy functionality
 void* th_state_init(pid_t pid) {
@@ -33,6 +34,8 @@ void* th_state_init(pid_t pid) {
 	if (state != NULL) {
 		state->pid = pid;
 		state->interest = INTERESTED;
+		state->is_attack = 0;
+		state->hostname = NULL; // This is initialized only if we get a client hello
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
 	}
@@ -57,6 +60,9 @@ void th_state_free(void* state) {
 	}
 	if (s->recv_state.buf != NULL) {
 		kfree(s->recv_state.buf);
+	}
+	if (s->hostname != NULL) {
+		kfree(s->hostname);
 	}
 	kfree(s);
 	return;
@@ -246,6 +252,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//print_call_info(conn_state->sock, "Sent a Client Hello");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = CLIENT_HELLO_SENT;
+		set_state_hostname(state, cs_buf+1); // Plus one to ignore protocol type
 		buf_state->user_cur_max = buf_state->bytes_read;
 	}
 	else if (cs_buf[0] == 0x02) { // XXX add something here to check to see if the certificate message (or part of it) is contained within this same record
@@ -254,6 +261,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		buf_state->state = RECORD_LAYER;
 	}
 	else if (cs_buf[0] == 0x0b) { // XXX add something here to check to see if additional certificates are contained within this record?
+		//XXX this is temporary until we get send handler to parse out domain name
 		handle_certificates(state, &cs_buf[1]); // Certificates start here
 		//printk(KERN_ALERT "length is %u", handshake_message_length);
 		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
@@ -263,7 +271,6 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		buf_state->bytes_to_read = 0;
 		buf_state->state = SERVER_CERTIFICATES_SENT;
 		buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
-		//buf_state->state = IRRELEVANT;
 	}
 	else {
 		buf_state->bytes_to_read = 0;
@@ -290,8 +297,79 @@ void handle_certificates(handler_state_t* state, char* buf) {
 	bufptr += 3; // 24-bit length of certificates
 	//printk(KERN_ALERT "length of msg is %u", handshake_message_length);
 	//printk(KERN_ALERT "length of certs is %u", certificates_length);
-	printk(KERN_ALERT "sending some certificates to policy engine");
-	th_send_certificate_query(state, bufptr, certificates_length);
+	//printk(KERN_ALERT "Sending certificates to policy engine");
+	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
+	if (state->is_attack) {
+		bufptr[4] = 0; // poison certificate test
+		printk(KERN_ALERT "attack!");
+	}
+	return;
+}
+
+
+void set_state_hostname(handler_state_t* state, char* buf) {
+	char* bufptr;
+	unsigned int hello_length;
+	unsigned char major_version;
+	unsigned char minor_version;
+	unsigned char session_id_length;
+	unsigned short cipher_suite_length;
+	unsigned char compression_methods_length;
+	unsigned short extensions_length;
+	unsigned short extension_length;
+	unsigned short extension_type;
+	unsigned short list_length;
+	unsigned char type;
+	unsigned short name_length;
+	bufptr = buf;
+	hello_length = be24_to_cpu(*(__be24*)bufptr);
+	//printk(KERN_ALERT "client hello length is %u", hello_length);
+	bufptr += 3; // advance past length info
+	major_version = bufptr[0];
+	minor_version = bufptr[1];
+	//printk(KERN_ALERT "tls version %u.%u", major_version, minor_version);
+	bufptr += 2; // advance past version info
+	bufptr += 32; // skip 32-byte random
+	session_id_length = bufptr[0];
+	//printk(KERN_ALERT "session id length %u", session_id_length);
+	bufptr += 1; // advance past session id length field
+	bufptr += session_id_length; // advance past session ID
+	cipher_suite_length = be16_to_cpu(*(__be16*)bufptr);
+	bufptr += 2; // advance past cipher suite length field
+	//printk(KERN_ALERT "cipher suite length %u", cipher_suite_length);
+	bufptr += cipher_suite_length; // advance past cipher suites;
+	compression_methods_length = be16_to_cpu(*(__be16*)bufptr);
+	bufptr += 2; // advance past compression methods length field
+	bufptr += compression_methods_length; // advance past compression methods
+	extensions_length = be16_to_cpu(*(__be16*)bufptr);
+	bufptr += 2; // advance past extensions length
+	//printk(KERN_ALERT "extensions length is %u", extensions_length);
+	while (extensions_length) {
+		extension_type = be16_to_cpu(*(__be16*)bufptr);
+		bufptr += 2; // advance past type field
+		extension_length = be16_to_cpu(*(__be16*)bufptr);
+		bufptr += 2; // advance past extension length field
+		if (extension_type == 0) {
+			//printk(KERN_ALERT "We found an SNI extension!");
+			list_length = be16_to_cpu(*(__be16*)bufptr);
+			bufptr += 2; // advance past 
+			type = bufptr[0];
+			bufptr++; // advance past type field
+			name_length = be16_to_cpu(*(__be16*)bufptr);
+			bufptr += 2; // advance past name length field
+			state->hostname = kmalloc(name_length+1, GFP_KERNEL);
+			memcpy(state->hostname, bufptr, name_length);
+			state->hostname[name_length] = '\0'; // null terminate it
+			printk(KERN_ALERT "Hostname is %s", state->hostname);
+			break;
+		}
+		extensions_length -= extension_length;
+	}
+
+	// XXX change this so that hostname gets set by kernel on connect if we
+	// didn't find an SNI extension in the hello
+	if (state->hostname == NULL) {
+	}
 	return;
 }
 

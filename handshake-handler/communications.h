@@ -5,7 +5,7 @@ struct handler_state_t;
 
 int th_register_netlink(void);
 void th_unregister_netlink(void);
-int th_send_certificate_query(struct handler_state_t* state, char* certificate, size_t length);
+int th_send_certificate_query(struct handler_state_t* state, char* hostname, char* certificate, size_t length);
 //int th_get_certificate_response(void);
 
 // Attributes

@@ -68,6 +68,7 @@ int th_response(struct sk_buff* skb, struct genl_info* info) {
 	}
 	statedata = nla_get_u64(na);
 	state = (struct handler_state_t*)statedata;
+	state->is_attack = result == 1 ? 0 : 1;
 	//printk(KERN_ALERT "I received a state ptr value of %p", state);
 	//printk(KERN_ALERT "sending a wakeup up");
 	up(&state->sem);
@@ -88,7 +89,7 @@ void th_unregister_netlink() {
 	genl_unregister_family(&th_family);
 }
 
-int th_send_certificate_query(handler_state_t* state, char* certificate, size_t length) {
+int th_send_certificate_query(handler_state_t* state, char* hostname, char* certificate, size_t length) {
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
@@ -104,7 +105,7 @@ int th_send_certificate_query(handler_state_t* state, char* certificate, size_t 
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put_string(skb, TRUSTHUB_A_HOSTNAME, "hosthere");
+	rc = nla_put_string(skb, TRUSTHUB_A_HOSTNAME, hostname);
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put_string");
 		nlmsg_free(skb);
