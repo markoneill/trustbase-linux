@@ -20,8 +20,8 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
-static int handle_certchain(const unsigned char* data, size_t len);
-static int send_response(struct nl_sock* sock, uint64_t stptr, int result);
+static int handle_certchain(const unsigned char* data, size_t len, char** bufptr);
+static int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* retcert, int length);
 
 static int ntoh24(const unsigned char* data) {
 	int ret = (data[0] << 16) | (data[1] << 8) | data[2];
@@ -37,7 +37,7 @@ static void print_certificate(X509* cert) {
 	printf("issuer: %s\n", issuer);
 }
 
-int send_response(struct nl_sock* sock, uint64_t stptr, int result) {
+int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* retCert, int length) {
 	int rc;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -69,7 +69,7 @@ int send_response(struct nl_sock* sock, uint64_t stptr, int result) {
 	return 0;	
 }
 
-int handle_certchain(const unsigned char* data, size_t len) {
+int handle_certchain(const unsigned char* data, size_t len, char** bufptr) {
 	const unsigned char* start_pos;
 	const unsigned char* current_pos;
 	const unsigned char* cert_ptr;
@@ -88,6 +88,7 @@ int handle_certchain(const unsigned char* data, size_t len) {
 			fprintf(stderr,"unable to parse certificate\n");
 		}
 		print_certificate(cert);
+		
 		sk_X509_push(chain, cert);
 		current_pos += length;
 	}
@@ -102,14 +103,16 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	struct genlmsghdr* gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
 	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
 	char* hostname;
+	char* retCert;
 	int chain_length;
 	uint64_t stptr;
 	int result;
+	int ret;
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
 		case TRUSTHUB_C_QUERY:
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
-			handle_certchain(nla_data(attrs[TRUSTHUB_A_CERTCHAIN]), chain_length);
+			ret = handle_certchain(nla_data(attrs[TRUSTHUB_A_CERTCHAIN]), chain_length, &retCert);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
 			//printf("Got state pointer value of %p\n",(void*)stptr);
@@ -121,7 +124,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			else {
 				result = 1;
 			}
-			send_response(arg, stptr, result);
+			send_response(arg, stptr, result, retCert, ret);
 			break;
 		default:
 			printf("Got something unusual...\n");
