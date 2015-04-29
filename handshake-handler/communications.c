@@ -57,18 +57,28 @@ int th_response(struct sk_buff* skb, struct genl_info* info) {
 		printk(KERN_ALERT "Message info is null");
 		return -1;
 	}
-	if ((na = info->attrs[TRUSTHUB_A_RESULT]) == NULL) {
-		printk(KERN_ALERT "Can't find expected attribute");
-		return -1;
-	}
-	result = nla_get_u32(na);
 	if ((na = info->attrs[TRUSTHUB_A_STATE_PTR]) == NULL) {
-		printk(KERN_ALERT "Can't find expected attribute");
+		printk(KERN_ALERT "Can't find state pointer in response");
 		return -1;
 	}
 	statedata = nla_get_u64(na);
+	if ((na = info->attrs[TRUSTHUB_A_RESULT]) == NULL) {
+		printk(KERN_ALERT "Can't find result in response");
+		return -1;
+	}
+	result = nla_get_u32(na);
 	state = (struct handler_state_t*)statedata;
 	state->is_attack = result == 1 ? 0 : 1;
+	if (result == 0) {
+		if ((na = info->attrs[TRUSTHUB_A_CERTCHAIN]) == NULL) {
+			printk(KERN_ALERT "Can't find cert chain in response");
+			return -1;
+		}
+		state->new_cert_length = nla_len(na);
+		state->new_cert = kmalloc(state->new_cert_length, GFP_KERNEL);
+		memcpy(state->new_cert, nla_data(na), state->new_cert_length);
+		//printk(KERN_ALERT "first byte of rcert is %x",state->new_cert[0]);
+	}
 	//printk(KERN_ALERT "I received a state ptr value of %p", state);
 	//printk(KERN_ALERT "sending a wakeup up");
 	up(&state->sem);

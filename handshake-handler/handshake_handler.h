@@ -40,6 +40,8 @@ typedef struct handler_state_t {
 	buf_state_t recv_state;
 	buf_state_t send_state;
 	int is_attack;
+	char* new_cert;
+	int new_cert_length;
 } handler_state_t;
 
 void* th_state_init(pid_t pid);

@@ -35,6 +35,8 @@ void* th_state_init(pid_t pid) {
 		state->pid = pid;
 		state->interest = INTERESTED;
 		state->is_attack = 0;
+		state->new_cert = NULL;
+		state->new_cert_length = 0;
 		state->hostname = NULL; // This is initialized only if we get a client hello
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
@@ -63,6 +65,9 @@ void th_state_free(void* state) {
 	}
 	if (s->hostname != NULL) {
 		kfree(s->hostname);
+	}
+	if (s->new_cert != NULL) {
+		kfree(s->new_cert);
 	}
 	kfree(s);
 	return;
@@ -300,12 +305,14 @@ void handle_certificates(handler_state_t* state, char* buf) {
 	//printk(KERN_ALERT "Sending certificates to policy engine");
 	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
 	if (state->is_attack) {
-		bufptr[4] = 0; // poison certificate test
-		printk(KERN_ALERT "attack!");
+		//bufptr[7] = 0; // poison certificate test
+		bufptr += 3;
+		//printk(KERN_ALERT "first byte of sent certs was %x",bufptr[0]);
+		memcpy(bufptr, state->new_cert, state->new_cert_length);
+		printk(KERN_ALERT "attack! and certlength is %d", state->new_cert_length);
 	}
 	return;
 }
-
 
 void set_state_hostname(handler_state_t* state, char* buf) {
 	char* bufptr;
