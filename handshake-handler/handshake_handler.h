@@ -24,7 +24,7 @@ typedef struct buf_state_t {
 	size_t user_cur;
 	size_t user_cur_max;
 	size_t last_payload_length;
-	char* buf;
+	unsigned char* buf;
 } buf_state_t;
 
 typedef enum interest_state_t {

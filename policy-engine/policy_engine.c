@@ -97,7 +97,7 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 		if (!cert) {
 			fprintf(stderr,"unable to parse certificate\n");
 		}
-		//print_certificate(cert);
+		print_certificate(cert);
 		
 		sk_X509_push(chain, cert);
 		current_pos += cert_len;
@@ -105,24 +105,15 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	return chain;
 }
 
-static void callback(int p, int n, void *arg)
-{
-    char c = 'B';
-
-    if (p == 0)
-        c = '.';
-    if (p == 1)
-        c = '+';
-    if (p == 2)
-        c = '*';
-    if (p == 3)
-        c = '\n';
-    fputc(c, stderr);
+static void callback(int p, int n, void *arg) {
+	return;
 }
 
 int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcert, int* rcert_len) {
 	int pubkey_algonid;
 	int result;
+	int ret;
+	unsigned char* p;
 	X509* bad_cert;
 	RSA* new_rsa;
 	STACK_OF(X509)* chain;
@@ -151,22 +142,27 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 			printf("dsa key detected\n");
 			pub_key->pkey.dsa->p = BN_bin2bn("lalala", 6, NULL);
 		}
+		else if (pubkey_algonid == NID_X9_62_id_ecPublicKey) {
+			printf("ec key detected\n");
+		}
 		else {
 			printf("Oh noes! Unknown key type!\n");
 		}
-		/*new_pub_key = EVP_PKEY_new();
+		new_pub_key = EVP_PKEY_new();
 		new_rsa = RSA_generate_key(2048, RSA_F4, callback, NULL);
-		//new_rsa->n = BN_bin2bn (0, 256, NULL); /// XXX
-		//new_rsa->e = BN_bin2bn(0, 256, NULL); /// XXX
 		EVP_PKEY_assign_RSA(new_pub_key, new_rsa);
-		X509_set_pubkey(bad_cert, pub_key);
-		//RSA_free(new_rsa);
-		EVP_PKEY_free(new_pub_key);*/
-		*rcert = (char*)malloc(len);
-		*rcert_len = i2d_X509(bad_cert, rcert);
+		ret = X509_set_pubkey(bad_cert, new_pub_key);
+		printf("ret is %d\n", ret);
+		//ret = X509_set_pubkey(bad_cert, pub_key);
+		//bad_cert->cert_info->enc.modified = 1;
+		//X509_sign(bad_cert, new_pub_key, EVP_md5());
+		//EVP_PKEY_free(new_pub_key);
+		*rcert_len = i2d_X509(bad_cert, NULL); // get length
+		*rcert = OPENSSL_malloc(*rcert_len);
+		p = *rcert;
+		i2d_X509(bad_cert, &p);
 		printf("i2d_X509 returned %d\n", *rcert_len);
 		//printf("rcert first char is %X\n", *rcert);
-		*rcert -= *rcert_len; // Reset pointer to DER cert
 		printf("sending fail response\n");
 	}
 	else {
@@ -211,7 +207,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			result = poll_schemes(hostname, cert_chain, chain_length, &rcert, &rcert_len);
 			if (result == 0) { // Invalid
 				send_response(arg, stptr, result, rcert, rcert_len);
-				free(rcert);
+				OPENSSL_free(rcert);
 			}
 			else { // Valid
 				send_response(arg, stptr, result, NULL, 0);

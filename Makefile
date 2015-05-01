@@ -18,6 +18,7 @@ all:
 	gcc -o policy_engine policy-engine/policy_engine.c -I/usr/include/libnl3 -lnl-3 -lnl-genl-3 -lcrypto
 	gcc -o simple_server userspace_tests/simple_server.c
 	gcc -o simple_client userspace_tests/simple_client.c
+	gcc -o cert_test userspace_tests/cert_sandbox.c -lcrypto
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm policy_engine simple_server simple_client
+	rm policy_engine simple_server simple_client cert_test

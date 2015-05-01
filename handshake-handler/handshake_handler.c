@@ -24,7 +24,7 @@ static void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_s
 static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
-static void handle_certificates(handler_state_t* state, char* buf);
+static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
 static void set_state_hostname(handler_state_t* state, char* buf);
 
 // Main proxy functionality
@@ -245,11 +245,14 @@ void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_sta
 }
 
 void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state) {
-	buf_state->user_cur_max = buf_state->buf_length;
+	if (!state->is_attack) {
+		buf_state->user_cur_max = buf_state->buf_length;
+	}
 	return;
 }
 
 void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state) {
+	unsigned int new_bytes;
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -267,7 +270,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	}
 	else if (cs_buf[0] == 0x0b) { // XXX add something here to check to see if additional certificates are contained within this record?
 		//XXX this is temporary until we get send handler to parse out domain name
-		handle_certificates(state, &cs_buf[1]); // Certificates start here
+		new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 		//printk(KERN_ALERT "length is %u", handshake_message_length);
 		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
 		//handle_certificate
@@ -275,7 +278,13 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = SERVER_CERTIFICATES_SENT;
-		buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
+		//buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
+		if (new_bytes == 0) {
+			buf_state->user_cur_max = buf_state->buf_length;
+		}
+		else {
+			buf_state->user_cur_max += new_bytes+1; // plus one toinclude 0x0b
+		}
 	}
 	else {
 		buf_state->bytes_to_read = 0;
@@ -286,8 +295,11 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	return;
 }
 
-void handle_certificates(handler_state_t* state, char* buf) {
-	char* bufptr;
+unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
+	unsigned char* bufptr;
+	__be24 be_handshake_message_length;
+	__be24 be_certificates_length;
+	__be24 be_certificate_length;
 	unsigned int handshake_message_length;
 	unsigned int certificates_length;
 	//unsigned int cert_length;
@@ -308,10 +320,46 @@ void handle_certificates(handler_state_t* state, char* buf) {
 		//bufptr[7] = 0; // poison certificate test
 		bufptr += 3;
 		//printk(KERN_ALERT "first byte of sent certs was %x",bufptr[0]);
+		
 		memcpy(bufptr, state->new_cert, state->new_cert_length);
+		be_certificate_length = cpu_to_be24(state->new_cert_length);
+		printk(KERN_ALERT "CL BE:%02x%02x%02x LE:%06x", 
+			((unsigned char*)&be_certificate_length)[0],
+			((unsigned char*)&be_certificate_length)[1],
+			((unsigned char*)&be_certificate_length)[2],
+			state->new_cert_length
+		);
+	
+		// XXX Currently this only supports one returned cert.
+		// You should encode the length of the certificates
+		// in the state->new_cert instead
+		bufptr -= 3;
+		//memcpy(bufptr, &be_certificate_length, 3);
+		bufptr[0] = ((unsigned char*)&be_certificate_length)[0];
+		bufptr[1] = ((unsigned char*)&be_certificate_length)[1];
+		bufptr[2] = ((unsigned char*)&be_certificate_length)[2];
+
+
+		// Update length of all certificates
+		bufptr -= 3;
+		be_certificates_length = cpu_to_be24(state->new_cert_length + 3);
+		//memcpy(bufptr, &be_certificates_length, 3);
+		bufptr[0] = ((unsigned char*)&be_certificates_length)[0];
+		bufptr[1] = ((unsigned char*)&be_certificates_length)[1];
+		bufptr[2] = ((unsigned char*)&be_certificates_length)[2];
+
+		// Update handshake message length
+		bufptr -= 3;
+		be_handshake_message_length = cpu_to_be24(state->new_cert_length + 6);
+		bufptr[0] = ((unsigned char*)&be_handshake_message_length)[0];
+		bufptr[1] = ((unsigned char*)&be_handshake_message_length)[1];
+		bufptr[2] = ((unsigned char*)&be_handshake_message_length)[2];
+		//memcpy(bufptr, &be_handshake_message_length, 3);
+		
 		printk(KERN_ALERT "attack! and certlength is %d", state->new_cert_length);
+		return bufptr - buf;
 	}
-	return;
+	return 0;
 }
 
 void set_state_hostname(handler_state_t* state, char* buf) {
