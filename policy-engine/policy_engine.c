@@ -170,10 +170,10 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 			printf("Oh noes! Unknown key type!\n");
 		}
 		name = X509_get_subject_name(bad_cert);
-		X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, (unsigned char*)"US",        -1, -1, 0);
-		X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, (unsigned char*)"TrustHub",     -1, -1, 0);
-		X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char*)"TrustHub", -1, -1, 0);
-		X509_set_issuer_name(bad_cert, name);
+		//X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, (unsigned char*)"US",        -1, -1, 0);
+		//X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, (unsigned char*)"TrustHub",     -1, -1, 0);
+		//X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char*)"TrustHub", -1, -1, 0);
+		//X509_set_issuer_name(bad_cert, name);
 		
 		new_pub_key = EVP_PKEY_new();
 		new_rsa = RSA_generate_key(2048, RSA_F4, callback, NULL);
