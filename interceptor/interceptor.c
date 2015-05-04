@@ -288,7 +288,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	void __user* user_buffer;
 	sock = sk->sk_socket;
 
- 	// New way
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
@@ -336,7 +335,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 
 	// If we don't care to read any more bytes for this socket, stop now
-	if (ops->bytes_to_read_recv(conn_state->state) == 0) {
+	if (ops->get_state(conn_state->state) == 0 && ops->bytes_to_read_recv(conn_state->state) == 0) {
 		if (bytes_sent > 0) {
 			return bytes_sent;
 		}

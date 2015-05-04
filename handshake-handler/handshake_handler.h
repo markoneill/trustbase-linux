@@ -29,7 +29,7 @@ typedef struct buf_state_t {
 
 typedef enum interest_state_t {
 	INTERESTED,
-	UNINTERTED,
+	UNINTERESTED,
 } interest_state_t;
 
 typedef struct handler_state_t {

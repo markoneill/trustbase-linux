@@ -21,7 +21,7 @@ static inline int copy_to_buf_state(buf_state_t* buf_state, void* src_buf, size_
 // State machine handling
 static void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state);
 static void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state);
-static void handle_state_unknown(buf_state_t* buf_state);
+static void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state);
@@ -167,7 +167,7 @@ int th_get_bytes_to_read_recv(void* state) {
 void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
-			handle_state_unknown(buf_state);
+			handle_state_unknown(state, buf_state);
 			break;
 		case RECORD_LAYER:
 			handle_state_record_layer(state, buf_state);
@@ -189,7 +189,7 @@ void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state) {
 void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
-			handle_state_unknown(buf_state);
+			handle_state_unknown(state, buf_state);
 			break;
 		case RECORD_LAYER:
 			handle_state_record_layer(state, buf_state);
@@ -209,7 +209,7 @@ void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 	return;
 }
 
-void handle_state_unknown(buf_state_t* buf_state) {
+void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 	//buf_state->bytes_read += buf_state->bytes_to_read; // XXX this is intentionally commented out.  We shouldn't increment our read state in this one case so we can enter the record layer state and act like we've never read any part of it.  This is essentially a "peek" to support early ignoring of non-TLS connections
 	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
 		//print_call_info(conn_state->sock, "may be doing SSL");
@@ -219,6 +219,7 @@ void handle_state_unknown(buf_state_t* buf_state) {
 	else {
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
+		state->interest = UNINTERESTED;
 		buf_state->user_cur_max = buf_state->buf_length;
 	}
 	return;
@@ -280,6 +281,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//print_call_info(conn_state->sock, "Received a Certificate(s)");
 		buf_state->bytes_to_read = 0;
 		buf_state->state = SERVER_CERTIFICATES_SENT;
+		state->interest = UNINTERESTED;
 		//buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
 		if (new_bytes == 0) {
 			buf_state->user_cur_max = buf_state->buf_length;
@@ -291,6 +293,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	else {
 		buf_state->bytes_to_read = 0;
 		buf_state->state = IRRELEVANT;
+		state->interest = UNINTERESTED;
 		buf_state->user_cur_max = buf_state->buf_length;
 		printk(KERN_ALERT "Someone sent a weird thing");
 	}
@@ -346,7 +349,7 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 		//memcpy(bufptr, &be_handshake_message_length, 3);
 		
 		printk(KERN_ALERT "attack! and certlength is %d", state->new_cert_length);
-		return bufptr - buf;
+		return state->new_cert_length + 6;
 	}
 	return 0;
 }
@@ -413,6 +416,7 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 	// XXX change this so that hostname gets set by kernel on connect if we
 	// didn't find an SNI extension in the hello
 	if (state->hostname == NULL) {
+		
 	}
 	return;
 }
