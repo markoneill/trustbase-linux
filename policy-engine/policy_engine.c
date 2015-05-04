@@ -21,8 +21,18 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 };
 
 static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
-static int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcert, int* rcert_len);
-static int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* rcert, int rcert_len);
+static int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len);
+static int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* rcerts, int rcerts_len);
+
+typedef struct { unsigned char b[3]; } be24, le24;
+
+
+static void hton24(int x, unsigned char* buf) {
+	buf[0] = x >> 16 & 0xff;
+	buf[1] = x >> 8 & 0xff;
+	buf[2] = x & 0xff;
+	return;
+}
 
 static int ntoh24(const unsigned char* data) {
 	int ret = (data[0] << 16) | (data[1] << 8) | data[2];
@@ -38,7 +48,7 @@ static void print_certificate(X509* cert) {
 	printf("issuer: %s\n", issuer);
 }
 
-int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* ret_cert, int ret_length) {
+int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* ret_certs, int ret_length) {
 	int rc;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -63,7 +73,7 @@ int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* ret_ce
 		return -1;
 	}
 	if (result == 0) { // Only send back new chain if we're going to claim invalidity
-		rc = nla_put(msg, TRUSTHUB_A_CERTCHAIN, ret_length, ret_cert);
+		rc = nla_put(msg, TRUSTHUB_A_CERTCHAIN, ret_length, ret_certs);
 		if (rc != 0) {
 			printf("failed to insert return chain\n");
 			return -1;
@@ -109,7 +119,7 @@ static void callback(int p, int n, void *arg) {
 	return;
 }
 
-int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcert, int* rcert_len) {
+int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len) {
 	int pubkey_algonid;
 	int result;
 	int ret;
@@ -119,6 +129,15 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	STACK_OF(X509)* chain;
 	EVP_PKEY* pub_key;
 	EVP_PKEY* new_pub_key;
+	X509_NAME* name;
+
+	int i;
+	int ret_chain_len;
+	int* cert_lens;
+	unsigned char* ret_chain;
+	ret_chain_len = 0;
+	ret_chain = NULL;
+
 	pub_key = NULL;
 	new_pub_key = NULL;
 
@@ -131,44 +150,68 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	// Validation
 	if (strcmp(hostname,"www.google.com") == 0) {
 		result = 0;
-		bad_cert = sk_X509_value(chain, 0); // Get pointer to first cert in stack
+
+		bad_cert = sk_X509_value(chain, 0); // Get first cert
 		pub_key = X509_get_pubkey(bad_cert);
 		pubkey_algonid = OBJ_obj2nid(bad_cert->cert_info->key->algor->algorithm);
 		if (pubkey_algonid == NID_rsaEncryption) {
 			printf("rsa key detected\n");
-			pub_key->pkey.rsa->n = BN_bin2bn("lolz!", 6, NULL);
+		pub_key->pkey.rsa->n = BN_bin2bn("lolz!", 6, NULL);
 		}
 		else if (pubkey_algonid == NID_dsa) {
 			printf("dsa key detected\n");
-			pub_key->pkey.dsa->p = BN_bin2bn("lalala", 6, NULL);
+		pub_key->pkey.dsa->p = BN_bin2bn("lalala", 6, NULL);
 		}
 		else if (pubkey_algonid == NID_X9_62_id_ecPublicKey) {
 			printf("ec key detected\n");
+			//pub_key->pkey.ec->p = BN_bin2bn("lalala", 6, NULL);
 		}
 		else {
 			printf("Oh noes! Unknown key type!\n");
 		}
+		name = X509_get_subject_name(bad_cert);
+		X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, (unsigned char*)"US",        -1, -1, 0);
+		X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, (unsigned char*)"TrustHub",     -1, -1, 0);
+		X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char*)"TrustHub", -1, -1, 0);
+		X509_set_issuer_name(bad_cert, name);
+		
 		new_pub_key = EVP_PKEY_new();
 		new_rsa = RSA_generate_key(2048, RSA_F4, callback, NULL);
 		EVP_PKEY_assign_RSA(new_pub_key, new_rsa);
 		ret = X509_set_pubkey(bad_cert, new_pub_key);
-		printf("ret is %d\n", ret);
+		//printf("ret is %d\n", ret);
 		//ret = X509_set_pubkey(bad_cert, pub_key);
-		//bad_cert->cert_info->enc.modified = 1;
-		//X509_sign(bad_cert, new_pub_key, EVP_md5());
-		//EVP_PKEY_free(new_pub_key);
-		*rcert_len = i2d_X509(bad_cert, NULL); // get length
-		*rcert = OPENSSL_malloc(*rcert_len);
-		p = *rcert;
-		i2d_X509(bad_cert, &p);
-		printf("i2d_X509 returned %d\n", *rcert_len);
-		//printf("rcert first char is %X\n", *rcert);
+		bad_cert->cert_info->enc.modified = 1;
+		X509_sign(bad_cert, new_pub_key, EVP_md5());
+		EVP_PKEY_free(new_pub_key);
+		
+
+		// Calculate bytes needed to represent chain in TLS message
+		cert_lens = (int*)malloc(sizeof(int) * sk_X509_num(chain));
+		for (i = 0; i < sk_X509_num(chain); i++) {
+			bad_cert = sk_X509_value(chain, i);
+			cert_lens[i] = i2d_X509(bad_cert, NULL);
+			ret_chain_len += cert_lens[i] + 3; // +3 for length field length
+		}
+
+		// Create substitute TLS certificate message
+		ret_chain = OPENSSL_malloc(ret_chain_len);
+		p = ret_chain;
+		for (i = 0; i < sk_X509_num(chain); i++) {
+			bad_cert = sk_X509_value(chain, i);
+			hton24(cert_lens[i], p); // Assign length
+			p += 3; // Skip past length field (24 bits)
+			i2d_X509(bad_cert, &p); // Write certificate
+		}
+		*rcerts_len = ret_chain_len;
+		*rcerts = ret_chain;
+		free(cert_lens);
 		printf("sending fail response\n");
 	}
 	else {
 		result = 1;
-		*rcert = NULL;
-		*rcert_len = 0;
+		*rcerts = NULL;
+		*rcerts_len = 0;
 		printf("sending valid response\n");
 	}
 	sk_X509_pop_free(chain, X509_free);

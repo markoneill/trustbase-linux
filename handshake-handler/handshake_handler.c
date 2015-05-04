@@ -9,6 +9,8 @@
 #include "communications.h"
 #include "../util/utils.h"
 
+#define CERTIFICATE_LENGTH_FIELD_SIZE	3
+
 inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
 inline int th_buf_state_can_transition(buf_state_t* buf_state);
 static void* buf_state_init(buf_state_t* buf_state);
@@ -299,7 +301,6 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	unsigned char* bufptr;
 	__be24 be_handshake_message_length;
 	__be24 be_certificates_length;
-	__be24 be_certificate_length;
 	unsigned int handshake_message_length;
 	unsigned int certificates_length;
 	//unsigned int cert_length;
@@ -317,32 +318,20 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	//printk(KERN_ALERT "Sending certificates to policy engine");
 	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
 	if (state->is_attack) {
-		//bufptr[7] = 0; // poison certificate test
-		bufptr += 3;
-		//printk(KERN_ALERT "first byte of sent certs was %x",bufptr[0]);
-		
+
+		// Override certificate data
 		memcpy(bufptr, state->new_cert, state->new_cert_length);
-		be_certificate_length = cpu_to_be24(state->new_cert_length);
-		printk(KERN_ALERT "CL BE:%02x%02x%02x LE:%06x", 
-			((unsigned char*)&be_certificate_length)[0],
-			((unsigned char*)&be_certificate_length)[1],
-			((unsigned char*)&be_certificate_length)[2],
-			state->new_cert_length
-		);
+		//be_certificate_length = cpu_to_be24(state->new_cert_length);
+		//printk(KERN_ALERT "CL BE:%02x%02x%02x LE:%06x", 
+		//	((unsigned char*)&be_certificate_length)[0],
+		//	((unsigned char*)&be_certificate_length)[1],
+		//	((unsigned char*)&be_certificate_length)[2],
+		//	state->new_cert_length
+		//);
 	
-		// XXX Currently this only supports one returned cert.
-		// You should encode the length of the certificates
-		// in the state->new_cert instead
-		bufptr -= 3;
-		//memcpy(bufptr, &be_certificate_length, 3);
-		bufptr[0] = ((unsigned char*)&be_certificate_length)[0];
-		bufptr[1] = ((unsigned char*)&be_certificate_length)[1];
-		bufptr[2] = ((unsigned char*)&be_certificate_length)[2];
-
-
 		// Update length of all certificates
 		bufptr -= 3;
-		be_certificates_length = cpu_to_be24(state->new_cert_length + 3);
+		be_certificates_length = cpu_to_be24(state->new_cert_length);
 		//memcpy(bufptr, &be_certificates_length, 3);
 		bufptr[0] = ((unsigned char*)&be_certificates_length)[0];
 		bufptr[1] = ((unsigned char*)&be_certificates_length)[1];
@@ -350,7 +339,7 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 
 		// Update handshake message length
 		bufptr -= 3;
-		be_handshake_message_length = cpu_to_be24(state->new_cert_length + 6);
+		be_handshake_message_length = cpu_to_be24(state->new_cert_length + 3);
 		bufptr[0] = ((unsigned char*)&be_handshake_message_length)[0];
 		bufptr[1] = ((unsigned char*)&be_handshake_message_length)[1];
 		bufptr[2] = ((unsigned char*)&be_handshake_message_length)[2];
