@@ -368,6 +368,7 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 	unsigned short list_length;
 	unsigned char type;
 	unsigned short name_length;
+	char uname[] = "Unknown";
 	bufptr = buf;
 	hello_length = be24_to_cpu(*(__be24*)bufptr);
 	//printk(KERN_ALERT "client hello length is %u", hello_length);
@@ -407,7 +408,6 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 			state->hostname = kmalloc(name_length+1, GFP_KERNEL);
 			memcpy(state->hostname, bufptr, name_length);
 			state->hostname[name_length] = '\0'; // null terminate it
-			printk(KERN_ALERT "Hostname is %s", state->hostname);
 			break;
 		}
 		extensions_length -= extension_length;
@@ -416,8 +416,10 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 	// XXX change this so that hostname gets set by kernel on connect if we
 	// didn't find an SNI extension in the hello
 	if (state->hostname == NULL) {
-		
+		state->hostname = kmalloc(sizeof(uname), GFP_KERNEL);
+		memcpy(state->hostname, uname, sizeof(uname));
 	}
+	printk(KERN_ALERT "Hostname is %s", state->hostname);
 	return;
 }
 
