@@ -148,7 +148,8 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	}
 	
 	// Validation
-	if (strcmp(hostname,"www.google.com") == 0) {
+	//if (strcmp(hostname,"www.google.com") == 0) {
+	if (strcmp(hostname, "login.live.com") == 0) {
 		result = 0;
 
 		bad_cert = sk_X509_value(chain, 0); // Get first cert

@@ -11,6 +11,18 @@
 
 #define CERTIFICATE_LENGTH_FIELD_SIZE	3
 
+// Handshake type identifiers
+#define TYPE_HELLO_REQUEST		0
+#define TYPE_CLIENT_HELLO		1
+#define TYPE_SERVER_HELLO		2
+#define TYPE_CERTIFICATE		11
+#define TYPE_SERVER_KEY_EXCHANGE	12
+#define TYPE_CERTIFICATE_REQUEST	13
+#define TYPE_SERVER_HELLO_DONE		14
+#define TYPE_CERTIFICATE_VERIFY		15
+#define TYPE_CLIENT_KEY_EXCHANGE	16
+#define TYPE_FINISHED			20
+
 inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
 inline int th_buf_state_can_transition(buf_state_t* buf_state);
 static void* buf_state_init(buf_state_t* buf_state);
@@ -24,7 +36,7 @@ static void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state
 static void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_state);
-static void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state);
+static void handle_state_server_hello_done_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
 static void set_state_hostname(handler_state_t* state, char* buf);
@@ -207,8 +219,8 @@ void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 		case HANDSHAKE_LAYER:
 			handle_state_handshake_layer(state, buf_state);
 			break;
-		case SERVER_CERTIFICATES_SENT:
-			handle_state_certificates_sent(state, buf_state);
+		case SERVER_HELLO_DONE_SENT:
+			handle_state_server_hello_done_sent(state, buf_state);
 			break;
 		case IRRELEVANT:
 			// Should never get here
@@ -249,7 +261,7 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	tls_major_version = cs_buf[1];
 	tls_minor_version = cs_buf[2];
 	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
-	print_call_info("SSL version %u.%u Record size: %u", tls_major_version, tls_minor_version, tls_record_length);
+	//print_call_info("SSL version %u.%u Record size: %u", tls_major_version, tls_minor_version, tls_record_length);
 	// XXX To continue verifying that this is indeed a real SSL/TLS connection we should fail out here if its not a valid SSL/TLS version number. (it's possible that they're just happening to send the write bytes to appear like a TLS connection)
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -262,7 +274,7 @@ void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_sta
 	return;
 }
 
-void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_state) {
+void handle_state_server_hello_done_sent(handler_state_t* state, buf_state_t* buf_state) {
 	if (!state->is_attack) {
 		buf_state->user_cur_max = buf_state->buf_length;
 	}
@@ -283,7 +295,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
 		//printk(KERN_ALERT "Message length is %u", handshake_message_length);
 		tls_record_bytes -= handshake_message_length;
-		if (cs_buf[0] == 0x01) {
+		if (cs_buf[0] == TYPE_CLIENT_HELLO) {
 			//print_call_info("Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
@@ -291,13 +303,20 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->user_cur_max = buf_state->bytes_read;
 			cs_buf += handshake_message_length;
 		}
-		else if (cs_buf[0] == 0x02) {
+		else if (cs_buf[0] == TYPE_CERTIFICATE_VERIFY ||
+			 cs_buf[0] == TYPE_CLIENT_KEY_EXCHANGE) {
+			// Should never get here (should already be uninterested
+			// or in client hello sent state
+			printk(KERN_ALERT "AFDSDFFDFAF");
+			BUG_ON(1);
+		}
+		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
 			//print_call_info(conn_state->sock, "Received a Server Hello");
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			cs_buf += handshake_message_length;
 		}
-		else if (cs_buf[0] == 0x0b) { 
+		else if (cs_buf[0] == TYPE_CERTIFICATE) { 
 			// XXX check to see if additional certificates are contained within this record
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
@@ -310,27 +329,39 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			}
 			cs_buf += handshake_message_length;
 		}
-		else if (cs_buf[0] == 0x0c) {
+		else if (cs_buf[0] == TYPE_SERVER_KEY_EXCHANGE) {
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			buf_state->user_cur_max = buf_state->buf_length;
-			//printk(KERN_ALERT "Server Key Exchange Received");
+			printk(KERN_ALERT "Server Key Exchange Received");
 			cs_buf += handshake_message_length;
 		}
-		else if (cs_buf[0] == 0x0e) {	
+		else if (cs_buf[0] == TYPE_SERVER_HELLO_DONE) {	
 			buf_state->bytes_to_read = 0;
-			buf_state->state = SERVER_CERTIFICATES_SENT;
+			buf_state->state = SERVER_HELLO_DONE_SENT;
 			buf_state->user_cur_max = buf_state->buf_length;
 			state->interest = UNINTERESTED;
-			//printk(KERN_ALERT "Server Hello Done Received");
+			printk(KERN_ALERT "Server Hello Done Received");
 			cs_buf += handshake_message_length;
+		}
+		else if (cs_buf[0] == TYPE_HELLO_REQUEST || 
+			 cs_buf[0] == TYPE_CERTIFICATE_REQUEST) {
+			cs_buf += handshake_message_length;
+			buf_state->user_cur_max = buf_state->buf_length;
+			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+			buf_state->state = RECORD_LAYER;
+		}
+		else if (cs_buf[0] == TYPE_FINISHED) {
+			// Should never get here (should already be uninterested)
+			printk(KERN_ALERT "AFDSDFFDFAF");
+			BUG_ON(1);
 		}
 		else {
 			buf_state->bytes_to_read = 0;
 			buf_state->state = IRRELEVANT;
 			state->interest = UNINTERESTED;
 			buf_state->user_cur_max = buf_state->buf_length;
-			printk(KERN_ALERT "Someone sent a weird thing: %x", cs_buf[0]);
+			printk(KERN_ALERT "Someone sent a weird thing: %x", (unsigned int)cs_buf[0]);
 			cs_buf += handshake_message_length;
 			tls_record_bytes = 0; // Out
 		}
@@ -458,7 +489,7 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 		state->hostname = kmalloc(sizeof(uname), GFP_KERNEL);
 		memcpy(state->hostname, uname, sizeof(uname));
 	}
-	printk(KERN_ALERT "Hostname is %s", state->hostname);
+	//printk(KERN_ALERT "Hostname is %s", state->hostname);
 	return;
 }
 
