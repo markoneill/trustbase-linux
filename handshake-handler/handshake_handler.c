@@ -220,9 +220,14 @@ void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 }
 
 void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
-	//buf_state->bytes_read += buf_state->bytes_to_read; // XXX this is intentionally commented out.  We shouldn't increment our read state in this one case so we can enter the record layer state and act like we've never read any part of it.  This is essentially a "peek" to support early ignoring of non-TLS connections
+	// Below is is intentionally commented out.  We shouldn't increment
+	// our read state in this one case so we can enter the record layer
+	// state and act like we've never read any part of it.  This is 
+	// essentially a "peek" to support early ignoring of non-TLS 
+	// connections.
+	//buf_state->bytes_read += buf_state->bytes_to_read;
 	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-		//print_call_info(conn_state->sock, "may be doing SSL");
+		//print_call_info("May be initiating an SSL/TLS connection");
 		buf_state->state = RECORD_LAYER;
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 	}
@@ -244,7 +249,7 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	tls_major_version = cs_buf[1];
 	tls_minor_version = cs_buf[2];
 	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
-	//printk(KERN_INFO "SSL version %d.%d record size: %d", tls_major_version, tls_minor_version, tls_record_length);
+	print_call_info("SSL version %u.%u Record size: %u", tls_major_version, tls_minor_version, tls_record_length);
 	// XXX To continue verifying that this is indeed a real SSL/TLS connection we should fail out here if its not a valid SSL/TLS version number. (it's possible that they're just happening to send the write bytes to appear like a TLS connection)
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -273,10 +278,10 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	tls_record_bytes = buf_state->bytes_to_read;
 	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
-	printk(KERN_ALERT "Record length is %u", tls_record_bytes);
+	//printk(KERN_ALERT "Record length is %u", tls_record_bytes);
 	while (tls_record_bytes > 0) {
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
-		printk(KERN_ALERT "Message length is %u", handshake_message_length);
+		//printk(KERN_ALERT "Message length is %u", handshake_message_length);
 		tls_record_bytes -= handshake_message_length;
 		if (cs_buf[0] == 0x01) {
 			//print_call_info("Sent a Client Hello");
@@ -388,6 +393,7 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 }
 
 void set_state_hostname(handler_state_t* state, char* buf) {
+	// XXX clean this function up.  It was made in haste just to get the hostname
 	char* bufptr;
 	unsigned int hello_length;
 	unsigned char major_version;

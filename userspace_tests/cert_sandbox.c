@@ -2,6 +2,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/bio.h>
+#include <openssl/pem.h>
 #include <assert.h>
 
 void printCert(unsigned char* cert, size_t length);
@@ -11,7 +12,7 @@ static void callback(int p, int n, void *arg);
 int main() {
 	FILE* fp;
 	FILE* fp2;
-	X509* cert;
+	X509 *cert;
 	unsigned char* orig_cert;
 	unsigned char* mod_cert;
 	unsigned char* p;

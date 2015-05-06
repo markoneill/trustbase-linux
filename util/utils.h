@@ -25,5 +25,5 @@ typedef struct { __u8 b[3]; } __be24, __le24;
 #define cpu_to_be24	__cpu_to_be24
 #endif
 
-void print_call_info(const char* str);
+void print_call_info(const char* fmt, ...);
 #endif
