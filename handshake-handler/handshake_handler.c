@@ -266,60 +266,70 @@ void handle_state_certificates_sent(handler_state_t* state, buf_state_t* buf_sta
 
 void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state) {
 	unsigned int new_bytes;
+	unsigned int tls_record_bytes;
+	unsigned int handshake_message_length;
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
+	tls_record_bytes = buf_state->bytes_to_read;
+	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
-	if (cs_buf[0] == 0x01) {
-		//print_call_info(conn_state->sock, "Sent a Client Hello");
-		buf_state->bytes_to_read = 0;
-		buf_state->state = CLIENT_HELLO_SENT;
-		set_state_hostname(state, cs_buf+1); // Plus one to ignore protocol type
-		buf_state->user_cur_max = buf_state->bytes_read;
-	}
-	else if (cs_buf[0] == 0x02) { // XXX add something here to check to see if the certificate message (or part of it) is contained within this same record
-		//print_call_info(conn_state->sock, "Received a Server Hello");
-		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
-		buf_state->state = RECORD_LAYER;
-	}
-	else if (cs_buf[0] == 0x0b) { // XXX add something here to check to see if additional certificates are contained within this record?
-		//XXX this is temporary until we get send handler to parse out domain name
-		new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
-		//printk(KERN_ALERT "length is %u", handshake_message_length);
-		//printk(KERN_ALERT "bytes_to_read was %u", buf_state->bytes_to_read);
-		//handle_certificate
-		//buf_state->bytes_to_read
-		//print_call_info(conn_state->sock, "Received a Certificate(s)");
-		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
-		buf_state->state = RECORD_LAYER;
-		//buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
-		if (new_bytes == 0) {
+	printk(KERN_ALERT "Record length is %u", tls_record_bytes);
+	while (tls_record_bytes > 0) {
+		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
+		printk(KERN_ALERT "Message length is %u", handshake_message_length);
+		tls_record_bytes -= handshake_message_length;
+		if (cs_buf[0] == 0x01) {
+			//print_call_info("Sent a Client Hello");
+			buf_state->bytes_to_read = 0;
+			buf_state->state = CLIENT_HELLO_SENT;
+			set_state_hostname(state, cs_buf+1); // Plus one to ignore protocol type
+			buf_state->user_cur_max = buf_state->bytes_read;
+			cs_buf += handshake_message_length;
+		}
+		else if (cs_buf[0] == 0x02) {
+			//print_call_info(conn_state->sock, "Received a Server Hello");
+			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+			buf_state->state = RECORD_LAYER;
+			cs_buf += handshake_message_length;
+		}
+		else if (cs_buf[0] == 0x0b) { 
+			// XXX check to see if additional certificates are contained within this record
+			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
+			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+			buf_state->state = RECORD_LAYER;
+			if (new_bytes == 0) {
+				buf_state->user_cur_max = buf_state->buf_length;
+			}
+			else {
+				buf_state->user_cur_max += new_bytes + 1; // + 1 for 0x0b
+			}
+			cs_buf += handshake_message_length;
+		}
+		else if (cs_buf[0] == 0x0c) {
+			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+			buf_state->state = RECORD_LAYER;
 			buf_state->user_cur_max = buf_state->buf_length;
+			//printk(KERN_ALERT "Server Key Exchange Received");
+			cs_buf += handshake_message_length;
+		}
+		else if (cs_buf[0] == 0x0e) {	
+			buf_state->bytes_to_read = 0;
+			buf_state->state = SERVER_CERTIFICATES_SENT;
+			buf_state->user_cur_max = buf_state->buf_length;
+			state->interest = UNINTERESTED;
+			//printk(KERN_ALERT "Server Hello Done Received");
+			cs_buf += handshake_message_length;
 		}
 		else {
-			buf_state->user_cur_max += new_bytes+1; // plus one toinclude 0x0b
+			buf_state->bytes_to_read = 0;
+			buf_state->state = IRRELEVANT;
+			state->interest = UNINTERESTED;
+			buf_state->user_cur_max = buf_state->buf_length;
+			printk(KERN_ALERT "Someone sent a weird thing: %x", cs_buf[0]);
+			cs_buf += handshake_message_length;
+			tls_record_bytes = 0; // Out
 		}
-		
-	}
-	else if (cs_buf[0] == 0x0c) {
-		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
-		buf_state->state = RECORD_LAYER;
-		buf_state->user_cur_max = buf_state->buf_length;
-		//printk(KERN_ALERT "Server Key Exchange Received");
-	}
-	else if (cs_buf[0] == 0x0e) {	
-		buf_state->bytes_to_read = 0;
-		buf_state->state = SERVER_CERTIFICATES_SENT;
-		buf_state->user_cur_max = buf_state->buf_length;
-		state->interest = UNINTERESTED;
-		//printk(KERN_ALERT "Server Hello Done Received");
-	}
-	else {
-		buf_state->bytes_to_read = 0;
-		buf_state->state = IRRELEVANT;
-		state->interest = UNINTERESTED;
-		buf_state->user_cur_max = buf_state->buf_length;
-		printk(KERN_ALERT "Someone sent a weird thing");
-	}
+	} // End while tls_record_bytes > 0
 	return;
 }
 
