@@ -152,7 +152,7 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 		result = 0;
 
 		bad_cert = sk_X509_value(chain, 0); // Get first cert
-		pub_key = X509_get_pubkey(bad_cert);
+		/*pub_key = X509_get_pubkey(bad_cert);
 		pubkey_algonid = OBJ_obj2nid(bad_cert->cert_info->key->algor->algorithm);
 		if (pubkey_algonid == NID_rsaEncryption) {
 			printf("rsa key detected\n");
@@ -184,7 +184,7 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 		bad_cert->cert_info->enc.modified = 1;
 		X509_sign(bad_cert, new_pub_key, EVP_md5());
 		EVP_PKEY_free(new_pub_key);
-		
+		*/
 
 		// Calculate bytes needed to represent chain in TLS message
 		cert_lens = (int*)malloc(sizeof(int) * sk_X509_num(chain));

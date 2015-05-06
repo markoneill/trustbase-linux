@@ -93,20 +93,30 @@ int th_give_to_handler_recv(void* state, void* src_buf, size_t length) {
 }
 
 int th_update_state_send(void* state) {
+	handler_state_t* s;
 	buf_state_t* bs;
-	bs = &((handler_state_t*)state)->send_state;
+	s = (handler_state_t*)state;
+	bs = &s->send_state;
         while (th_buf_state_can_transition(bs)) {
                 update_buf_state_send(state, bs);
         }
+	if (s->interest == UNINTERESTED) {
+		bs->user_cur_max = bs->buf_length;
+	}
 	return 0;
 }
 
 int th_update_state_recv(void* state) {
+	handler_state_t* s;
 	buf_state_t* bs;
-	bs = &((handler_state_t*)state)->recv_state;
+	s = (handler_state_t*)state;
+	bs = &s->recv_state;
         while (th_buf_state_can_transition(bs)) {
                 update_buf_state_recv(state, bs);
         }
+	if (s->interest == UNINTERESTED) {
+		bs->user_cur_max = bs->buf_length;
+	}
 	return 0;
 }
 
@@ -279,9 +289,8 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//handle_certificate
 		//buf_state->bytes_to_read
 		//print_call_info(conn_state->sock, "Received a Certificate(s)");
-		buf_state->bytes_to_read = 0;
-		buf_state->state = SERVER_CERTIFICATES_SENT;
-		state->interest = UNINTERESTED;
+		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+		buf_state->state = RECORD_LAYER;
 		//buf_state->user_cur_max = buf_state->buf_length; // Set this to zero to block certs
 		if (new_bytes == 0) {
 			buf_state->user_cur_max = buf_state->buf_length;
@@ -289,6 +298,20 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		else {
 			buf_state->user_cur_max += new_bytes+1; // plus one toinclude 0x0b
 		}
+		
+	}
+	else if (cs_buf[0] == 0x0c) {
+		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+		buf_state->state = RECORD_LAYER;
+		buf_state->user_cur_max = buf_state->buf_length;
+		//printk(KERN_ALERT "Server Key Exchange Received");
+	}
+	else if (cs_buf[0] == 0x0e) {	
+		buf_state->bytes_to_read = 0;
+		buf_state->state = SERVER_CERTIFICATES_SENT;
+		buf_state->user_cur_max = buf_state->buf_length;
+		state->interest = UNINTERESTED;
+		//printk(KERN_ALERT "Server Hello Done Received");
 	}
 	else {
 		buf_state->bytes_to_read = 0;
