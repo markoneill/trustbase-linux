@@ -16,13 +16,13 @@ int main() {
 	unsigned char* orig_cert;
 	unsigned char* mod_cert;
 	unsigned char* p;
-	int ret;
+	//int ret;
 	size_t mod_cert_length;
 	size_t orig_cert_length;
 	EVP_PKEY* new_pub_key;
-	EVP_PKEY* orig_pub_key;
+	//EVP_PKEY* orig_pub_key;
 	RSA* new_rsa;
-	int key_size;
+	//int key_size;
 
 	char cert_path[] = "userspace_tests/www.google.com.crt";
 	char cert_path2[] = "userspace_tests/www.google.com.modded.crt";
@@ -39,7 +39,7 @@ int main() {
 		return EXIT_FAILURE;
 	}
 	
-	orig_pub_key = X509_get_pubkey(cert);
+	//orig_pub_key = X509_get_pubkey(cert);
 	orig_cert_length = i2d_X509(cert, NULL);
 	orig_cert = OPENSSL_malloc(orig_cert_length);
 	p = orig_cert;
@@ -51,7 +51,7 @@ int main() {
 	new_pub_key = EVP_PKEY_new();
 	new_rsa = RSA_generate_key(2048, RSA_F4, callback, NULL);
 	EVP_PKEY_assign_RSA(new_pub_key, new_rsa);
-	ret = X509_set_pubkey(cert, new_pub_key);
+	//ret = X509_set_pubkey(cert, new_pub_key);
 	//X509_sign(cert, new_pub_key, EVP_md5());
 	//cert->cert_info->key->public_key->length;
 	//cert->cert_info->key->public_key->data[0] = 0xFF;

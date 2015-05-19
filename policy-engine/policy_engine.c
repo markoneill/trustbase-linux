@@ -5,6 +5,9 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/bio.h>
+
+#include "configuration.h"
+#include "plugins.h"
 #include "../handshake-handler/communications.h"
 
 #define MAX_LENGTH	1024
@@ -12,6 +15,8 @@
 
 int chains_received;
 int family;
+plugin_t* plugins;
+size_t plugin_count;
 
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
@@ -20,9 +25,10 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
+static int query_plugin(int index, const char* hostname, unsigned char* certs, unsigned certs_length);
 static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
 static int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len);
-static int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* rcerts, int rcerts_len);
+static int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* rcerts, int rcerts_len);
 
 typedef struct { unsigned char b[3]; } be24, le24;
 
@@ -48,7 +54,7 @@ static void print_certificate(X509* cert) {
 	printf("issuer: %s\n", issuer);
 }
 
-int send_response(struct nl_sock* sock, uint64_t stptr, int result, char* ret_certs, int ret_length) {
+int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* ret_certs, int ret_length) {
 	int rc;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -115,21 +121,28 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	return chain;
 }
 
-static void callback(int p, int n, void *arg) {
+/*static void callback(int p, int n, void *arg) {
 	return;
+}*/
+
+
+int query_plugin(int index, const char* hostname, unsigned char* certs, unsigned certs_length) {
+	query_func_raw func;
+	func = plugins[index].query_func_raw;
+	return (*func)(hostname, certs, certs_length);
 }
 
 int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len) {
-	int pubkey_algonid;
+	//int pubkey_algonid;
 	int result;
-	int ret;
+	//int ret;
 	unsigned char* p;
 	X509* bad_cert;
-	RSA* new_rsa;
+	//RSA* new_rsa;
 	STACK_OF(X509)* chain;
-	EVP_PKEY* pub_key;
-	EVP_PKEY* new_pub_key;
-	X509_NAME* name;
+	//EVP_PKEY* pub_key;
+	//EVP_PKEY* new_pub_key;
+	//X509_NAME* name;
 
 	int i;
 	int ret_chain_len;
@@ -138,8 +151,8 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	ret_chain_len = 0;
 	ret_chain = NULL;
 
-	pub_key = NULL;
-	new_pub_key = NULL;
+	//pub_key = NULL;
+	//new_pub_key = NULL;
 
 	// Parse chain to X509 structures
 	chain = parse_chain(data, len);
@@ -149,7 +162,8 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	
 	// Validation
 	//if (strcmp(hostname,"www.google.com") == 0) {
-	if (strcmp(hostname, "login.live.com") == 0) {
+	if(query_plugin(0, hostname, data, len) == 0) {
+	//if(strcmp(hostname, "login.live.com") == 0) {
 		result = 0;
 
 		bad_cert = sk_X509_value(chain, 0); // Get first cert
@@ -225,7 +239,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	struct genlmsghdr* gnlh;
 	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
 	char* hostname;
-	char* cert_chain;
+	unsigned char* cert_chain;
 	int chain_length;
 	uint64_t stptr;
 
@@ -270,7 +284,15 @@ int recv_query(struct nl_msg *msg, void *arg) {
 
 int main() {
 	int group;
-	struct nl_sock* sock = nl_socket_alloc();
+	struct nl_sock* sock;
+	//pthread_t socket_api_thread;
+	//pthread_t user_notification_thread;
+	//pthread_create(&socket_api_thread, NULL, socket_api_listen, (void*)NULL);
+	//pthread_create(&user_notification_thread, NULL, notification_listen, (void*)NULL);
+	plugin_count = load_config(&plugins);
+	print_plugins(plugins, plugin_count);
+	//close_plugins(plugins, plugin_count);
+	sock = nl_socket_alloc();
 
 	nl_socket_disable_seq_check(sock);
 	nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, recv_query, (void*)sock);
