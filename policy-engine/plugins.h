@@ -44,5 +44,7 @@ void print_plugins(plugin_t* plugins, size_t plugin_count);
 void close_plugins(plugin_t* plugins, size_t plugin_count);
 int load_query_func_raw(const char* path, plugin_t* plugin);
 int load_query_func_openssl(const char* path, plugin_t* plugin);
+int query_openssl_plugin(plugin_t* plugin, const char* hostname, STACK_OF(X509)* certs);
+int query_raw_plugin(plugin_t* plugin, const char* hostname, unsigned char* certs, unsigned certs_length);
 
 #endif

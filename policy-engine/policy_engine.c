@@ -25,7 +25,6 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
-static int query_plugin(int index, const char* hostname, unsigned char* certs, unsigned certs_length);
 static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
 static int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len);
 static int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* rcerts, int rcerts_len);
@@ -126,11 +125,6 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 }*/
 
 
-int query_plugin(int index, const char* hostname, unsigned char* certs, unsigned certs_length) {
-	query_func_raw func;
-	func = plugins[index].query_func_raw;
-	return (*func)(hostname, certs, certs_length);
-}
 
 int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len) {
 	//int pubkey_algonid;
@@ -162,7 +156,7 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	
 	// Validation
 	//if (strcmp(hostname,"www.google.com") == 0) {
-	if(query_plugin(0, hostname, data, len) == 0) {
+	if(query_raw_plugin(&plugins[0], hostname, data, len) == 0) {
 	//if(strcmp(hostname, "login.live.com") == 0) {
 		result = 0;
 

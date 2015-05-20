@@ -3,7 +3,6 @@
 #include <dlfcn.h>
 #include "plugins.h"
 
-
 static void close_internal_plugins(plugin_t* plugins, size_t plugin_count);
 
 void print_plugins(plugin_t* plugins, size_t plugin_count) {
@@ -27,6 +26,18 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 		}
 	}
 	return;
+}
+
+int query_openssl_plugin(plugin_t* plugin, const char* hostname, STACK_OF(X509)* certs) {
+	query_func_openssl func;
+	func = plugin->query_func_openssl;
+	return (*func)(hostname, certs);
+}
+
+int query_raw_plugin(plugin_t* plugin, const char* hostname, unsigned char* certs, unsigned certs_length) {
+	query_func_raw func;
+	func = plugin->query_func_raw;
+	return (*func)(hostname, certs, certs_length);
 }
 
 void close_plugins(plugin_t* plugins, size_t plugin_count) {
