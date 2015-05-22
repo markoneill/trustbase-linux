@@ -9,11 +9,12 @@
 int create(int port);
 void handleClient(int client);
 void server_run(int serveSocket);
+void printHex(unsigned char* buffer, int length);
 int recv_comm(int socket, char* buffer, int length);
 int send_comm(int socket, char* buffer, int length);
 
 int main() {
-	int serverSocket = create(3333);
+	int serverSocket = create(8889);
 	server_run(serverSocket);
 	return 0;
 }
@@ -71,10 +72,13 @@ void server_run(int serverSocket) {
 void handleClient(int client) {
 	int bytesWanted;
 	char buffer[1024];
+	char sendbuf[] = "Hello from server";
 	bytesWanted = 4;
 	recv_comm(client, buffer, bytesWanted);
 	buffer[bytesWanted] = '\0'; // Null terminate
-	printf("Received %s\n", buffer);
+	printf("Received:\n");
+	printHex(buffer, 20);
+	send_comm(client, sendbuf, strlen(sendbuf)+1);
 	close(client);
 }
 
@@ -129,3 +133,12 @@ int send_comm(int socket, char* buffer, int length) {
 	return 0;
 }
 
+void printHex(unsigned char* buffer, int length) {
+	int i;
+	printf("\n");
+	for (i = 0; i < length; i++ ) {
+		printf("%02x", buffer[i]);
+	}
+	printf("\n");
+	return;
+}

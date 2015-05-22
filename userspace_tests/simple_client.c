@@ -13,8 +13,12 @@ int send_comm(int socket, char* buffer, int length);
 
 int main() {
 	char sendbuf[] = "testingthisthing";
-	int serverSocket = connect_to_host("localhost", 3333);
+	char recvbuf[1024];
+	int serverSocket = connect_to_host("localhost", 8888);
+	printf("Client sending: %s\n", sendbuf);
 	send_comm(serverSocket, sendbuf, 4);
+	recv_comm(serverSocket, recvbuf, 4);
+	printf("Client receiving: %s\n", recvbuf);
 	close(serverSocket);
 	return 0;
 }
