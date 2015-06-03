@@ -2,6 +2,8 @@
 #define _HANDSHAKE_HANDLER_H
 
 #include <linux/semaphore.h>
+#include <linux/in.h>
+#include <linux/in6.h>
 
 #define TH_TLS_HANDSHAKE_IDENTIFIER	0x16
 #define TH_TLS_RECORD_HEADER_SIZE		5
@@ -41,11 +43,19 @@ typedef struct handler_state_t {
 	buf_state_t recv_state;
 	buf_state_t send_state;
 	int is_attack;
+	struct socket* mitm_sock;
+	int is_asynchronous;
+	int is_ipv6;
+	union {
+		struct sockaddr_in addr_v4;
+		struct sockaddr_in6 addr_v6;
+	};
+	int addr_len;
 	char* new_cert;
 	int new_cert_length;
 } handler_state_t;
 
-void* th_state_init(pid_t pid);
+void* th_state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 void th_state_free(void* buf_state);
 int th_get_state(void* state);
 int th_give_to_handler_send(void* state, void* src_buf, size_t length);
@@ -60,5 +70,9 @@ int th_update_bytes_forwarded_send(void* state, size_t forwarded);
 int th_update_bytes_forwarded_recv(void* state, size_t forwarded);
 int th_get_bytes_to_read_send(void* state);
 int th_get_bytes_to_read_recv(void* state);
+
+// XXX may be placed elsewhere later
+int th_is_asynchronous(void* state);
+struct socket* th_get_async_sk(void* state);
 
 #endif

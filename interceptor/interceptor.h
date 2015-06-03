@@ -1,8 +1,10 @@
 #ifndef _INTERCEPTOR_H
 #define _INTERCEPTOR_H
 
+#include <linux/socket.h>
+
 typedef struct proxy_handler_ops_t {
-	void* (*state_init)(pid_t pid);
+	void* (*state_init)(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 	void (*state_free)(void* state);
 	int (*get_state)(void* state);
 	int (*give_to_handler_send)(void* state, void* src_buf, size_t length);
@@ -17,9 +19,17 @@ typedef struct proxy_handler_ops_t {
 	int (*inc_recv_bytes_forwarded)(void* state, size_t forwarded);
 	int (*bytes_to_read_send)(void* state);
 	int (*bytes_to_read_recv)(void* state);
+	// the following two functions may be placed elsewhere later
+	int (*is_asynchronous)(void* state);
+	struct socket* (*get_async_sk)(void* state);
 } proxy_handler_ops_t;
 
 int proxy_register(proxy_handler_ops_t* ops);
 int proxy_unregister(void);
 
+// These are exposed so we can make a passthrough if a handler wants to make its own
+// (hidden) connection
+extern int (*ref_tcp_v4_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+extern int (*ref_tcp_v6_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
 #endif
+

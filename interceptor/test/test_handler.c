@@ -32,7 +32,7 @@ static void* buf_state_init(buf_state_t* buf_state);
 static inline int copy_to_buf_state(buf_state_t* buf_state, void* src_buf, size_t length);
 
 // Main proxy functionality
-void* state_init(pid_t pid) {
+void* state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	print_call_info("state init");

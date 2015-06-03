@@ -4,6 +4,12 @@
 typedef struct conn_state_t {
         unsigned long key;
         pid_t pid;
+	/*struct socket* mitmsock;
+	union {
+		struct sockaddr_in addr4;
+		struct sockaddr_in6 addr6;
+	};
+	int addr_len;*/
 	struct socket* sock;
         struct hlist_node hash;
 	void* state;

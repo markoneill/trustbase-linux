@@ -1,5 +1,8 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
+#include <linux/in.h>
+#include <linux/in6.h>
+#include <linux/socket.h>
 #include <linux/byteorder/generic.h>
 #include <asm/byteorder.h>
 #include <asm/uaccess.h>
@@ -8,7 +11,7 @@
 #include "handshake_handler.h"
 #include "communications.h"
 #include "../util/utils.h"
-
+#include "../interceptor/interceptor.h"
 #define CERTIFICATE_LENGTH_FIELD_SIZE	3
 
 // Handshake type identifiers
@@ -41,8 +44,13 @@ static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* bu
 static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
 static void set_state_hostname(handler_state_t* state, char* buf);
 
+// SSL Proxy Setup
+static void setup_ssl_proxy(handler_state_t* state);
+int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t length);
+
+
 // Main proxy functionality
-void* th_state_init(pid_t pid) {
+void* th_state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
@@ -52,6 +60,16 @@ void* th_state_init(pid_t pid) {
 		state->new_cert = NULL;
 		state->new_cert_length = 0;
 		state->hostname = NULL; // This is initialized only if we get a client hello
+		if (is_ipv6) {
+			state->addr_v6 = *((struct sockaddr_in6 *)uaddr);
+		}
+		else {
+			state->addr_v4 = *((struct sockaddr_in*)uaddr);
+		}
+		state->is_ipv6 = is_ipv6;
+		state->addr_len = addr_len;
+		state->mitm_sock = NULL;
+		state->is_asynchronous = 0; // Default to synchronous
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
 	}
@@ -285,6 +303,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	unsigned int new_bytes;
 	unsigned int tls_record_bytes;
 	unsigned int handshake_message_length;
+	bool need_to_proxy;
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	tls_record_bytes = buf_state->bytes_to_read;
@@ -324,8 +343,15 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			if (new_bytes == 0) {
 				buf_state->user_cur_max = buf_state->buf_length;
 			}
-			else {
+			else { // this should probably be deprecated now
 				buf_state->user_cur_max += new_bytes + 1; // + 1 for 0x0b
+			}
+			need_to_proxy = true; // static for now, for testing purposes
+			if (need_to_proxy) {
+				setup_ssl_proxy(state);
+				buf_state->user_cur_max = 0; // don't forward jack squat if we need to mitm
+				buf_state->bytes_to_read = 0;
+				return; // break out early, we no longer care about anything here
 			}
 			cs_buf += handshake_message_length;
 		}
@@ -521,3 +547,75 @@ int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 	bs->last_payload_length = length;
 	return 0;
 }
+
+
+// The following functions will probably be moved later
+int th_is_asynchronous(void* state) {
+	handler_state_t* s = (handler_state_t*)state;
+	return s->is_asynchronous;
+}
+
+struct socket* th_get_async_sk(void* state) {
+	handler_state_t* s = (handler_state_t*)state;
+	if (s->mitm_sock != NULL) {
+		return s->mitm_sock;
+	}
+	return NULL;
+}
+
+void setup_ssl_proxy(handler_state_t* state) {
+	int error;
+	state->is_asynchronous = 1;
+	//state->recv_state.user_cur_max = 0;
+	//kfree(state->recv_state.buf); // Clear recv buf, we no longer care
+	//state->recv_state.buf = NULL;
+	// XXX Disconnect socket here?
+	// XXX where do you shut down the new socket?
+	
+	if (state->is_ipv6) {
+		error = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+		if (error < 0) {
+			printk(KERN_ALERT "Error during creation of new socket");
+			return;
+		}
+		ref_tcp_v6_connect(state->mitm_sock->sk, (struct sockaddr*)&state->addr_v6, state->addr_len);
+	}
+	else {
+		error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+		if (error < 0) {
+			printk(KERN_ALERT "Error during creation of new socket");
+			return;
+		}
+		ref_tcp_v4_connect(state->mitm_sock->sk, (struct sockaddr*)&state->addr_v4, state->addr_len);
+	}
+
+	printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
+	error = kernel_tcp_send_buffer(state->mitm_sock, state->send_state.buf, state->send_state.buf_length);
+
+	printk(KERN_ALERT "%d", error);
+	// XXX free up synchronous handler memory here
+	return;
+}
+
+int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t length) {
+	struct msghdr	msg;
+	mm_segment_t	oldfs;
+	struct iovec	iov;
+	int 		len;
+	
+	msg.msg_name     = 0;
+	msg.msg_namelen  = 0;
+	msg.msg_iov	 = &iov;
+	msg.msg_iovlen   = 1;
+	msg.msg_control  = NULL;
+	msg.msg_controllen = 0;
+	msg.msg_flags    = MSG_NOSIGNAL;
+	msg.msg_iov->iov_len = (__kernel_size_t)length;
+	msg.msg_iov->iov_base = (char*) buffer;
+	
+	oldfs = get_fs(); set_fs(KERNEL_DS);
+	len = sock_sendmsg(sock, &msg, length);
+	set_fs(oldfs);
+	return len;	
+}
+

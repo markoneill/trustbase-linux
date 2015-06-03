@@ -10,6 +10,7 @@
 #include <linux/slab.h> // For memory allocation
 #include <linux/tcp.h> // For TCP structures
 
+#include "../util/utils.h"
 #include "interceptor.h"
 #include "connection_state.h" // For accessing handler functions
 
@@ -34,7 +35,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
 
 // Helpers
-static conn_state_t* start_conn_state(pid_t pid, struct socket* sock);
+static conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
 static int stop_conn_state(conn_state_t* conn_state);
 
 // Global ops registration
@@ -98,11 +99,13 @@ int proxy_unregister(void) {
 }
 
 
-conn_state_t* start_conn_state(pid_t pid, struct socket* sock) {
+conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock) {
 	conn_state_t* ret;
 	ret = conn_state_create(pid, sock);
 	if (ret != NULL) {
-		ret->state = ops->state_init(ret->pid);
+		ret->state = ops->state_init(ret->pid, uaddr, is_ipv6, addr_len);
+		//ret->addr4 = *(struct sockaddr_in *)uaddr;
+		//ret->addr_len = addr_len;
 	}
 	return ret;
 }
@@ -119,8 +122,8 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv4 connection detected");
-	//print_call_info(sock, "TCP IPv4 connect");
-	start_conn_state(current->pid, sock);
+	print_call_info("TCP IPv4 connect");
+	start_conn_state(current->pid, uaddr, 0, addr_len, sock);
 	return ret;
 }
 
@@ -131,7 +134,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv6 connection detected");
 	//print_call_info(sock, "TCP IPv6 connect");
-	start_conn_state(current->pid, sock);
+	start_conn_state(current->pid, uaddr, 1, addr_len, sock);
 	return ret;
 }
 
@@ -168,6 +171,24 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
+
+	// XXX Maybe this should be refactored, but this makes sense for now
+	if (ops->is_asynchronous(conn_state->state)) {
+		//printk(KERN_INFO "ASYNCHRONOUS SEND");
+		kmsg = *msg;
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		//real_ret = ref_tcp_sendmsg(iocb, ops->get_async_sk(conn_state->state), &kmsg, size);
+		//real_ret = sock_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, size);
+		real_ret = kernel_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, (struct kvec*)&kmsg.msg_iov, 1, size);
+		if (real_ret > 0) {
+			//printk(KERN_INFO "ASYNCHRONOUS SEND sent something: %d", real_ret);
+		}
+		set_fs(oldfs);
+		return real_ret;
+	}
+
+	/* Begin synchronous handling */
 
 	// Copy attributes of existing message into our custom one
 	kmsg = *msg;
@@ -291,6 +312,50 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		return ret;
+	}
+
+	// XXX Maybe this should be refactored, but this makes sense for now
+	if (ops->is_asynchronous(conn_state->state)) {
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+		user_buffer = (void __user*)msg->msg_iter.iov->iov_base;
+		#else
+		user_buffer = (void __user *)msg->msg_iov->iov_base;
+		#endif
+		kmsg = *msg;
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+		kmsg.msg_iter.iov = &iov;
+		#else
+		kmsg.msg_iov = &iov;
+		#endif
+	        buffer = kmalloc(len, GFP_KERNEL);
+		iov.iov_len = len;
+		iov.iov_base = buffer;
+
+		ret = kernel_recvmsg(ops->get_async_sk(conn_state->state), &kmsg, (struct kvec*)&iov, 1, len, flags);
+		if (ret == 0 && nonblock) {
+			return -EAGAIN;
+		}
+
+		/*oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		//ret = ref_tcp_recvmsg(iocb, ops->get_async_sk(conn_state->state), &kmsg, iov.iov_len, nonblock, flags, addr_len);
+		ret = sock_recvmsg(ops->get_async_sk(conn_state->state)->sk_socket, &kmsg, iov.iov_len, nonblock);
+		//printk(KERN_ALERT "real ret is %d", ret);
+		set_fs(oldfs);*/
+		if (ret > 0) {
+			copy_to_user(user_buffer, buffer, ret);
+			//printk(KERN_INFO "ASYNCHRONOUS RECV got something: %x", ((unsigned char*)msg->msg_iov->iov_base)[0]);
+		}
+		kfree(buffer);
+		/*
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		ret = ref_tcp_recvmsg(iocb, ops->get_async_sk(conn_state->state), msg, len, nonblock, flags, addr_len);
+		if (ret > 0) {
+			printk(KERN_INFO "ASYNCHRONOUS RECV got something: %x", ((unsigned char*)msg->msg_iov->iov_base)[0]);
+		}
+		set_fs(oldfs);*/
 		return ret;
 	}
 

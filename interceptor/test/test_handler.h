@@ -1,7 +1,9 @@
 #ifndef _TEST_HANDLER_H
 #define _TEST_HANDLER_H
 
-void* state_init(pid_t pid);
+#include <linux/socket.h>
+
+void* state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 void state_free(void* buf_state);
 int get_state(void* state);
 int give_to_handler_send(void* state, void* src_buf, size_t length);
