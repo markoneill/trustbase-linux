@@ -1,8 +1,11 @@
 #include <linux/slab.h>
 #include <asm/uaccess.h>
+#include <linux/in.h>
+#include <linux/in6.h>
 
 #include "test_handler.h"
 #include "../../util/utils.h"
+#include "../interceptor.h"
 
 
 typedef struct buf_state_t {
@@ -18,6 +21,14 @@ typedef struct buf_state_t {
 
 typedef struct handler_state_t {
 	int interest;
+	struct socket* mitm_sock;
+	struct socket* orig_sock;
+	union {
+		struct sockaddr_in addr_v4;
+		struct sockaddr_in6 addr_v6;
+	};
+	int addr_len;
+	int is_ipv6;
 	pid_t pid;
 	buf_state_t recv_state;
 	buf_state_t send_state;
@@ -31,8 +42,9 @@ static void* buf_state_init(buf_state_t* buf_state);
 // Interception helpers
 static inline int copy_to_buf_state(buf_state_t* buf_state, void* src_buf, size_t length);
 
+void setup_proxy(handler_state_t* state);
 // Main proxy functionality
-void* state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
+void* state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	print_call_info("state init");
@@ -42,6 +54,18 @@ void* state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
 	}
+	if (is_ipv6) {
+		state->addr_v6 = *((struct sockaddr_in6 *)uaddr);
+	}
+	else {
+		state->addr_v4 = *((struct sockaddr_in*)uaddr);
+	}
+	state->is_ipv6 = is_ipv6;
+	state->addr_len = addr_len;
+	state->orig_sock = sock;
+	state->mitm_sock = NULL;
+	setup_proxy(state);
+	printk(KERN_INFO "Proxy set up");
 	return state;
 }
 
@@ -199,6 +223,43 @@ void replace_bytes(buf_state_t* bs, char c, char r) {
 		if (bs->buf[i] == c) {
 			bs->buf[i] = r;
 		}
+	}
+	return;
+}
+
+int is_asynchronous(void* state) {
+	return 1; // for testing, just make it static
+}
+
+struct socket* get_async_sk(void* state) {
+	handler_state_t* s = (handler_state_t*)state;
+	if (s->mitm_sock != NULL) {
+		return s->mitm_sock;
+	}
+	return NULL;
+}
+
+void setup_proxy(handler_state_t* state) {
+	//int error;
+	ref_tcp_disconnect(state->orig_sock->sk, 0);
+	if (state->is_ipv6) {
+		/*error = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+		if (error < 0) {
+			printk(KERN_ALERT "Error during creation of new socket");
+			return;
+		}*/
+		ref_tcp_v6_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v6, state->addr_len);
+	}
+	else {
+		/*error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+		if (error < 0) {
+			printk(KERN_ALERT "Error during creation of new socket");
+			return;
+		}*/
+		printk(KERN_INFO "Port was %u", state->addr_v4.sin_port);
+		state->addr_v4.sin_port = cpu_to_be16(8889);
+		printk(KERN_INFO "Port is now %u", state->addr_v4.sin_port);
+		ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v4, state->addr_len);
 	}
 	return;
 }

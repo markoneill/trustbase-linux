@@ -50,7 +50,7 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 
 
 // Main proxy functionality
-void* th_state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
+void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
@@ -69,10 +69,12 @@ void* th_state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len
 		state->is_ipv6 = is_ipv6;
 		state->addr_len = addr_len;
 		state->mitm_sock = NULL;
+		state->orig_sock = sock;
 		state->is_asynchronous = 0; // Default to synchronous
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
 	}
+	//setup_ssl_proxy(state); // XXX test
 	return state;
 }
 
@@ -566,34 +568,31 @@ struct socket* th_get_async_sk(void* state) {
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
 	state->is_asynchronous = 1;
-	//state->recv_state.user_cur_max = 0;
 	//kfree(state->recv_state.buf); // Clear recv buf, we no longer care
 	//state->recv_state.buf = NULL;
-	// XXX Disconnect socket here?
-	// XXX where do you shut down the new socket?
 	
+	ref_tcp_disconnect(state->orig_sock->sk, 0);
 	if (state->is_ipv6) {
-		error = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+		/*error = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
 		if (error < 0) {
 			printk(KERN_ALERT "Error during creation of new socket");
 			return;
-		}
-		ref_tcp_v6_connect(state->mitm_sock->sk, (struct sockaddr*)&state->addr_v6, state->addr_len);
+		}*/
+		ref_tcp_v6_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v6, state->addr_len);
 	}
 	else {
-		error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+		/*error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
 		if (error < 0) {
 			printk(KERN_ALERT "Error during creation of new socket");
 			return;
-		}
-		ref_tcp_v4_connect(state->mitm_sock->sk, (struct sockaddr*)&state->addr_v4, state->addr_len);
+		}*/
+		ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v4, state->addr_len);
 	}
 
 	printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
-	error = kernel_tcp_send_buffer(state->mitm_sock, state->send_state.buf, state->send_state.buf_length);
+	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
 
 	printk(KERN_ALERT "%d", error);
-	// XXX free up synchronous handler memory here
 	return;
 }
 
@@ -616,6 +615,6 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 	oldfs = get_fs(); set_fs(KERNEL_DS);
 	len = sock_sendmsg(sock, &msg, length);
 	set_fs(oldfs);
-	return len;	
+	return len;
 }
 

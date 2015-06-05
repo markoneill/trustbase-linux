@@ -103,9 +103,7 @@ conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, i
 	conn_state_t* ret;
 	ret = conn_state_create(pid, sock);
 	if (ret != NULL) {
-		ret->state = ops->state_init(ret->pid, uaddr, is_ipv6, addr_len);
-		//ret->addr4 = *(struct sockaddr_in *)uaddr;
-		//ret->addr_len = addr_len;
+		ret->state = ops->state_init(ret->pid, sock, uaddr, is_ipv6, addr_len);
 	}
 	return ret;
 }
@@ -165,6 +163,10 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	struct msghdr kmsg;
 	void* new_data;
 	mm_segment_t oldfs;
+
+	unsigned char* kernel_buffer;
+	struct kvec kiov;
+
 	sock = sk->sk_socket;
 
 	// Adopt default kernel behavior if we're not monitoring this connection
@@ -174,17 +176,27 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Maybe this should be refactored, but this makes sense for now
 	if (ops->is_asynchronous(conn_state->state)) {
+		return ref_tcp_sendmsg(iocb, sk, msg, size);
 		//printk(KERN_INFO "ASYNCHRONOUS SEND");
+		kernel_buffer = (unsigned char*)kmalloc(size, GFP_KERNEL);
 		kmsg = *msg;
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
+		kiov.iov_len = size;
+		kiov.iov_base = (void*)kernel_buffer;
+		if (copy_from_user(kernel_buffer, msg->msg_iov->iov_base, size) != 0) {
+			printk(KERN_ALERT "Copy from userspace failed");
+		}
+		//oldfs = get_fs();
+		//set_fs(KERNEL_DS);
 		//real_ret = ref_tcp_sendmsg(iocb, ops->get_async_sk(conn_state->state), &kmsg, size);
 		//real_ret = sock_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, size);
-		real_ret = kernel_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, (struct kvec*)&kmsg.msg_iov, 1, size);
+		//
+		printk(KERN_INFO "Calling kernel_sendmsg");
+		real_ret = kernel_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, &kiov, 1, size);
 		if (real_ret > 0) {
-			//printk(KERN_INFO "ASYNCHRONOUS SEND sent something: %d", real_ret);
+			printk(KERN_INFO "ASYNCHRONOUS SEND sent something: %d", real_ret);
 		}
-		set_fs(oldfs);
+		//set_fs(oldfs);*/
+		kfree(kernel_buffer);
 		return real_ret;
 	}
 
@@ -307,35 +319,42 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	int b_to_forward;
 	int b_to_read;
 	void __user* user_buffer;
+	struct kvec kiov;
 	sock = sk->sk_socket;
+
 
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		printk(KERN_INFO " A connection was found to not be tracked, and was ignored");
 		return ret;
 	}
-
 	// XXX Maybe this should be refactored, but this makes sense for now
 	if (ops->is_asynchronous(conn_state->state)) {
+		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 		user_buffer = (void __user*)msg->msg_iter.iov->iov_base;
 		#else
 		user_buffer = (void __user *)msg->msg_iov->iov_base;
 		#endif
-		kmsg = *msg;
+		//kmsg = *msg;
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 		kmsg.msg_iter.iov = &iov;
 		#else
 		kmsg.msg_iov = &iov;
 		#endif
 	        buffer = kmalloc(len, GFP_KERNEL);
-		iov.iov_len = len;
-		iov.iov_base = buffer;
+		kiov.iov_len = len;
+		kiov.iov_base = buffer;
 
-		ret = kernel_recvmsg(ops->get_async_sk(conn_state->state), &kmsg, (struct kvec*)&iov, 1, len, flags);
-		if (ret == 0 && nonblock) {
-			return -EAGAIN;
-		}
+		//if (nonblock) flags |= MSG_DONTWAIT;
+		printk(KERN_ALERT "entering kernel_recvmsg");
+		ret = kernel_recvmsg(ops->get_async_sk(conn_state->state), &kmsg, &kiov, 1, len, MSG_DONTWAIT);
+
+		printk(KERN_ALERT "kernel_recvmsg returned %d", ret);
+		//if (ret == 0 && nonblock) {
+		//	return -EAGAIN;
+		//}
 
 		/*oldfs = get_fs();
 		set_fs(KERNEL_DS);
@@ -344,7 +363,9 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		//printk(KERN_ALERT "real ret is %d", ret);
 		set_fs(oldfs);*/
 		if (ret > 0) {
-			copy_to_user(user_buffer, buffer, ret);
+			if (copy_to_user(user_buffer, buffer, ret) != 0) {
+				printk(KERN_ALERT "Copy to userspace failed");
+			}
 			//printk(KERN_INFO "ASYNCHRONOUS RECV got something: %x", ((unsigned char*)msg->msg_iov->iov_base)[0]);
 		}
 		kfree(buffer);

@@ -10,11 +10,11 @@ int create(int port);
 void handleClient(int client);
 void server_run(int serveSocket);
 void printHex(unsigned char* buffer, int length);
-int recv_comm(int socket, char* buffer, int length);
-int send_comm(int socket, char* buffer, int length);
+int recv_comm(int socket, unsigned char* buffer, int length);
+int send_comm(int socket, unsigned char* buffer, int length);
 
-int main() {
-	int serverSocket = create(8889);
+int main(int argc, char* argv[]) {
+	int serverSocket = create(atoi(argv[1]));
 	server_run(serverSocket);
 	return 0;
 }
@@ -71,25 +71,26 @@ void server_run(int serverSocket) {
 
 void handleClient(int client) {
 	int bytesWanted;
-	char buffer[1024];
-	char sendbuf[] = "Hello from server";
+	unsigned char buffer[1024];
+	unsigned char sendbuf[] = "Hello from server";
 	bytesWanted = 4;
 	recv_comm(client, buffer, bytesWanted);
 	buffer[bytesWanted] = '\0'; // Null terminate
 	printf("Received:\n");
 	printHex(buffer, 20);
-	send_comm(client, sendbuf, strlen(sendbuf)+1);
+	send_comm(client, sendbuf, strlen((char*)sendbuf)+1);
 	close(client);
 }
 
-int recv_comm(int socket, char* buffer, int length) {
-	char* ptr;
+int recv_comm(int socket, unsigned char* buffer, int length) {
+	unsigned char* ptr;
 	int bytesLeft;
 	int bytesRead;
 	ptr = buffer;
 	bytesLeft = length;
 	while (bytesLeft) {
 		bytesRead = recv(socket, ptr, bytesLeft, 0);
+		printf("I read %d bytes that time\n", bytesRead);
 		if (bytesRead < 0) {
 			if (errno == EINTR) {
 				continue; // continue upon interrupt
@@ -107,8 +108,8 @@ int recv_comm(int socket, char* buffer, int length) {
 	return 0;
 }
 
-int send_comm(int socket, char* buffer, int length) {
-	char* ptr;
+int send_comm(int socket, unsigned char* buffer, int length) {
+	unsigned char* ptr;
 	int bytesLeft;
 	int bytesSent;
 	ptr = buffer;

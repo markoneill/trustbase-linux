@@ -44,6 +44,7 @@ typedef struct handler_state_t {
 	buf_state_t send_state;
 	int is_attack;
 	struct socket* mitm_sock;
+	struct socket* orig_sock;
 	int is_asynchronous;
 	int is_ipv6;
 	union {
@@ -55,7 +56,7 @@ typedef struct handler_state_t {
 	int new_cert_length;
 } handler_state_t;
 
-void* th_state_init(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len);
+void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 void th_state_free(void* buf_state);
 int th_get_state(void* state);
 int th_give_to_handler_send(void* state, void* src_buf, size_t length);

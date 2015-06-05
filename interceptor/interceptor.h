@@ -2,9 +2,10 @@
 #define _INTERCEPTOR_H
 
 #include <linux/socket.h>
+#include <net/sock.h>
 
 typedef struct proxy_handler_ops_t {
-	void* (*state_init)(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len);
+	void* (*state_init)(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 	void (*state_free)(void* state);
 	int (*get_state)(void* state);
 	int (*give_to_handler_send)(void* state, void* src_buf, size_t length);
@@ -31,5 +32,7 @@ int proxy_unregister(void);
 // (hidden) connection
 extern int (*ref_tcp_v4_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
 extern int (*ref_tcp_v6_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
+extern void (*ref_tcp_close)(struct sock *sk, long timeout);
+extern int (*ref_tcp_disconnect)(struct sock *sk, int flags);
 #endif
 

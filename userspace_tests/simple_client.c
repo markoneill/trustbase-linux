@@ -17,7 +17,8 @@ int main() {
 	int serverSocket = connect_to_host("localhost", 8888);
 	printf("Client sending: %s\n", sendbuf);
 	send_comm(serverSocket, sendbuf, 4);
-	recv_comm(serverSocket, recvbuf, 4);
+	printf("Sent\n");
+	recv_comm(serverSocket, recvbuf, 10);
 	printf("Client receiving: %s\n", recvbuf);
 	close(serverSocket);
 	return 0;
