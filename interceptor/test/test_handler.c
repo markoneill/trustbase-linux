@@ -241,6 +241,11 @@ struct socket* get_async_sk(void* state) {
 
 void setup_proxy(handler_state_t* state) {
 	//int error;
+	struct sockaddr_in proxy_addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(8889),
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
 	if (state->is_ipv6) {
 		/*error = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
@@ -256,10 +261,11 @@ void setup_proxy(handler_state_t* state) {
 			printk(KERN_ALERT "Error during creation of new socket");
 			return;
 		}*/
-		printk(KERN_INFO "Port was %u", state->addr_v4.sin_port);
-		state->addr_v4.sin_port = cpu_to_be16(8889);
-		printk(KERN_INFO "Port is now %u", state->addr_v4.sin_port);
-		ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v4, state->addr_len);
+		printk(KERN_INFO "Address was %08x", state->addr_v4.sin_addr.s_addr);
+		printk(KERN_INFO "Port was %u", be16_to_cpu(state->addr_v4.sin_port));
+		printk(KERN_INFO "Port is now %u", be16_to_cpu(proxy_addr.sin_port));
+		printk(KERN_INFO "Address is now %08x", proxy_addr.sin_addr.s_addr);
+		ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
 	}
 	return;
 }

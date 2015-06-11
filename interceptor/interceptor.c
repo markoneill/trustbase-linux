@@ -327,6 +327,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 		printk(KERN_INFO " A connection was found to not be tracked, and was ignored");
+		print_call_info("this stuff");
 		return ret;
 	}
 	// XXX Maybe this should be refactored, but this makes sense for now

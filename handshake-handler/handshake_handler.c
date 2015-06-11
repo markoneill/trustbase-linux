@@ -567,28 +567,18 @@ struct socket* th_get_async_sk(void* state) {
 
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
+	struct sockaddr_in proxy_addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(8888),
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
 	state->is_asynchronous = 1;
-	//kfree(state->recv_state.buf); // Clear recv buf, we no longer care
-	//state->recv_state.buf = NULL;
 	
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
-	if (state->is_ipv6) {
-		/*error = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
-		if (error < 0) {
-			printk(KERN_ALERT "Error during creation of new socket");
-			return;
-		}*/
-		ref_tcp_v6_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v6, state->addr_len);
-	}
-	else {
-		/*error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
-		if (error < 0) {
-			printk(KERN_ALERT "Error during creation of new socket");
-			return;
-		}*/
-		ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&state->addr_v4, state->addr_len);
-	}
+	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
 
+	//printk(KERN_INFO "Sending proxy meta information");
+	//error = kernel_tcp_send_buffer(state->orig_sock, );
 	printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
 

@@ -7,6 +7,9 @@
 
 // TrustHub interception operations
 proxy_handler_ops_t trusthub_ops;
+// Userspace daemon pointers
+struct task_struct* mitm_proxy_task;
+struct task_struct* policy_engine_task;
 
 static int __init loader_start(void);
 static void __exit loader_end(void);
@@ -14,6 +17,14 @@ static void __exit loader_end(void);
 module_init(loader_start);
 module_exit(loader_end);
 MODULE_LICENSE("GPL");
+
+int start_policy_engine(char* path);
+int start_mitm_proxy(char* path);
+int policy_engine_init(struct subprocess_info *info, struct cred *new);
+int mitm_proxy_init(struct subprocess_info *info, struct cred *new);
+int alt_call_usermodehelper(char *path, char **argv, char **envp, int wait, 
+		int (*init)(struct subprocess_info *info, struct cred *new));
+void stop_task(struct task_struct* task);
 
 int __init loader_start(void) {
 	// Set up IPC module-policyengine interaction
@@ -41,8 +52,10 @@ int __init loader_start(void) {
 		.is_asynchronous = th_is_asynchronous,
 		.get_async_sk = th_get_async_sk,
 	};
-
+	
 	proxy_register(&trusthub_ops);
+	start_mitm_proxy("/home/Phoenix_1/tlsproxy/proxy");
+	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
 
 	return 0;
 }
@@ -51,6 +64,50 @@ void __exit loader_end(void) {
 	proxy_unregister();
 	// Unregister the IPC 
 	th_unregister_netlink();
+
+	stop_task(mitm_proxy_task);
 	return;
+}
+
+void stop_task(struct task_struct* task) {
+	struct siginfo sinfo;
+	memset(&sinfo, 0, sizeof(struct siginfo));
+	sinfo.si_signo = SIGTERM;
+	sinfo.si_code = SI_KERNEL;
+	send_sig_info(SIGTERM, &sinfo, task);
+	return;
+}
+
+int start_policy_engine(char* path) {
+	char* argv[] = {path, NULL};
+	alt_call_usermodehelper(path, argv, NULL, UMH_WAIT_EXEC, policy_engine_init);
+	return 0;
+}
+
+int start_mitm_proxy(char* path) {
+	char* argv[] = {path, NULL};
+	alt_call_usermodehelper(path, argv, NULL, UMH_WAIT_EXEC, mitm_proxy_init);
+	return 0;
+}
+
+int mitm_proxy_init(struct subprocess_info *info, struct cred *new) {
+	mitm_proxy_task = current;
+	return 0;
+}
+
+int policy_engine_init(struct subprocess_info *info, struct cred *new) {
+	policy_engine_task = current;
+	return 0;
+}
+
+int alt_call_usermodehelper(char *path, char **argv, char **envp, int wait, 
+		int (*init)(struct subprocess_info *info, struct cred *new)) {
+	struct subprocess_info *info;
+	gfp_t gfp_mask = (wait == UMH_NO_WAIT) ? GFP_ATOMIC : GFP_KERNEL;
+        info = call_usermodehelper_setup(path, argv, envp, gfp_mask, init, NULL, NULL);
+	if (info == NULL) {
+		return -ENOMEM;
+	}
+	return call_usermodehelper_exec(info, wait);
 }
 
