@@ -46,6 +46,7 @@ static unsigned int handle_certificates(handler_state_t* state, unsigned char* b
 static void set_state_hostname(handler_state_t* state, char* buf);
 
 // SSL Proxy Setup
+void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned int certificates_length);
 static void setup_ssl_proxy(handler_state_t* state);
 int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t length);
 
@@ -56,7 +57,7 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 
 	// Let policy engine and proxy daemon operate without handler
 	if (pid == mitm_proxy_task->pid) {
-		printk(KERN_INFO "Detected a connection from the tls proxy");
+		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
 
@@ -313,7 +314,6 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	unsigned int new_bytes;
 	unsigned int tls_record_bytes;
 	unsigned int handshake_message_length;
-	bool need_to_proxy;
 	char* cs_buf;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	tls_record_bytes = buf_state->bytes_to_read;
@@ -336,8 +336,8 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			 cs_buf[0] == TYPE_CLIENT_KEY_EXCHANGE) {
 			// Should never get here (should already be uninterested
 			// or in client hello sent state
-			printk(KERN_ALERT "AFDSDFFDFAF");
-			BUG_ON(1);
+			printk(KERN_ALERT "Received a certificate verify or client key exchange");
+			//BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
 			//print_call_info(conn_state->sock, "Received a Server Hello");
@@ -350,18 +350,14 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
-			if (new_bytes == 0) {
-				buf_state->user_cur_max = buf_state->buf_length;
-			}
-			else { // this should probably be deprecated now
-				buf_state->user_cur_max += new_bytes + 1; // + 1 for 0x0b
-			}
-			need_to_proxy = true; // static for now, for testing purposes
-			if (need_to_proxy) {
+			if (state->is_attack) {
 				setup_ssl_proxy(state);
 				buf_state->user_cur_max = 0; // don't forward jack squat if we need to mitm
 				buf_state->bytes_to_read = 0;
 				return; // break out early, we no longer care about anything here
+			}
+			else {
+				buf_state->user_cur_max = buf_state->buf_length;
 			}
 			cs_buf += handshake_message_length;
 		}
@@ -369,7 +365,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			buf_state->user_cur_max = buf_state->buf_length;
-			printk(KERN_ALERT "Server Key Exchange Received");
+			//printk(KERN_ALERT "Server Key Exchange Received");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO_DONE) {	
@@ -377,7 +373,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->state = SERVER_HELLO_DONE_SENT;
 			buf_state->user_cur_max = buf_state->buf_length;
 			state->interest = UNINTERESTED;
-			printk(KERN_ALERT "Server Hello Done Received");
+			//printk(KERN_ALERT "Server Hello Done Received");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_HELLO_REQUEST || 
@@ -389,7 +385,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		}
 		else if (cs_buf[0] == TYPE_FINISHED) {
 			// Should never get here (should already be uninterested)
-			printk(KERN_ALERT "AFDSDFFDFAF");
+			printk(KERN_ALERT "Finished message received");
 			BUG_ON(1);
 		}
 		else {
@@ -407,8 +403,8 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 
 unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	unsigned char* bufptr;
-	__be24 be_handshake_message_length;
-	__be24 be_certificates_length;
+	//__be24 be_handshake_message_length;
+	//__be24 be_certificates_length;
 	unsigned int handshake_message_length;
 	unsigned int certificates_length;
 	//unsigned int cert_length;
@@ -424,19 +420,13 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	//printk(KERN_ALERT "length of msg is %u", handshake_message_length);
 	//printk(KERN_ALERT "length of certs is %u", certificates_length);
 	//printk(KERN_ALERT "Sending certificates to policy engine");
+	set_orig_leaf_cert(state, bufptr, certificates_length);
 	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
 	if (state->is_attack) {
-
+/*
 		// Override certificate data
 		memcpy(bufptr, state->new_cert, state->new_cert_length);
-		//be_certificate_length = cpu_to_be24(state->new_cert_length);
-		//printk(KERN_ALERT "CL BE:%02x%02x%02x LE:%06x", 
-		//	((unsigned char*)&be_certificate_length)[0],
-		//	((unsigned char*)&be_certificate_length)[1],
-		//	((unsigned char*)&be_certificate_length)[2],
-		//	state->new_cert_length
-		//);
-	
+
 		// Update length of all certificates
 		bufptr -= 3;
 		be_certificates_length = cpu_to_be24(state->new_cert_length);
@@ -455,6 +445,7 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 		
 		printk(KERN_ALERT "attack! and certlength is %d", state->new_cert_length);
 		return state->new_cert_length + 6;
+*/
 	}
 	return 0;
 }
@@ -573,29 +564,40 @@ struct socket* th_get_async_sk(void* state) {
 	return NULL;
 }
 
-void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, char* hostname) {
+void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned int certificates_length) {
+	unsigned int cert_len;
+	unsigned char* cert_start;
+	cert_len = be24_to_cpu(*(__be24*)bufptr);
+	cert_start = bufptr + 3;
+	state->orig_leaf_cert = cert_start;
+	state->orig_leaf_cert_len = cert_len;
+	return;
+}
+
+void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, char* hostname, char* cert, int cert_len) {
 	char buffer[1024];
 	int bytes_written;
-	char ipv6_init[] = "%pI6:%d\n%s\n5\n12345";
-	char ipv4_init[] = "%pI4:%d\n%s\n5\n12345";
+	char ipv6_init[] = "%pI6:%d\n%s\n%d\n";
+	char ipv4_init[] = "%pI4:%d\n%s\n%d\n";
 	if (ipv6 == 1) {
 		bytes_written = snprintf(buffer, 1024, ipv6_init, 
 			&((struct sockaddr_in6*)addr)->sin6_addr, 
 			ntohs(((struct sockaddr_in6*)addr)->sin6_port),
-			hostname);
+			hostname, cert_len);
 	}
 	else {
 		bytes_written = snprintf(buffer, 1024, ipv4_init, 
 			&((struct sockaddr_in*)addr)->sin_addr,
 			ntohs(((struct sockaddr_in*)addr)->sin_port),
-			hostname);
+			hostname, cert_len);
 	}
 	if (bytes_written < 0 || bytes_written > 1024) {
 		printk(KERN_ALERT "Failed to snprintf");
 		return;
 	}
-	printk(KERN_INFO "%s", buffer);
+	//printk(KERN_INFO "%s", buffer);
 	kernel_tcp_send_buffer(sock, buffer, bytes_written);
+	kernel_tcp_send_buffer(sock, cert, cert_len);
 	return;
 }
 
@@ -616,13 +618,15 @@ void setup_ssl_proxy(handler_state_t* state) {
 	if (state->is_ipv6 == 1) {
 		//send_proxy_meta_data(&state->addr_v6, state->hostname);
 		send_proxy_meta_data(state->orig_sock,
-			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname);
+			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname,
+			state->orig_leaf_cert, state->orig_leaf_cert_len);
 	}
 	else {
 		send_proxy_meta_data(state->orig_sock,
-			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname);
+			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname,
+			state->orig_leaf_cert, state->orig_leaf_cert_len);
 	}
-	printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
+	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
 
 	//printk(KERN_ALERT "%d", error);

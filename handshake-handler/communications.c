@@ -69,7 +69,7 @@ int th_response(struct sk_buff* skb, struct genl_info* info) {
 	result = nla_get_u32(na);
 	state = (struct handler_state_t*)statedata;
 	state->is_attack = result == 1 ? 0 : 1;
-	if (result == 0) {
+	/*if (result == 0) {
 		if ((na = info->attrs[TRUSTHUB_A_CERTCHAIN]) == NULL) {
 			printk(KERN_ALERT "Can't find cert chain in response");
 			return -1;
@@ -78,7 +78,7 @@ int th_response(struct sk_buff* skb, struct genl_info* info) {
 		state->new_cert = kmalloc(state->new_cert_length, GFP_KERNEL);
 		memcpy(state->new_cert, nla_data(na), state->new_cert_length);
 		//printk(KERN_ALERT "first byte of rcert is %x",state->new_cert[0]);
-	}
+	}*/
 	//printk(KERN_ALERT "I received a state ptr value of %p", state);
 	//printk(KERN_ALERT "sending a wakeup up");
 	up(&state->sem);

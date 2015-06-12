@@ -126,7 +126,7 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv4 connection detected");
-	print_call_info("TCP IPv4 connect");
+	//print_call_info("TCP IPv4 connect");
 	start_conn_state(current->pid, uaddr, 0, addr_len, sock);
 	return ret;
 }
@@ -171,9 +171,6 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	void* new_data;
 	mm_segment_t oldfs;
 
-	unsigned char* kernel_buffer;
-	struct kvec kiov;
-
 	sock = sk->sk_socket;
 
 	// Adopt default kernel behavior if we're not monitoring this connection
@@ -184,27 +181,6 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// XXX Maybe this should be refactored, but this makes sense for now
 	if (ops->is_asynchronous(conn_state->state)) {
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
-		//printk(KERN_INFO "ASYNCHRONOUS SEND");
-		kernel_buffer = (unsigned char*)kmalloc(size, GFP_KERNEL);
-		kmsg = *msg;
-		kiov.iov_len = size;
-		kiov.iov_base = (void*)kernel_buffer;
-		if (copy_from_user(kernel_buffer, msg->msg_iov->iov_base, size) != 0) {
-			printk(KERN_ALERT "Copy from userspace failed");
-		}
-		//oldfs = get_fs();
-		//set_fs(KERNEL_DS);
-		//real_ret = ref_tcp_sendmsg(iocb, ops->get_async_sk(conn_state->state), &kmsg, size);
-		//real_ret = sock_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, size);
-		//
-		printk(KERN_INFO "Calling kernel_sendmsg");
-		real_ret = kernel_sendmsg(ops->get_async_sk(conn_state->state), &kmsg, &kiov, 1, size);
-		if (real_ret > 0) {
-			printk(KERN_INFO "ASYNCHRONOUS SEND sent something: %d", real_ret);
-		}
-		//set_fs(oldfs);*/
-		kfree(kernel_buffer);
-		return real_ret;
 	}
 
 	/* Begin synchronous handling */
@@ -326,66 +302,19 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	int b_to_forward;
 	int b_to_read;
 	void __user* user_buffer;
-	struct kvec kiov;
 	sock = sk->sk_socket;
 
 
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
-		printk(KERN_INFO " A connection was found to not be tracked, and was ignored");
-		print_call_info("this stuff");
+		//printk(KERN_INFO " A connection was found to not be tracked, and was ignored");
+		//print_call_info("this stuff");
 		return ret;
 	}
 	// XXX Maybe this should be refactored, but this makes sense for now
 	if (ops->is_asynchronous(conn_state->state)) {
 		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
-		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
-		user_buffer = (void __user*)msg->msg_iter.iov->iov_base;
-		#else
-		user_buffer = (void __user *)msg->msg_iov->iov_base;
-		#endif
-		//kmsg = *msg;
-		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
-		kmsg.msg_iter.iov = &iov;
-		#else
-		kmsg.msg_iov = &iov;
-		#endif
-	        buffer = kmalloc(len, GFP_KERNEL);
-		kiov.iov_len = len;
-		kiov.iov_base = buffer;
-
-		//if (nonblock) flags |= MSG_DONTWAIT;
-		printk(KERN_ALERT "entering kernel_recvmsg");
-		ret = kernel_recvmsg(ops->get_async_sk(conn_state->state), &kmsg, &kiov, 1, len, MSG_DONTWAIT);
-
-		printk(KERN_ALERT "kernel_recvmsg returned %d", ret);
-		//if (ret == 0 && nonblock) {
-		//	return -EAGAIN;
-		//}
-
-		/*oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		//ret = ref_tcp_recvmsg(iocb, ops->get_async_sk(conn_state->state), &kmsg, iov.iov_len, nonblock, flags, addr_len);
-		ret = sock_recvmsg(ops->get_async_sk(conn_state->state)->sk_socket, &kmsg, iov.iov_len, nonblock);
-		//printk(KERN_ALERT "real ret is %d", ret);
-		set_fs(oldfs);*/
-		if (ret > 0) {
-			if (copy_to_user(user_buffer, buffer, ret) != 0) {
-				printk(KERN_ALERT "Copy to userspace failed");
-			}
-			//printk(KERN_INFO "ASYNCHRONOUS RECV got something: %x", ((unsigned char*)msg->msg_iov->iov_base)[0]);
-		}
-		kfree(buffer);
-		/*
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		ret = ref_tcp_recvmsg(iocb, ops->get_async_sk(conn_state->state), msg, len, nonblock, flags, addr_len);
-		if (ret > 0) {
-			printk(KERN_INFO "ASYNCHRONOUS RECV got something: %x", ((unsigned char*)msg->msg_iov->iov_base)[0]);
-		}
-		set_fs(oldfs);*/
-		return ret;
 	}
 
 	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
@@ -408,8 +337,8 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		ops->inc_recv_bytes_forwarded(conn_state->state, bytes_sent);
 	}
 
-	if (bytes_sent)
-		printk(KERN_ALERT "I sent the user %d cached bytes", bytes_sent);
+	//if (bytes_sent)
+		//printk(KERN_ALERT "I sent the user %d cached bytes", bytes_sent);
 	// 2) If we've already given the user everything he wants, end
 	if (bytes_sent == len) {
 		return len;

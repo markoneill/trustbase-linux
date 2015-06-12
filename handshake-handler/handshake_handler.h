@@ -54,6 +54,8 @@ typedef struct handler_state_t {
 	int addr_len;
 	char* new_cert;
 	int new_cert_length;
+	unsigned char* orig_leaf_cert;
+	unsigned int orig_leaf_cert_len;
 } handler_state_t;
 
 void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);

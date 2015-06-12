@@ -77,13 +77,13 @@ int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned cha
 		printf("failed to insert result\n");
 		return -1;
 	}
-	if (result == 0) { // Only send back new chain if we're going to claim invalidity
+	/*if (result == 0) { // Only send back new chain if we're going to claim invalidity
 		rc = nla_put(msg, TRUSTHUB_A_CERTCHAIN, ret_length, ret_certs);
 		if (rc != 0) {
 			printf("failed to insert return chain\n");
 			return -1;
 		}
-	}
+	}*/
 	rc = nl_send_auto(sock, msg);
 	if (rc < 0) {
 		printf("failed in nl send with error code %d\n", rc);
