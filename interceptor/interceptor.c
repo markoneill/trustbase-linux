@@ -104,12 +104,18 @@ conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, i
 	ret = conn_state_create(pid, sock);
 	if (ret != NULL) {
 		ret->state = ops->state_init(ret->pid, sock, uaddr, is_ipv6, addr_len);
+		if (ret->state == NULL) {
+			stop_conn_state(ret);
+			return NULL;
+		}
 	}
 	return ret;
 }
 
 int stop_conn_state(conn_state_t* conn_state) {
-	ops->state_free(conn_state->state);
+	if (conn_state->state != NULL) {
+		ops->state_free(conn_state->state);
+	}
 	return conn_state_delete(conn_state->pid, conn_state->sock);
 }
 
@@ -132,7 +138,8 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv6 connection detected");
 	//print_call_info(sock, "TCP IPv6 connect");
-	start_conn_state(current->pid, uaddr, 1, addr_len, sock);
+	if (start_conn_state(current->pid, uaddr, 1, addr_len, sock)) {
+	}
 	return ret;
 }
 

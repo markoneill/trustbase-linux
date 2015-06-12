@@ -12,6 +12,7 @@
 #include "communications.h"
 #include "../util/utils.h"
 #include "../interceptor/interceptor.h"
+#include "../loader.h"
 #define CERTIFICATE_LENGTH_FIELD_SIZE	3
 
 // Handshake type identifiers
@@ -52,6 +53,13 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 // Main proxy functionality
 void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
+
+	// Let policy engine and proxy daemon operate without handler
+	if (pid == mitm_proxy_task->pid) {
+		printk(KERN_INFO "Detected a connection from the tls proxy");
+		return NULL;
+	}
+
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
 		state->pid = pid;
@@ -565,6 +573,32 @@ struct socket* th_get_async_sk(void* state) {
 	return NULL;
 }
 
+void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, char* hostname) {
+	char buffer[1024];
+	int bytes_written;
+	char ipv6_init[] = "%pI6:%d\n%s\n5\n12345";
+	char ipv4_init[] = "%pI4:%d\n%s\n5\n12345";
+	if (ipv6 == 1) {
+		bytes_written = snprintf(buffer, 1024, ipv6_init, 
+			&((struct sockaddr_in6*)addr)->sin6_addr, 
+			ntohs(((struct sockaddr_in6*)addr)->sin6_port),
+			hostname);
+	}
+	else {
+		bytes_written = snprintf(buffer, 1024, ipv4_init, 
+			&((struct sockaddr_in*)addr)->sin_addr,
+			ntohs(((struct sockaddr_in*)addr)->sin_port),
+			hostname);
+	}
+	if (bytes_written < 0 || bytes_written > 1024) {
+		printk(KERN_ALERT "Failed to snprintf");
+		return;
+	}
+	printk(KERN_INFO "%s", buffer);
+	kernel_tcp_send_buffer(sock, buffer, bytes_written);
+	return;
+}
+
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
 	struct sockaddr_in proxy_addr = {
@@ -579,10 +613,19 @@ void setup_ssl_proxy(handler_state_t* state) {
 
 	//printk(KERN_INFO "Sending proxy meta information");
 	//error = kernel_tcp_send_buffer(state->orig_sock, );
+	if (state->is_ipv6 == 1) {
+		//send_proxy_meta_data(&state->addr_v6, state->hostname);
+		send_proxy_meta_data(state->orig_sock,
+			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname);
+	}
+	else {
+		send_proxy_meta_data(state->orig_sock,
+			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname);
+	}
 	printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
 
-	printk(KERN_ALERT "%d", error);
+	//printk(KERN_ALERT "%d", error);
 	return;
 }
 
