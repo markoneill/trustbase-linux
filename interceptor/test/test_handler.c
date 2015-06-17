@@ -227,18 +227,6 @@ void replace_bytes(buf_state_t* bs, char c, char r) {
 	return;
 }
 
-int is_asynchronous(void* state) {
-	return 1; // for testing, just make it static
-}
-
-struct socket* get_async_sk(void* state) {
-	handler_state_t* s = (handler_state_t*)state;
-	if (s->mitm_sock != NULL) {
-		return s->mitm_sock;
-	}
-	return NULL;
-}
-
 void setup_proxy(handler_state_t* state) {
 	//int error;
 	struct sockaddr_in proxy_addr = {

@@ -31,9 +31,9 @@ typedef struct plugin_t {
 	char name[PLUGIN_NAME_MAX];
 	char desc[PLUGIN_DESC_MAX];
 	char ver[PLUGIN_VERSION_STR_MAX];
-	void* so_handle;
+	void* so_handle; // pointer to shared object or index into handler
 	union {
-		int (*query_func_openssl)(const char* hostname, STACK_OF(X509)* certs);
+		int (*query_func_openssl)(const char* hostname, STACK_OF(X509)* certs); // only used for internal openSSL-using plugins written in C
 		int (*query_func_raw)(const char* hostname, unsigned char* certs, size_t certs_length);
 	};
 	char hostname[PLUGIN_HOSTNAME_MAX]; // null terminated

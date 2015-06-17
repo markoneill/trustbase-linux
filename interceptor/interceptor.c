@@ -178,12 +178,10 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
 
-	// XXX Maybe this should be refactored, but this makes sense for now
-	if (ops->is_asynchronous(conn_state->state)) {
+	// XXX Enum this later
+	if (ops->get_state(conn_state->state) == 2) {
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
-
-	/* Begin synchronous handling */
 
 	// Copy attributes of existing message into our custom one
 	kmsg = *msg;
@@ -312,8 +310,9 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		//print_call_info("this stuff");
 		return ret;
 	}
-	// XXX Maybe this should be refactored, but this makes sense for now
-	if (ops->is_asynchronous(conn_state->state)) {
+
+	// XXX Enum this later
+	if (ops->get_state(conn_state->state) == 2) {
 		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 	}
 

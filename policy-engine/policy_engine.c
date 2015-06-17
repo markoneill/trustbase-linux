@@ -120,33 +120,17 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	return chain;
 }
 
-/*static void callback(int p, int n, void *arg) {
-	return;
-}*/
-
-
-
 int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len) {
-	//int pubkey_algonid;
 	int result;
-	//int ret;
 	unsigned char* p;
 	X509* bad_cert;
-	//RSA* new_rsa;
 	STACK_OF(X509)* chain;
-	//EVP_PKEY* pub_key;
-	//EVP_PKEY* new_pub_key;
-	//X509_NAME* name;
-
 	int i;
 	int ret_chain_len;
 	int* cert_lens;
 	unsigned char* ret_chain;
 	ret_chain_len = 0;
 	ret_chain = NULL;
-
-	//pub_key = NULL;
-	//new_pub_key = NULL;
 
 	// Parse chain to X509 structures
 	chain = parse_chain(data, len);
@@ -155,46 +139,10 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	}
 	
 	// Validation
-	//if (strcmp(hostname,"www.google.com") == 0) {
 	if(query_raw_plugin(&plugins[0], hostname, data, len) == 0) {
-	//if(strcmp(hostname, "login.live.com") == 0) {
 		result = 0;
 
 		bad_cert = sk_X509_value(chain, 0); // Get first cert
-		/*pub_key = X509_get_pubkey(bad_cert);
-		pubkey_algonid = OBJ_obj2nid(bad_cert->cert_info->key->algor->algorithm);
-		if (pubkey_algonid == NID_rsaEncryption) {
-			printf("rsa key detected\n");
-		pub_key->pkey.rsa->n = BN_bin2bn("lolz!", 6, NULL);
-		}
-		else if (pubkey_algonid == NID_dsa) {
-			printf("dsa key detected\n");
-		pub_key->pkey.dsa->p = BN_bin2bn("lalala", 6, NULL);
-		}
-		else if (pubkey_algonid == NID_X9_62_id_ecPublicKey) {
-			printf("ec key detected\n");
-			//pub_key->pkey.ec->p = BN_bin2bn("lalala", 6, NULL);
-		}
-		else {
-			printf("Oh noes! Unknown key type!\n");
-		}
-		name = X509_get_subject_name(bad_cert);
-		//X509_NAME_add_entry_by_txt(name, "C",  MBSTRING_ASC, (unsigned char*)"US",        -1, -1, 0);
-		//X509_NAME_add_entry_by_txt(name, "O",  MBSTRING_ASC, (unsigned char*)"TrustHub",     -1, -1, 0);
-		//X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, (unsigned char*)"TrustHub", -1, -1, 0);
-		//X509_set_issuer_name(bad_cert, name);
-		
-		new_pub_key = EVP_PKEY_new();
-		new_rsa = RSA_generate_key(2048, RSA_F4, callback, NULL);
-		EVP_PKEY_assign_RSA(new_pub_key, new_rsa);
-		ret = X509_set_pubkey(bad_cert, new_pub_key);
-		//printf("ret is %d\n", ret);
-		//ret = X509_set_pubkey(bad_cert, pub_key);
-		bad_cert->cert_info->enc.modified = 1;
-		X509_sign(bad_cert, new_pub_key, EVP_md5());
-		EVP_PKEY_free(new_pub_key);
-		*/
-
 		// Calculate bytes needed to represent chain in TLS message
 		cert_lens = (int*)malloc(sizeof(int) * sk_X509_num(chain));
 		for (i = 0; i < sk_X509_num(chain); i++) {

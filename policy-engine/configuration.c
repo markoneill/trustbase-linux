@@ -4,12 +4,13 @@
 
 #include "configuration.h"
 #include "plugins.h"
+#include "addons.h"
 
 #define CONFIG_FILE_NAME	"policy-engine/trusthub.cfg"
 
 static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin);
 
-int load_config(plugin_t** plugins_ptr) {
+int load_config(policy_context_t* policy_context) {
 	plugin_t* plugins;
 	config_t cfg;
 	config_setting_t* setting;

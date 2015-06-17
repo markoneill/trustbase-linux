@@ -31,8 +31,6 @@ int __init loader_start(void) {
 		.inc_recv_bytes_forwarded = update_bytes_forwarded_recv,
 		.bytes_to_read_send = get_bytes_to_read_send,
 		.bytes_to_read_recv = get_bytes_to_read_recv,
-		.is_asynchronous = is_asynchronous,
-		.get_async_sk = get_async_sk,
 	};
 
 	proxy_register(&test_ops);

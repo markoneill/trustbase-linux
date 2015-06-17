@@ -77,9 +77,7 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 		}
 		state->is_ipv6 = is_ipv6;
 		state->addr_len = addr_len;
-		state->mitm_sock = NULL;
 		state->orig_sock = sock;
-		state->is_asynchronous = 0; // Default to synchronous
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
 	}
@@ -99,6 +97,7 @@ void* buf_state_init(buf_state_t* buf_state) {
 }
 
 void th_state_free(void* state) {
+	//printk(KERN_INFO "state %p being freed");
 	handler_state_t* s = (handler_state_t*)state;
 	if (s->send_state.buf != NULL) {
 		kfree(s->send_state.buf);
@@ -118,7 +117,13 @@ void th_state_free(void* state) {
 
 int th_get_state(void* state) {
 	handler_state_t* s = (handler_state_t*)state;
-	return s->interest == INTERESTED ? 1 : 0;
+	if (s->interest == INTERESTED) {
+		return 1;
+	}
+	else if (s->interest == PROXIED) {
+		return 2;
+	}
+	return 0;
 }
 
 int th_give_to_handler_send(void* state, void* src_buf, size_t length) {
@@ -188,6 +193,7 @@ int th_num_bytes_to_forward_send(void* state) {
 
 int th_num_bytes_to_forward_recv(void* state) {
 	buf_state_t* bs;
+	//printk(KERN_INFO "state is %p", state);
 	bs = &((handler_state_t*)state)->recv_state;
 	return bs->user_cur_max - bs->user_cur;
 }
@@ -351,6 +357,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			if (state->is_attack) {
+				state->interest = PROXIED;
 				setup_ssl_proxy(state);
 				buf_state->user_cur_max = 0; // don't forward jack squat if we need to mitm
 				buf_state->bytes_to_read = 0;
@@ -550,20 +557,6 @@ int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 }
 
 
-// The following functions will probably be moved later
-int th_is_asynchronous(void* state) {
-	handler_state_t* s = (handler_state_t*)state;
-	return s->is_asynchronous;
-}
-
-struct socket* th_get_async_sk(void* state) {
-	handler_state_t* s = (handler_state_t*)state;
-	if (s->mitm_sock != NULL) {
-		return s->mitm_sock;
-	}
-	return NULL;
-}
-
 void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned int certificates_length) {
 	unsigned int cert_len;
 	unsigned char* cert_start;
@@ -608,7 +601,6 @@ void setup_ssl_proxy(handler_state_t* state) {
 		.sin_port = htons(8888),
 		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
 	};
-	state->is_asynchronous = 1;
 	
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
 	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));

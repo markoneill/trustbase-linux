@@ -20,9 +20,6 @@ typedef struct proxy_handler_ops_t {
 	int (*inc_recv_bytes_forwarded)(void* state, size_t forwarded);
 	int (*bytes_to_read_send)(void* state);
 	int (*bytes_to_read_recv)(void* state);
-	// the following two functions may be placed elsewhere later
-	int (*is_asynchronous)(void* state);
-	struct socket* (*get_async_sk)(void* state);
 } proxy_handler_ops_t;
 
 int proxy_register(proxy_handler_ops_t* ops);

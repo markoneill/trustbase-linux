@@ -20,7 +20,4 @@ int update_bytes_forwarded_recv(void* state, size_t forwarded);
 int get_bytes_to_read_send(void* state);
 int get_bytes_to_read_recv(void* state);
 
-int is_asynchronous(void* state);
-struct socket* get_async_sk(void* state);
-
 #endif

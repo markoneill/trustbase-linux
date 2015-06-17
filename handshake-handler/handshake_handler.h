@@ -33,6 +33,7 @@ typedef struct buf_state_t {
 typedef enum interest_state_t {
 	INTERESTED,
 	UNINTERESTED,
+	PROXIED,
 } interest_state_t;
 
 typedef struct handler_state_t {
@@ -43,9 +44,7 @@ typedef struct handler_state_t {
 	buf_state_t recv_state;
 	buf_state_t send_state;
 	int is_attack;
-	struct socket* mitm_sock;
 	struct socket* orig_sock;
-	int is_asynchronous;
 	int is_ipv6;
 	union {
 		struct sockaddr_in addr_v4;
@@ -73,9 +72,5 @@ int th_update_bytes_forwarded_send(void* state, size_t forwarded);
 int th_update_bytes_forwarded_recv(void* state, size_t forwarded);
 int th_get_bytes_to_read_send(void* state);
 int th_get_bytes_to_read_recv(void* state);
-
-// XXX may be placed elsewhere later
-int th_is_asynchronous(void* state);
-struct socket* th_get_async_sk(void* state);
 
 #endif

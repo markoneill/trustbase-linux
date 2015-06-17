@@ -49,8 +49,6 @@ int __init loader_start(void) {
 		.inc_recv_bytes_forwarded = th_update_bytes_forwarded_recv,
 		.bytes_to_read_send = th_get_bytes_to_read_send,
 		.bytes_to_read_recv = th_get_bytes_to_read_recv,
-		.is_asynchronous = th_is_asynchronous,
-		.get_async_sk = th_get_async_sk,
 	};
 	
 	proxy_register(&trusthub_ops);
