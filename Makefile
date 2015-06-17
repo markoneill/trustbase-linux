@@ -26,9 +26,9 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
 POLICY_ENGINE_EXE = policy_engine
 
-PYTHON_PLUGINS_ADDON_SRC = policy-engine/addons/python-plugins.c
+PYTHON_PLUGINS_ADDON_SRC = policy-engine/addons/python_plugins.c
 PYTHON_PLUGINS_ADDON_OBJ = $(PYTHON_PLUGINS_ADDON_SRC:%.c=%.o)
-PYTHON_PLUGINS_ADDON_SO = policy-engine/addons/python-plugins.so
+PYTHON_PLUGINS_ADDON_SO = policy-engine/addons/python_plugins.so
 
 RAW_TEST_PLUGIN_SRC = policy-engine/plugins/raw_test.c
 RAW_TEST_PLUGIN_OBJ = $(RAW_TEST_PLUGIN_SRC:%.c=%.o)

@@ -1,8 +1,8 @@
 #ifndef _CONFIGURATION_H
 #define _CONFIGURATION_H
 
-#include "plugins.h"
+#include "policy_engine.h"
 
-int load_config(plugin_t** plugins_ptr);
+int load_config(policy_context_t* policy_context);
 
 #endif

@@ -1,5 +1,5 @@
-#ifndef _PLUGINS_H
-#define _PLUGINS_H
+#ifndef PLUGINS_H_
+#define PLUGINS_H_
 
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -16,12 +16,6 @@ enum {
 	PLUGIN_TYPE_INTERNAL_RAW,
 };
 
-enum {
-	AGGREGATION_MAJORITY,
-	AGGREGATION_UNANIMITY,
-	AGGREGATION_CHAMPION,
-	AGGREGATION_THRESHOLD,
-};
 
 typedef int (*query_func_raw)(const char*, unsigned char*, size_t);
 typedef int (*query_func_openssl)(const char*, STACK_OF(X509)*);

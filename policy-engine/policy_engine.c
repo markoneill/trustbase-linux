@@ -15,8 +15,7 @@
 
 int chains_received;
 int family;
-plugin_t* plugins;
-size_t plugin_count;
+policy_context_t context;
 
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
@@ -139,7 +138,7 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	}
 	
 	// Validation
-	if(query_raw_plugin(&plugins[0], hostname, data, len) == 0) {
+	if(query_raw_plugin(&context.plugins[0], hostname, data, len) == 0) {
 		result = 0;
 
 		bad_cert = sk_X509_value(chain, 0); // Get first cert
@@ -231,8 +230,8 @@ int main() {
 	//pthread_t user_notification_thread;
 	//pthread_create(&socket_api_thread, NULL, socket_api_listen, (void*)NULL);
 	//pthread_create(&user_notification_thread, NULL, notification_listen, (void*)NULL);
-	plugin_count = load_config(&plugins);
-	print_plugins(plugins, plugin_count);
+	load_config(&context);
+	print_plugins(context.plugins, context.plugin_count);
 	//close_plugins(plugins, plugin_count);
 	sock = nl_socket_alloc();
 
