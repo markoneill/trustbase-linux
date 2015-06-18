@@ -31,7 +31,7 @@ int initialize(int plugin_count, char *plugin_directory);
 *
 *	returns EXIT_SUCCESS
 */
-int finalize();
+int finalize(void);
 
 /*
 *	Loads a specified python module into memory as a plugin, which remains in
@@ -41,13 +41,11 @@ int finalize();
 *		containing pointers to plugin functions; also used as an identifier
 *		for which plugin to query using the query() function	
 *
-*	module_name: the Python module name to be imported into the Python 
+*	module_name: the name of the Python file to be imported into the Python 
 *				interpreter. The search for this module begins in the 
 *				plugin_directory parameter of the initialize() function.
-*				For example, if the python script is named my_plugin.py, the
-*				module name would be my_plugin.
 */
-int load_plugin(int id, char *module_name);
+int load_plugin(int id, char *file_name);
 
 
 /*

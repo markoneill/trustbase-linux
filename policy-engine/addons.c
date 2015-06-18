@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <dlfcn.h>
 
-int load_addon_functions(const char* path, addon_t* addon) {
+int load_addon(const char* path, addon_t* addon) {
 	addon_initialize init_func;
 	addon_finalize fin_func;
 	addon_load_plugin load_func;
@@ -44,6 +44,23 @@ int load_addon_functions(const char* path, addon_t* addon) {
 	addon->addon_load_plugin = load_func;
 	addon->addon_query_plugin = query_func;
 	return 0;
+}
+
+void init_addons(addon_t* addons, size_t addon_count, size_t plugin_count) {
+	int i;
+	for (i = 0; i < addon_count; i++) {
+		addons[i].addon_initialize(plugin_count, ".");
+	}
+	return;
+}
+
+void close_addons(addon_t* addons, size_t addon_count) {
+	int i;
+	for (i = 0; i < addon_count; i++) {
+		addons[i].addon_finalize();
+	}
+	free(addons);
+	return;
 }
 
 void print_addons(addon_t* addons, size_t addon_count) {

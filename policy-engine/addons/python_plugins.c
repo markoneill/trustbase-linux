@@ -20,7 +20,7 @@ int initialize(int count, char *plugin_dir) {
 		return 1;
 	}
 	
-	plugin_functions = (PyObject**)malloc(plugin_count * sizeof(PyObject*));
+	plugin_functions = (PyObject**)calloc(plugin_count, sizeof(PyObject*));
 	if (plugin_functions == NULL) {
 		fprintf(stderr, "Failed to allocate memory for %d plugins\n", plugin_count);
 		return 1;
@@ -29,11 +29,14 @@ int initialize(int count, char *plugin_dir) {
 	return 0;
 }
 
-int finalize() {
+int finalize(void) {
 	int i;
 	
 	for(i = 0; i < plugin_count; i++) {
-		Py_DECREF(plugin_functions[i]);
+		if (plugin_functions[i] != NULL) {
+			Py_DECREF(plugin_functions[i]);
+			plugin_functions[i] = NULL;
+		}
 	}
 
 	Py_Finalize();
@@ -42,10 +45,18 @@ int finalize() {
 	return 0;
 }
 
-int load_plugin(int id, char* module_name) {
+int load_plugin(int id, char* file_name) {
 	PyObject* pName;
 	PyObject* pModule;
 	PyObject* pFunc;
+	char module_name[128];
+	char* dot_ptr;
+
+	// Cut off extension .py
+	dot_ptr = strrchr(module_name, '.');
+	if (dot_ptr != NULL) {
+		memcpy(module_name, file_name, dot_ptr - file_name);
+	}
 	if (id < 0) {
 		fprintf(stderr, "Invalid id\n");
 		return 1;
@@ -91,7 +102,7 @@ int load_plugin(int id, char* module_name) {
 	return 0;
 }
 
-int query(int id, char *host, const unsigned char *cert_chain, size_t length) {
+int query_plugin(int id, char *host, const unsigned char *cert_chain, size_t length) {
 	int result;
 	int set_arg;
 	PyObject* pFunc;

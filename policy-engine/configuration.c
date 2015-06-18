@@ -73,7 +73,8 @@ int load_config(policy_context_t* policy_context) {
 	policy_context->plugins = plugins;
 	policy_context->plugin_count = plugin_count;
 	policy_context->addons = addons;
-	policy_context->plugin_count = addon_count;
+	policy_context->addon_count = addon_count;
+
 	return 0;
 }
 
@@ -91,7 +92,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
 	memcpy(addon->name, name, strlen(name));
 	memcpy(addon->desc, desc, strlen(desc));
 	memcpy(addon->ver, version, strlen(version));
-	if (load_addon_functions(path, addon) != 0) {
+	if (load_addon(path, addon) != 0) {
 		return 1;
 	}
 	return 0;

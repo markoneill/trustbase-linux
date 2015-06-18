@@ -40,6 +40,17 @@ int query_raw_plugin(plugin_t* plugin, const char* hostname, unsigned char* cert
 	return (*func)(hostname, certs, certs_length);
 }
 
+void init_plugins(plugin_t* plugins, size_t plugin_count) {
+	int i;
+	for (i = 0; i < plugin_count; i++) {
+		if (plugins[i].type != PLUGIN_TYPE_INTERNAL_OPENSSL &&
+			plugins[i].type != PLUGIN_TYPE_INTERNAL_RAW) {
+			// init_external_plugins(); // XXX
+		}
+	}
+	return;
+}
+
 void close_plugins(plugin_t* plugins, size_t plugin_count) {
 	close_internal_plugins(plugins, plugin_count);
 	//close_external_plugins(plugins, plugin_count); // XXX

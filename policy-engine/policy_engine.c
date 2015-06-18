@@ -231,8 +231,13 @@ int main() {
 	//pthread_create(&socket_api_thread, NULL, socket_api_listen, (void*)NULL);
 	//pthread_create(&user_notification_thread, NULL, notification_listen, (void*)NULL);
 	load_config(&context);
+	init_addons(context.addons, context.addon_count, context.plugin_count);
+	//init_plugins(context.plugins, context.plugin_count);
+	printf("Loaded %d addons and %d plugins\n", context.addon_count, context.plugin_count);
+	print_addons(context.addons, context.addon_count);
 	print_plugins(context.plugins, context.plugin_count);
-	//close_plugins(plugins, plugin_count);
+	//close_plugins(context.plugins, context.plugin_count);
+	//close_addons(context.addons, context.addon_count);
 	sock = nl_socket_alloc();
 
 	nl_socket_disable_seq_check(sock);
