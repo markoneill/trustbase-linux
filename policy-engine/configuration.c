@@ -83,16 +83,21 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
 	const char* desc;
 	const char* version;
 	const char* path;
+	const char* type_handled;
 	if (!(config_setting_lookup_string(plugin_data, "name", &name) &&
 	    config_setting_lookup_string(plugin_data, "description", &desc) &&
 	    config_setting_lookup_string(plugin_data, "version", &version) &&
+	    config_setting_lookup_string(plugin_data, "type", &type_handled) &&
 	    config_setting_lookup_string(plugin_data, "path", &path))) {
+		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
 	}
-	memcpy(addon->name, name, strlen(name));
-	memcpy(addon->desc, desc, strlen(desc));
-	memcpy(addon->ver, version, strlen(version));
+	snprintf(addon->name, ADDON_NAME_MAX, "%s", name);
+	snprintf(addon->desc, ADDON_DESC_MAX, "%s", desc);
+	snprintf(addon->ver, ADDON_VERSION_STR_MAX, "%s", version);
+	snprintf(addon->type_handled, ADDON_TYPE_HANDLED_MAX, "%s", type_handled);
 	if (load_addon(path, addon) != 0) {
+		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
 	}
 	return 0;
@@ -111,36 +116,46 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin) {
 	    config_setting_lookup_string(plugin_data, "description", &desc) &&
 	    config_setting_lookup_string(plugin_data, "version", &version) &&
 	    config_setting_lookup_string(plugin_data, "type", &type))) {
+		fprintf(stderr, "Syntax error in configuration file: section plugins\n");
 		return 1;
 	}
-	memcpy(plugin->name, name, strlen(name));
-	memcpy(plugin->desc, desc, strlen(desc));
-	memcpy(plugin->ver, version, strlen(version));
+	snprintf(plugin->name, PLUGIN_NAME_MAX, "%s", name);
+	snprintf(plugin->desc, PLUGIN_DESC_MAX, "%s", desc);
+	snprintf(plugin->ver, PLUGIN_VERSION_STR_MAX, "%s", version);
+	snprintf(plugin->type_str, PLUGIN_TYPE_STR_MAX, "%s", type);
 
 	if (strncmp(type, "internal", sizeof("internal")) == 0) {
 		if (!(config_setting_lookup_string(plugin_data, "path", &path) &&
 			config_setting_lookup_int(plugin_data, "openssl", &openSSL))) {
+			fprintf(stderr, "Syntax error in configuration file: section plugins\n");
 			return 2;
 		}
+		snprintf(plugin->path, PLUGIN_PATH_MAX, "%s", path);
 		if (openSSL) {
 			plugin->type = PLUGIN_TYPE_INTERNAL_OPENSSL;
-			load_query_func_openssl(path, plugin);
 		}
 		else {
 			plugin->type = PLUGIN_TYPE_INTERNAL_RAW;
-			load_query_func_raw(path, plugin);
 		}
 	}
 	else if (strncmp(type, "external", sizeof("external")) == 0) {
 		if (!(config_setting_lookup_string(plugin_data, "hostname", &hostname) &&
 			config_setting_lookup_int(plugin_data, "port", &port))) {
+			fprintf(stderr, "Syntax error in configuration file: section plugins\n");
 			return 2;
 		}
 		plugin->port = port;
-		memcpy(plugin->hostname, hostname, strlen(hostname));
+		snprintf(plugin->hostname, PLUGIN_HOSTNAME_MAX, "%s", hostname);
 	}
 	else {
-		return 3;
+		// Every unknown plugin should at least have a path (name, desc, ver, and type)
+		// handled earlier
+		if (!(config_setting_lookup_string(plugin_data, "path", &path))) {
+			fprintf(stderr, "Syntax error in configuration file: section plugins\n");
+			return 2;
+		}
+		snprintf(plugin->path, PLUGIN_PATH_MAX, "%s", path);
+		plugin->type = PLUGIN_TYPE_UNKNOWN;
 	}
 	return 0;
 }

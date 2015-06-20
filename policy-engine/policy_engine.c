@@ -138,7 +138,8 @@ int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char*
 	}
 	
 	// Validation
-	if(query_raw_plugin(&context.plugins[0], hostname, data, len) == 0) {
+	//if (query_raw_plugin(&context.plugins[0], hostname, data, len) == 0) {
+	if (query_plugin(&context.plugins[2], 2, hostname, chain, data, len) == 0) {
 		result = 0;
 
 		bad_cert = sk_X509_value(chain, 0); // Get first cert
@@ -232,7 +233,7 @@ int main() {
 	//pthread_create(&user_notification_thread, NULL, notification_listen, (void*)NULL);
 	load_config(&context);
 	init_addons(context.addons, context.addon_count, context.plugin_count);
-	//init_plugins(context.plugins, context.plugin_count);
+	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	printf("Loaded %d addons and %d plugins\n", context.addon_count, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
 	print_plugins(context.plugins, context.plugin_count);

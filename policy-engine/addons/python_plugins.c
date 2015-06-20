@@ -5,18 +5,20 @@ PyObject **plugin_functions;
 static int plugin_count;
 
 int initialize(int count, char *plugin_dir) {
-	char python_path_stmt[128];
+	char python_stmt[128];
 	char *argv_path[] = {""};
 	Py_Initialize();
 	plugin_count = count;
 
 	// Set the python module search path to plugin_dir
 	PySys_SetArgvEx(0, argv_path, 0);
-	if (sprintf(python_path_stmt, "import sys; sys.path.insert(0,'%s')", plugin_dir) < 0) {
+	//if (sprintf(python_stmt, "import sys; import signal; sys.path.insert(0,'%s'); signal.signal(signal.SIGINT, signal.SIG_DFL)", plugin_dir) < 0) {
+	if (sprintf(python_stmt, "import sys; import signal; signal.signal(signal.SIGINT, signal.SIG_DFL)") < 0) {
+		fprintf(stderr, "Failed to set default signal handling\n");
 		return 1;
 	}
-	if (PyRun_SimpleString(python_path_stmt) < 0) {
-		fprintf(stderr, "Exception raised while running '%s'\n", python_path_stmt);
+	if (PyRun_SimpleString(python_stmt) < 0) {
+		fprintf(stderr, "Exception raised while running '%s'\n", python_stmt);
 		return 1;
 	}
 	
@@ -49,14 +51,35 @@ int load_plugin(int id, char* file_name) {
 	PyObject* pName;
 	PyObject* pModule;
 	PyObject* pFunc;
-	char module_name[128];
+	char path[128];
+	char python_stmt[128];
+	char* module_name;
 	char* dot_ptr;
+	char* slash_ptr;
 
 	// Cut off extension .py
-	dot_ptr = strrchr(module_name, '.');
+	module_name = path;
+	snprintf(path, 128, "%s", file_name);
+	dot_ptr = strrchr(path, '.');
 	if (dot_ptr != NULL) {
-		memcpy(module_name, file_name, dot_ptr - file_name);
+		*dot_ptr = '\0';
 	}
+	slash_ptr = strrchr(path, '/');
+	if (slash_ptr != NULL) {
+		*slash_ptr = '\0';
+		module_name = slash_ptr + 1;
+	}
+
+	//printf("module_name is %s and path is %s\n", module_name, path);
+	if (snprintf(python_stmt, 128, "sys.path.insert(0,'%s')", path) < 0) {
+		fprintf(stderr, "Path too long '%s'\n", path);
+		return 1;
+	}
+	if (PyRun_SimpleString(python_stmt) < 0) {
+		fprintf(stderr, "Exception raised while running '%s'\n", python_stmt);
+		return 1;
+	}
+
 	if (id < 0) {
 		fprintf(stderr, "Invalid id\n");
 		return 1;
@@ -155,7 +178,7 @@ int query_plugin(int id, char *host, const unsigned char *cert_chain, size_t len
 	}
 
 	// set cert chain argument
-	pValue = PyString_FromStringAndSize((const char*)cert_chain, length);
+	pValue = PyByteArray_FromStringAndSize((const char*)cert_chain, length);
 	if (pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
