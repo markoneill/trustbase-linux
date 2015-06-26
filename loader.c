@@ -26,6 +26,12 @@ int alt_call_usermodehelper(char *path, char **argv, char **envp, int wait,
 		int (*init)(struct subprocess_info *info, struct cred *new));
 void stop_task(struct task_struct* task);
 
+/**
+ * the initial function that sets up the MITM proxy and handler
+ * @see handshake-handler/handshake_handler.h
+ * @post MITM proxy ready, and TCP function pointers point to TrustHub functions
+ * @return an error code
+ */
 int __init loader_start(void) {
 	// Set up IPC module-policyengine interaction
 	if (th_register_netlink() != 0) {
@@ -58,6 +64,10 @@ int __init loader_start(void) {
 	return 0;
 }
 
+/**
+ * The end function that calls the functions to unregister and stop TrustHub
+ * @post TrustHub unregistered and stopped
+ */
 void __exit loader_end(void) {
 	proxy_unregister();
 	// Unregister the IPC 
