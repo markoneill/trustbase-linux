@@ -52,7 +52,7 @@ int __init loader_start(void) {
 	};
 	
 	proxy_register(&trusthub_ops);
-	start_mitm_proxy("/home/Phoenix_1/tlsproxy/proxy");
+	start_mitm_proxy("/home/mark/trusthub-linux/ssl_proxy");
 	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
 
 	return 0;
