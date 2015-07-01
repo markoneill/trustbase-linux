@@ -45,6 +45,13 @@ static proxy_handler_ops_t* ops;
 extern struct proto tcp_prot;
 struct proto * tcpv6_prot_ptr;
 
+/**
+ * Register the proxy by storing the old TCP function pointers, and replacing them with TrustHub functions.
+ * @param reg_ops the struct containg the TrustHub operation functions.
+ * @pre System TCP pointers point to the original tcp_prot functions.
+ * @post System TCP pointers point to TrustHub functions and ops has pointers to the correct TrustHub operation functions.
+ * @return 0
+ */
 int proxy_register(proxy_handler_ops_t* reg_ops) {
 	// Initialize buckets in hash table
 	conn_state_init_all();
@@ -78,6 +85,11 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	return 0;
 }
 
+/**
+ * Restores the original TCP functions and frees the connection state.
+ * @post The tcp_prot functions point to the original TCP functions.
+ * @return 0
+ */
 int proxy_unregister(void) {
 	// Restore original TCP functions
 	tcp_prot.connect = ref_tcp_v4_connect;
@@ -98,7 +110,17 @@ int proxy_unregister(void) {
 	return 0;
 }
 
-
+/**
+ * Creates a new connection state.
+ * @see handshake-handler/handshake_handler.c:th_state_init
+ * @see interceptor/connection_state.c:conn_state_create
+ * @param pid The process id for the connection.
+ * @param uaddr A pointer to the stuct for the userspace address for the task.
+ * @param is_ipv6 0 if the connecion is not using IPv6.
+ * @param addr_len The length of the address.
+ * @param sock A pointer to the struct for the socket.
+ * @return The pointer to a new connection state
+ */
 conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock) {
 	conn_state_t* ret;
 	ret = conn_state_create(pid, sock);
@@ -112,6 +134,13 @@ conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, i
 	return ret;
 }
 
+/**
+ * Stops and frees a connection state.
+ * @see handshake-handler/handshake_handler.c:th_state_free
+ * @see interceptor/connection_state.c:conn_state_delete
+ * @param conn_state A pointer to a connection to be freed.
+ * @return 1 if found and freed, 0 if not
+ */
 int stop_conn_state(conn_state_t* conn_state) {
 	if (conn_state->state != NULL) {
 		ops->state_free(conn_state->state);
@@ -120,6 +149,14 @@ int stop_conn_state(conn_state_t* conn_state) {
 }
 
 // Wrapper definitions
+
+/**
+ * Runs a normal TCP connect, but stores the connection for monitoring.
+ * @param sk A pointer to a sock struct for the connection.
+ * @param uaddr A pointer to a sockaddr structure for the userspace address.
+ * @param addr_len The length of the address.
+ * @return tcp connect error code
+ */
 int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	int ret;
 	struct socket* sock;
@@ -131,6 +168,13 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	return ret;
 }
 
+/**
+ * Runs a normal TCPv6 connections, but stores the connection for monitoring.
+ * @param sk A pointer to a sock struct for the connection.
+ * @param uaddr A pointer to a sockaddr structure for the userspace address.
+ * @param addr_len The length of the address.
+ * @return tcp connect error code
+ */
 int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	int ret;
 	struct socket* sock;
@@ -143,6 +187,12 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	return ret;
 }
 
+/**
+ * Runs a TCP diconnect
+ * @param sk A pointer to a sock struct for the connection.
+ * @param flags TCP disconnect flags.
+ * @return tcp disconnect error code
+ */
 int new_tcp_disconnect(struct sock *sk, int flags) {
 	int ret;
 	ret = ref_tcp_disconnect(sk, flags);
@@ -150,6 +200,13 @@ int new_tcp_disconnect(struct sock *sk, int flags) {
 	return ret;
 }
 
+/**
+ * Runs a TCP close, and closes TrustHub conneciton monitoring for that connection.
+ * @see interceptor/connection_state.c:stop_conn_state
+ * @param sk A pointer to a sock struct for the connection.
+ * @param timeout TCP timeout time.
+ * @return tcp disconnect error code
+ */
 void new_tcp_close(struct sock *sk, long timeout) {
 	struct socket* sock;
 	conn_state_t* conn_state;
@@ -162,6 +219,11 @@ void new_tcp_close(struct sock *sk, long timeout) {
 	return;
 }
 
+/**
+ * Manages TCP sending through the connection handler, according to the connection's handler.
+ * @see handshaker-handler/handshake_handler.c:th_fill_send_buffer 
+ * @return the amount of bytes the user wanted to send, or an error code
+ */
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size) {
 	conn_state_t* conn_state;
 	struct socket* sock;
@@ -287,6 +349,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	return real_ret > 0 ? size : real_ret;
 }
 
+/**
+ * Manages TCP receiving through the connection handler, according to the connection's handler, and data marked to be forwarded.
+ * @see handshaker-handler/handshake_handler.c:th_copy_to_user_buffer
+ * @return the amount of bytes the user wanted to send, or an error code
+ */
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len) {
 	int ret;
 	mm_segment_t oldfs;

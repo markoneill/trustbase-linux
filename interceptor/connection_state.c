@@ -15,6 +15,12 @@ void conn_state_free(conn_state_t* conn_state) {
 	return;
 }
 
+/**
+ * Finds a connection state in the hash table.
+ * @param pid The desired connection's Process ID.
+ * @param sock A pointer to socket struct for the connection.
+ * @return The connection state
+ */
 conn_state_t* conn_state_get(pid_t pid, struct socket* sock) {
 	conn_state_t* conn_state = NULL;
 	conn_state_t* conn_state_it;
@@ -27,7 +33,12 @@ conn_state_t* conn_state_get(pid_t pid, struct socket* sock) {
 	return conn_state;
 }
 
-
+/**
+ * Creates a connection state with no filled state and adds it to the hash table.
+ * @param pid The desired connection's Process ID.
+ * @param sock A pointer to socket struct for the connection.
+ * @return a pointer to the new connection state
+ */
 conn_state_t* conn_state_create(pid_t pid, struct socket* sock) {
 	conn_state_t* new_conn_state = NULL;
 	if ((new_conn_state = kmalloc(sizeof(conn_state_t), GFP_KERNEL)) == NULL) {
@@ -48,6 +59,9 @@ conn_state_t* conn_state_create(pid_t pid, struct socket* sock) {
 	return new_conn_state;
 }
 
+/**
+ * A debug tool to print all the stored connection states in the hash.
+ */
 void conn_state_print_all(void) {
 	int bkt;
 	conn_state_t* conn_state_it;
@@ -57,6 +71,10 @@ void conn_state_print_all(void) {
 	return;
 }
 
+/**
+ * Initiates the table of connection states.
+ * @remark hash_init is a macro that checks its own pre-conditions.
+ */
 void conn_state_init_all(void) {
 	allocsminusfrees = 0;
 	hash_init(conn_table);
