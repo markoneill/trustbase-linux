@@ -77,6 +77,10 @@ void __exit loader_end(void) {
 	return;
 }
 
+/**
+ * Sends SIGTERM to a task
+ * @param task A pointer to a task_struct
+ */
 void stop_task(struct task_struct* task) {
 	struct siginfo sinfo;
 	memset(&sinfo, 0, sizeof(struct siginfo));
@@ -85,6 +89,9 @@ void stop_task(struct task_struct* task) {
 	send_sig_info(SIGTERM, &sinfo, task);
 	return;
 }
+/**
+ * The following functions start up external daemons
+ */
 
 int start_policy_engine(char* path) {
 	char* argv[] = {path, NULL};

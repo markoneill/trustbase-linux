@@ -1,3 +1,8 @@
+/**
+ * @file interceptor/connection_state.c
+ * @brief The connection state functions.
+ */
+
 #include <linux/hashtable.h> // For global conn state hash table
 #include <linux/slab.h> // For allocations
 #include "connection_state.h"
@@ -81,6 +86,9 @@ void conn_state_init_all(void) {
 	return;
 }
 
+/**
+ * Deletes all of the connections in the hash table.
+ */
 void conn_state_delete_all(void) {
 	int bkt;
 	conn_state_t* conn_state_it;
@@ -97,6 +105,10 @@ void conn_state_delete_all(void) {
 	return;
 }
 
+/**
+ * Deletes a single connection state.
+ * @return 1 if a connection was found and deleted, 0 otherwise
+ */
 int conn_state_delete(pid_t pid, struct socket* sock) {
 	int found = 0;
 	conn_state_t* conn_state_it;

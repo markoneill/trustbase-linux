@@ -1,3 +1,8 @@
+/**
+ * @file interceptor/interceptor.c
+ * @brief The TrustHub TCP middle functions.
+ */
+
 #ifndef KBUILD_MODNAME
 #	define KBUILD_MODNAME KBUILD_STR(trusthub_linux)
 #endif
@@ -46,7 +51,8 @@ extern struct proto tcp_prot;
 struct proto * tcpv6_prot_ptr;
 
 /**
- * Register the proxy by storing the old TCP function pointers, and replacing them with TrustHub functions.
+ * Register the proxy by storing the old TCP function pointers,
+ * then replaces them with TrustHub functions.
  * @param reg_ops the struct containg the TrustHub operation functions.
  * @pre System TCP pointers point to the original tcp_prot functions.
  * @post System TCP pointers point to TrustHub functions and ops has pointers to the correct TrustHub operation functions.

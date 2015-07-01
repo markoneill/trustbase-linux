@@ -1,3 +1,8 @@
+/**
+ * @file interceptor/connection_state.c
+ * @brief The connection state functions.
+ */
+
 #ifndef _CONNECTION_STATE_H
 #define _CONNECTION_STATE_H
 
