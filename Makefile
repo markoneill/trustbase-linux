@@ -16,7 +16,7 @@ obj-m += trusthub_linux.o
 
 CC = gcc
 CCFLAGS = -Wall -O3 -fpic
-LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7
+LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7 -levent -levent_openssl
 INCLUDES = -I/usr/include/libnl3 -I/usr/include/python2.7
 
 POLICY_ENGINE_SRC = policy-engine/plugins.c \
