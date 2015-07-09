@@ -55,7 +55,7 @@
 struct socket_settings {
 	const char* address;
 	const char* hostname;
-	char *cert;
+	unsigned char *cert;
 	size_t cert_len;
 };
 

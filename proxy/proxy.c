@@ -22,7 +22,7 @@ static void free_socket_settings(struct socket_settings* settings);
 static int load_signing_info();
 static int create_private_key();
 static X509 *create_certificate(const unsigned char *cert, size_t cert_len);
-static SSL_CTX *create_server_ssl_ctx(const char *cert, size_t cert_len);
+static SSL_CTX *create_server_ssl_ctx(const unsigned char *cert, size_t cert_len);
 
 static void read_cb(struct bufferevent *bev, void *ctx);
 static void drained_writecb(struct bufferevent *bev, void *ctx);
@@ -161,10 +161,18 @@ X509 *create_certificate(const unsigned char *cert, size_t cert_len) {
 	if (certificate == NULL) {
 		return NULL;
 	}
-
+	//FILE* file1;
+	//FILE* file2;
+	//file1 = fopen("/tmp/file1", "a+");
+	//file2 = fopen("/tmp/file2", "a+");
 	// Change the public key to use the generated key.
+	//fprintf(file1,"Address of public key is %p\n", X509_get_pubkey(certificate));
 	X509_set_pubkey(certificate, private_key);
-
+	//fprintf(file2,"Address of publick key is %p\n", X509_get_pubkey(certificate));
+//	fclose(file1);
+//	fclose(file2);
+	
+	
 	// Sign the certificate using the TrustHub signing key.
 	X509_set_issuer_name(certificate, X509_NAME_dup(X509_get_subject_name(trust_hub_cert)));
 	if (!X509_sign(certificate, trust_hub_signing_key, EVP_sha256())) {
@@ -177,7 +185,7 @@ X509 *create_certificate(const unsigned char *cert, size_t cert_len) {
 /**
  * Create a server SSL context.
  */
-SSL_CTX *create_server_ssl_ctx(const char *cert, size_t cert_len) {
+SSL_CTX *create_server_ssl_ctx(const unsigned char *cert, size_t cert_len) {
 	X509 *certificate;
 	SSL_CTX* ssl_ctx;
 

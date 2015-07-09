@@ -401,6 +401,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			state->interest = UNINTERESTED;
 			buf_state->user_cur_max = buf_state->buf_length;
 			printk(KERN_ALERT "Someone sent a weird thing: %x", (unsigned int)cs_buf[0]);
+			printk(KERN_ALERT "It was from the %s buffer", buf_state == &state->recv_state ? "receive" : "send");
 			cs_buf += handshake_message_length;
 			tls_record_bytes = 0; // Out
 		}
