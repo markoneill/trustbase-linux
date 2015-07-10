@@ -16,12 +16,15 @@ obj-m += trusthub_linux.o
 
 CC = gcc
 CCFLAGS = -Wall -O3 -fpic
-LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7 -levent -levent_openssl
+LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7 -levent -levent_openssl -lpthread
 INCLUDES = -I/usr/include/libnl3 -I/usr/include/python2.7
 
 POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/addons.c \
 		    policy-engine/configuration.c \
+		    policy-engine/netlink.c \
+		    policy-engine/query.c \
+		    policy-engine/query_queue.c \
 		    policy-engine/policy_engine.c
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
 POLICY_ENGINE_EXE = policy_engine

@@ -146,3 +146,4 @@ int load_query_func_openssl(plugin_t* plugin) {
 	}
 	return 0;
 }
+
