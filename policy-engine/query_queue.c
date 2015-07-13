@@ -1,6 +1,11 @@
 #include <assert.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <errno.h>
+#include <fcntl.h> /* O_CREAT constant */
+#include <sys/stat.h> /* S_IRWXU constant */
+#include <semaphore.h>
 #include "query.h"
 #include "query_queue.h"
 
@@ -10,14 +15,27 @@ static queue_node_t* make_queue_node(query_t* query);
  * Create a new empty queue
  * @returns queue pointer or NULL on failure
  */
-queue_t* make_queue(void) {
+queue_t* make_queue(const char* name) {
 	queue_t* queue;
+	sem_t* sem;
+	sem = sem_open(name, O_CREAT, S_IRWXU, 0);
+	if (sem == SEM_FAILED) {
+		fprintf(stderr, "Failed to create queue semaphore %s: %s\n", name, strerror(errno));
+		return NULL;
+	}
 	queue = (queue_t*)malloc(sizeof(queue_t));
 	if (queue == NULL) {
+		fprintf(stderr, "Failed to allocate space for queue %s\n", name);
+		return NULL;
+	}
+	if (pthread_mutex_init(&queue->mutex, NULL) != 0) {
+		fprintf(stderr, "Failed to create mutex for queue %s\n", name);
+		free(queue); /* free allocated memory since this happened after malloc */
 		return NULL;
 	}
 	queue->head = NULL;
 	queue->tail = NULL;
+	queue->fill_sem = sem;
 	return queue;
 }
 
@@ -34,8 +52,16 @@ void free_queue(queue_t* queue) {
 	current = queue->head;
 	while (current != NULL) {
 		next = current->next;
+		/* We're not freeing the contents of nodes on purpose.
+		   The query data still needs to be read by others */
 		free(current);
 		current = next;
+	}
+	if (sem_close(queue->fill_sem) == -1) {
+		fprintf(stderr, "Failed to close semaphore: %s\n", strerror(errno));
+	}
+	if (pthread_mutex_destroy(&queue->mutex) != 0) {
+		fprintf(stderr, "Failed to destroy queue mutex\n");
 	}
 	free(queue);
 	return;
@@ -63,8 +89,10 @@ queue_node_t* make_queue_node(query_t* query) {
  */
 int enqueue(queue_t* queue, query_t* query) {
 	queue_node_t* new_node;
+	pthread_mutex_lock(&queue->mutex);
 	new_node = make_queue_node(query);
 	if (new_node == NULL) {
+		pthread_mutex_unlock(&queue->mutex);
 		return 0;
 	}
 	// If queue is empty
@@ -72,6 +100,7 @@ int enqueue(queue_t* queue, query_t* query) {
 		assert(queue->tail == NULL);
 		queue->head = new_node;
 		queue->tail = new_node;
+		pthread_mutex_unlock(&queue->mutex);
 		return 1;
 	}
 
@@ -80,6 +109,8 @@ int enqueue(queue_t* queue, query_t* query) {
 	new_node->prev = queue->tail;
 	queue->tail->next = new_node;
 	queue->tail = new_node;
+	pthread_mutex_unlock(&queue->mutex);
+	sem_post(queue->fill_sem);
 	return 1;
 }
 
@@ -91,7 +122,10 @@ int enqueue(queue_t* queue, query_t* query) {
 query_t* dequeue(queue_t* queue) {
 	queue_node_t* node;
 	query_t* query;
+	sem_wait(queue->fill_sem);
+	pthread_mutex_lock(&queue->mutex);
 	if (queue->head == NULL) {
+		pthread_mutex_unlock(&queue->mutex);
 		return NULL;
 	}
 	// Get data
@@ -109,6 +143,7 @@ query_t* dequeue(queue_t* queue) {
 		queue->head->prev = NULL;
 	}
 	free(node);
+	pthread_mutex_unlock(&queue->mutex);
 	return query;
 }
 

@@ -130,7 +130,8 @@ int main() {
 	plugin_thread_params = (thread_param_t*)malloc(sizeof(thread_param_t) * context.plugin_count);
 	plugin_threads = (pthread_t*)malloc(sizeof(pthread_t) * context.plugin_count);
 	for (i = 0; i < context.plugin_count; i++) {
-		plugin_thread_params[i].queue = make_queue();
+		plugin_thread_params[i].queue = make_queue(context.plugins[i].name);
+		plugin_thread_params[i].plugin_id = i;
 		pthread_create(&plugin_threads[i], NULL, plugin_thread_init, &plugin_thread_params[i]);
 	}
 
@@ -149,6 +150,15 @@ int main() {
 }
 
 void* plugin_thread_init(void* arg) {
+	queue_t* queue;
+	int plugin_id;
+	thread_param_t* params;
+	params = (thread_param_t*)arg;
+	queue = params->queue;
+	plugin_id = params->plugin_id;
+	
+	//context.plugins[plugin_id].init();
+	//context.plugins
 	return NULL;
 }
 

@@ -21,6 +21,7 @@ typedef struct policy_context_t {
 
 typedef struct thread_param_t {
 	queue_t* queue;
+	int plugin_id;
 } thread_param_t;
 
 int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len);
