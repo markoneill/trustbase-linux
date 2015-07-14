@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <pthread.h>
 #include <errno.h>
 #include <fcntl.h> /* O_CREAT constant */
@@ -101,6 +102,7 @@ int enqueue(queue_t* queue, query_t* query) {
 		queue->head = new_node;
 		queue->tail = new_node;
 		pthread_mutex_unlock(&queue->mutex);
+		sem_post(queue->fill_sem);
 		return 1;
 	}
 

@@ -10,9 +10,11 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
-int family;
+static int family;
+struct nl_sock* netlink_sock;
+pthread_mutex_t nl_sock_mutex;
 
-int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* ret_certs, int ret_length) {
+int send_response(uint64_t stptr, int result) {
 	int rc;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -36,14 +38,9 @@ int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned cha
 		printf("failed to insert result\n");
 		return -1;
 	}
-	/*if (result == 0) { // Only send back new chain if we're going to claim invalidity
-		rc = nla_put(msg, TRUSTHUB_A_CERTCHAIN, ret_length, ret_certs);
-		if (rc != 0) {
-			printf("failed to insert return chain\n");
-			return -1;
-		}
-	}*/
-	rc = nl_send_auto(sock, msg);
+	pthread_mutex_lock(&nl_sock_mutex);
+	rc = nl_send_auto(netlink_sock, msg);
+	pthread_mutex_unlock(&nl_sock_mutex);
 	if (rc < 0) {
 		printf("failed in nl send with error code %d\n", rc);
 		return -1;
@@ -52,7 +49,6 @@ int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned cha
 }
 
 int recv_query(struct nl_msg *msg, void *arg) {
-	// Netlink Variables
 	struct nlmsghdr* nlh;
 	struct genlmsghdr* gnlh;
 	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
@@ -61,37 +57,22 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	int chain_length;
 	uint64_t stptr;
 
-	// Decision variables
-	int result;
-	int rcert_len;
-	unsigned char* rcert;
-	
-
 	// Get Message
 	nlh = nlmsg_hdr(msg);
 	gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
 		case TRUSTHUB_C_QUERY:
-			// Get message fields
+			/* Get message fields */
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
 
-			// Query registered schemes
-			result = poll_schemes(hostname, cert_chain, chain_length, &rcert, &rcert_len);
-			if (result == 0) { // Invalid
-				send_response(arg, stptr, result, rcert, rcert_len);
-				//OPENSSL_free(rcert);
-			}
-			else { // Valid
-				send_response(arg, stptr, result, NULL, 0);
-			}
-			//chains_received++;
-			//printf("chains receieved: %d\n", chains_received);
-			//printf("Got a certificate chain for %s of %d bytes\n", hostname, chain_length);
-			//printf("Got state pointer value of %p\n",(void*)stptr);
+			/* Query registered schemes */
+			poll_schemes(stptr, hostname, cert_chain, chain_length);
+			// XXX I *think* the message is freed by whatever function calls this one
+			// within libnl.  Verify this.
 			break;
 		default:
 			printf("Got something unusual...\n");
@@ -100,43 +81,49 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	return 0;
 }
 
-int listen_for_queries(struct nl_sock* sock) {
+int listen_for_queries(void) {
 	int group;
-	nl_socket_disable_seq_check(sock);
-	nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, recv_query, (void*)sock);
-	if (sock == NULL) {
+	netlink_sock = nl_socket_alloc();
+	if (pthread_mutex_init(&nl_sock_mutex, NULL) != 0) {
+		fprintf(stderr, "Failed to create mutex for netlink\n");
+		return -1;
+	}
+	nl_socket_disable_seq_check(netlink_sock);
+	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, recv_query, (void*)netlink_sock);
+	if (netlink_sock == NULL) {
 		fprintf(stderr, "Failed to allocate socket\n");
 		return -1;
 	}
 	/* Internally this calls socket() and bind() using Netlink
  	 (specifically Generic Netlink)
  	 */
-	if (genl_connect(sock) != 0) {
+	if (genl_connect(netlink_sock) != 0) {
 		fprintf(stderr, "Failed to connect to Generic Netlink control\n");
 		return -1;
 	}
 	
-	if ((family = genl_ctrl_resolve(sock, "TRUSTHUB")) < 0) {
+	if ((family = genl_ctrl_resolve(netlink_sock, "TRUSTHUB")) < 0) {
 		fprintf(stderr, "Failed to resolve TRUSTHUB family identifier\n");
 		return -1;
 	}
 
-	if ((group = genl_ctrl_resolve_grp(sock, "TRUSTHUB", "query")) < 0) {
+	if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTHUB", "query")) < 0) {
 		fprintf(stderr, "Failed to resolve group identifier\n");
 		return -1;
 	}
 
-	if (nl_socket_add_membership(sock, group) < 0) {
+	if (nl_socket_add_membership(netlink_sock, group) < 0) {
 		fprintf(stderr, "Failed to add membership to group\n");
 		return -1;
 	}
 	
 	while (1) {
-		if (nl_recvmsgs_default(sock) < 0) {
+		if (nl_recvmsgs_default(netlink_sock) < 0) {
 			printf("Failing out of main loop\n");
 			break;
 		}
 	}
+	nl_socket_free(netlink_sock);
 	return 0;
 }
 

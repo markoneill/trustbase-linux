@@ -6,7 +6,7 @@
 #include "../handshake-handler/communications.h"
 
 
-int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* rcerts, int rcerts_len);
+int send_response(uint64_t stptr, int result);
 int recv_query(struct nl_msg *msg, void *arg);
-int listen_for_queries(struct nl_sock* sock);
+int listen_for_queries(void);
 #endif

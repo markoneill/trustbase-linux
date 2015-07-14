@@ -18,7 +18,7 @@ void print_certificate(X509* cert) {
 int query(const char* hostname, STACK_OF(X509)* certs) {
 	int i;
 	X509* cert;
-	printf("OpenSSL Test Plugin reporting for duty!\n");
+	printf("OpenSSL Test Plugin checking cert for host: %s\n", hostname);
 	printf("Certificate Data:\n");
 	for (i = 0; i < sk_X509_num(certs); i++) {
 		cert = sk_X509_value(certs, i);

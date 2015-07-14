@@ -2,6 +2,7 @@
 #include <openssl/x509v3.h>
 #include <dlfcn.h>
 #include <string.h>
+#include "query_queue.h"
 #include "plugins.h"
 #include "addons.h"
 

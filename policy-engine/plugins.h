@@ -3,6 +3,7 @@
 
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#include "query_queue.h"
 #include "addons.h"
 
 #define PLUGIN_HOSTNAME_MAX	256
@@ -34,6 +35,7 @@ typedef struct plugin_t {
 	char name[PLUGIN_NAME_MAX];
 	char desc[PLUGIN_DESC_MAX];
 	char ver[PLUGIN_VERSION_STR_MAX];
+	queue_t* queue;
 	void* so_handle; // pointer to shared object or index into handler
 	union {
 		/* used for native plugins using OpenSSL */

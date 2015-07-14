@@ -2,16 +2,22 @@
 #define _TH_QUERY_H
 
 #include <stdint.h>
-#include <semaphore.h>
+#include <pthread.h>
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
 
 typedef struct query_t {
-	unsigned int id;
+	pthread_mutex_t mutex;
 	uint64_t state_pointer;
 	int num_plugins;
-	sem_t* sync_sems;
+	STACK_OF(X509)* chain;
+	char* hostname;
+	unsigned char* raw_chain;
+	size_t raw_chain_len;
+	int num_responses;
 	int* responses;
 } query_t;
 
-query_t* create_query(int num_plugins);
+query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len);
 void free_query(query_t* query);
 #endif
