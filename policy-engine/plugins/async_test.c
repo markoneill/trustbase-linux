@@ -3,17 +3,18 @@
 
 #define MAX_LENGTH	1024
 
-int init(int(*callback)(int, int, int), int id);
+int initialize(int id, int(*callback)(int, int, int));
 int finalize(void);
 int query(int query_id, const char* hostname, STACK_OF(X509)* certs);
-static void print_certificate(X509* cert);
+void print_certificate(X509* cert);
 
 int (*result_callback)(int plugin_id, int query_id, int result);
 int plugin_id;
 
-int init(int(*callback)(int, int, int), id) {
+int initialize(int id, int(*callback)(int, int, int)) {
 	result_callback = callback;
 	plugin_id = id;
+	printf("Initialized asynchronous test plugin\n");
 	return 0;
 }
 
@@ -31,13 +32,14 @@ void print_certificate(X509* cert) {
 }
 
 int query(int query_id, const char* hostname, STACK_OF(X509)* certs) {
-	int i;
-	X509* cert;
-	printf("OpenSSL Test Plugin checking cert for host: %s\n", hostname);
-	printf("Certificate Data:\n");
+	//int i;
+	//X509* cert;
+	printf("Asynchronous Test Plugin checking cert for host: %s\n", hostname);
+	result_callback(plugin_id, query_id, 1);
+	/*printf("Certificate Data:\n");
 	for (i = 0; i < sk_X509_num(certs); i++) {
 		cert = sk_X509_value(certs, i);
 		print_certificate(cert);
-	}
+	}*/
 	return 1;
 }

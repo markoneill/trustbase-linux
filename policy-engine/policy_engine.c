@@ -14,7 +14,10 @@
 
 policy_context_t context;
 
-void* plugin_thread_init(void* arg);
+static void* plugin_thread_init(void* arg);
+static void* decider_thread_init(void* arg);
+static int async_callback(int plugin_id, int query_id, int result);
+
 
 typedef struct { unsigned char b[3]; } be24, le24;
 
@@ -24,6 +27,7 @@ int poll_schemes(uint64_t stptr, char* hostname, unsigned char* cert_data, size_
 	query_t* query;
 	/* Validation */
 	query = create_query(context.plugin_count, stptr, hostname, cert_data, len);
+	enqueue(context.decider_queue, query);
 	for (i = 0; i < context.plugin_count; i++) {
 		printf("Enqueuing query\n");
 		enqueue(context.plugins[i].queue, query);
@@ -35,7 +39,9 @@ int poll_schemes(uint64_t stptr, char* hostname, unsigned char* cert_data, size_
 
 int main() {
 	int i;
+	pthread_t decider_thread;
 	pthread_t* plugin_threads;
+	thread_param_t decider_thread_params;
 	thread_param_t* plugin_thread_params;
 
 	load_config(&context);
@@ -43,6 +49,11 @@ int main() {
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
 	print_plugins(context.plugins, context.plugin_count);
+
+	/* Decider thread (runs CA system and aggregates plugin verdicts */
+	decider_thread_params.plugin_id = -1;
+	context.decider_queue = make_queue("decider");
+	pthread_create(&decider_thread, NULL, decider_thread_init, &decider_thread_params);
 
 
 	/* Plugin Threading */
@@ -61,6 +72,8 @@ int main() {
 		free_queue(context.plugins[i].queue); // XXX relocate this
 		pthread_join(plugin_threads[i], NULL);
 	}
+	pthread_join(decider_thread, NULL);
+	free_queue(context.decider_queue);
 	close_plugins(context.plugins, context.plugin_count);
 	close_addons(context.addons, context.addon_count);
 	free(plugin_thread_params);
@@ -75,47 +88,80 @@ void* plugin_thread_init(void* arg) {
 	plugin_t* plugin;
 	query_t* query;
 	int result;
-	int report_sent;
 
 	params = (thread_param_t*)arg;
 	plugin_id = params->plugin_id;
 	plugin = &context.plugins[plugin_id];
 	queue = plugin->queue;
 	
-	//context.plugins[plugin_id].init(); // XXX set default
+	if (plugin->generic_init_func != NULL) {
+		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
+			plugin->init_sync(plugin_id);
+		}
+		else {
+			plugin->init_async(plugin_id, async_callback);
+		}
+	}
 	while (1) {
 		printf("Dequeuing query\n");
 		query = dequeue(queue);
-		report_sent = 0;
 		printf("Query dequeued\n");
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
-			result = query_plugin(plugin, plugin_id, query->hostname,
-					query->chain, query->raw_chain, query->raw_chain_len);
+			result = query_sync_plugin(plugin, plugin_id, query);
 			query->responses[plugin_id] = result;
 			pthread_mutex_lock(&query->mutex);
 			query->num_responses++;
 			printf("%d plugins have submitted an answer\n", query->num_responses);
 			if (query->num_responses == context.plugin_count) {
-				printf("All plugins have submitted an answer\n");
-				send_response(query->state_pointer, 1);
-				report_sent = 1;
+				pthread_cond_signal(&query->threshold_met);
 			}
 			pthread_mutex_unlock(&query->mutex);
-			if (report_sent == 1) {
-				free_query(query);
-			}
 		}
 		else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
-			//query_asynchronous_plugin(async_callback, query->id, plugin, plugin_id, query->hostname, query->chain, query->raw_chain, query->raw_chain_len);
-			// XXX UNSUPPORTED STILL
+			query_async_plugin(plugin, plugin_id, query);
 		}
-		// XXX MAKE this also send a callback for asynchronous plugins
-		// Have the Master plugin thread (the one doing the CA plugin) also
-		// wait for other plugins to finish with timeouts
-		// Have callbacks check query/semaphore validity to handle eventual responses from timed out asychronous plugins
 	}
-
-	//context.plugins[plugin_id].finalize(); // XXX set default
 	return NULL;
 }
 
+void* decider_thread_init(void* arg) {
+	queue_t* queue;
+	query_t* query;
+	int ca_system_response;
+	queue = context.decider_queue;
+	// XXX Init CA system here
+	while (1) {
+		query = dequeue(queue);
+		// XXX actually query CA system here
+		ca_system_response = PLUGIN_RESPONSE_ABSTAIN;
+		pthread_mutex_lock(&query->mutex);
+		while (query->num_responses < context.plugin_count) {
+			pthread_cond_wait(&query->threshold_met, &query->mutex);
+		}
+		pthread_mutex_unlock(&query->mutex);
+		printf("All plugins have submitted an answer\n");
+		free_query(query);
+		send_response(query->state_pointer, 1);
+	}
+	return NULL;
+}
+
+int async_callback(int plugin_id, int query_id, int result) {
+	query_t* query;
+
+	query = (query_t*)(query_id);
+	if (query == NULL) {
+		return 0; /* let plugin know this result timed out */
+	}
+
+	query->responses[plugin_id] = result;
+	pthread_mutex_lock(&query->mutex);
+	query->num_responses++;
+	if (query->num_responses == context.plugin_count) {
+	printf("%d plugins have submitted an answer\n", query->num_responses);
+		pthread_cond_signal(&query->threshold_met);
+	}
+	pthread_mutex_unlock(&query->mutex);
+	printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
+	return 1; /* let plugin know the callback was successful */
+}
