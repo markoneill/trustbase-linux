@@ -88,8 +88,7 @@ void* plugin_thread_init(void* arg) {
 		query = dequeue(queue);
 		report_sent = 0;
 		printf("Query dequeued\n");
-		if (plugin->type == PLUGIN_TYPE_INTERNAL_RAW || PLUGIN_TYPE_INTERNAL_OPENSSL ||
-					PLUGIN_TYPE_ADDON_HANDLED) {
+		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
 			result = query_plugin(plugin, plugin_id, query->hostname,
 					query->chain, query->raw_chain, query->raw_chain_len);
 			query->responses[plugin_id] = result;
@@ -106,7 +105,8 @@ void* plugin_thread_init(void* arg) {
 				free_query(query);
 			}
 		}
-		else if (plugin->type == PLUGIN_TYPE_EXTERNAL) {
+		else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
+			//query_asynchronous_plugin(async_callback, query->id, plugin, plugin_id, query->hostname, query->chain, query->raw_chain, query->raw_chain_len);
 			// XXX UNSUPPORTED STILL
 		}
 		// XXX MAKE this also send a callback for asynchronous plugins
