@@ -24,6 +24,9 @@ void (*ref_tcp_close)(struct sock *sk, long timeout);
 int (*ref_tcp_sendmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
 int (*ref_tcp_recvmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
 
+// Reference function for tcp v4 and v6 accept() calls
+struct sock *(*ref_inet_csk_accept)(struct sock *sk, int flags, int *err);
+
 // TCP IPv4-specific reference functions
 int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
 // TCP IPv6-specific wrapper functions
@@ -33,6 +36,10 @@ int new_tcp_disconnect(struct sock *sk, int flags);
 void new_tcp_close(struct sock *sk, long timeout);
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+
+// New function for tcp v4 and v6 accept() calls
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err);
+
 
 // Helpers
 static conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
@@ -46,10 +53,10 @@ extern struct proto tcp_prot;
 struct proto * tcpv6_prot_ptr;
 
 /**
- * Register the proxy by storing the old TCP function pointers, and replacing them with TrustHub functions.
- * @param reg_ops the struct containg the TrustHub operation functions.
+ * Register the proxy by storing the old TCP function pointers, and replacing them with custom functions.
+ * @param reg_ops the struct containg the custom operation functions.
  * @pre System TCP pointers point to the original tcp_prot functions.
- * @post System TCP pointers point to TrustHub functions and ops has pointers to the correct TrustHub operation functions.
+ * @post System TCP pointers point to custom functions and ops has pointers to the correct TrustHub operation functions.
  * @return 0
  */
 int proxy_register(proxy_handler_ops_t* reg_ops) {
@@ -65,11 +72,13 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	ref_tcp_close = (void *)tcp_prot.close;
 	ref_tcp_sendmsg = (void *)tcp_prot.sendmsg;
 	ref_tcp_recvmsg = (void *)tcp_prot.recvmsg;
+	ref_inet_csk_accept = (void *)tcp_prot.accept;
 	tcp_prot.connect = new_tcp_v4_connect;
 	tcp_prot.disconnect = new_tcp_disconnect;
 	tcp_prot.close = new_tcp_close;
 	tcp_prot.sendmsg = new_tcp_sendmsg;
 	tcp_prot.recvmsg = new_tcp_recvmsg;
+	tcp_prot.accept = new_inet_csk_accept;
 	if ((tcpv6_prot_ptr = (void *)kallsyms_lookup_name("tcpv6_prot")) == 0) {
 		printk(KERN_ALERT "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
 	}
@@ -81,6 +90,7 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 		tcpv6_prot_ptr->close = new_tcp_close;
 		tcpv6_prot_ptr->sendmsg = new_tcp_sendmsg;
 		tcpv6_prot_ptr->recvmsg = new_tcp_recvmsg;
+		tcpv6_prot_ptr->accept = new_inet_csk_accept;
 	}
 	return 0;
 }
@@ -97,12 +107,14 @@ int proxy_unregister(void) {
 	tcp_prot.close = ref_tcp_close;
 	tcp_prot.sendmsg = ref_tcp_sendmsg;
 	tcp_prot.recvmsg = ref_tcp_recvmsg;
+	tcp_prot.accept = ref_inet_csk_accept;
 	if (tcpv6_prot_ptr != 0) {
 		tcpv6_prot_ptr->connect = ref_tcp_v6_connect;
 		tcpv6_prot_ptr->disconnect = ref_tcp_disconnect;
 		tcpv6_prot_ptr->close = ref_tcp_close;
 		tcpv6_prot_ptr->sendmsg = ref_tcp_sendmsg;
 		tcpv6_prot_ptr->recvmsg = ref_tcp_recvmsg;
+		tcpv6_prot_ptr->accept = ref_inet_csk_accept;
 	}
 
 	// Free up conn state memory
@@ -303,7 +315,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if (iov.iov_len <= 0) { //should never really be negative
 		if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
 			//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-			stop_conn_state(conn_state); 
+	stop_conn_state(conn_state); 
 	        }
 		// Tell the user we sent everything he wanted
 		return size;
@@ -512,5 +524,13 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	//printk(KERN_ALERT "returning at end with %d", bytes_sent);
 	return bytes_sent;
 
+}
+
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
+	struct sock* ret;
+	ret = ref_inet_csk_accept(sk, flags, err);
+	// if (accept registered && pid is that of registered process)
+	// Call setsockopt here
+	return ret;
 }
 
