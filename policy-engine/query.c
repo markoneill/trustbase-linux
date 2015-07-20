@@ -38,6 +38,13 @@ query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned 
 		free(query);
 		return NULL;
 	}
+	if (pthread_cond_init(&query->threshold_met, NULL) != 0) {
+		fprintf(stderr, "Failed to create condvar for query\n");
+		pthread_mutex_destroy(&query->mutex);
+		free(query->responses);
+		free(query);
+		return NULL;
+	}
 	
 	/* Parse chain to X509 structures */
 	query->chain = parse_chain(cert_data, len);
@@ -47,6 +54,7 @@ query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned 
 	if (query->hostname == NULL) {
 		fprintf(stderr, "Failed to allocate hostname for query\n");
 		pthread_mutex_destroy(&query->mutex);
+		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
 		free(query);
 		return NULL;
@@ -55,6 +63,7 @@ query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned 
 	if (query->hostname == NULL) {
 		fprintf(stderr, "Failed to allocate cert chain for query\n");
 		pthread_mutex_destroy(&query->mutex);
+		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
 		free(query->hostname);
 		free(query);
@@ -76,6 +85,9 @@ void free_query(query_t* query) {
 	}
 	if (pthread_mutex_destroy(&query->mutex) != 0) {
 		fprintf(stderr, "Failed to destroy query mutex\n");
+	}
+	if (pthread_cond_destroy(&query->threshold_met) != 0) {
+		fprintf(stderr, "Failed to destroy query condvar\n");
 	}
 	sk_X509_pop_free(query->chain, X509_free);
 	free(query->raw_chain);

@@ -7,7 +7,9 @@
 #include <openssl/x509v3.h>
 
 typedef struct query_t {
+	unsigned int id;
 	pthread_mutex_t mutex;
+	pthread_cond_t threshold_met;
 	uint64_t state_pointer;
 	int num_plugins;
 	STACK_OF(X509)* chain;

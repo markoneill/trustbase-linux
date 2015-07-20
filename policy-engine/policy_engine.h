@@ -17,6 +17,7 @@ typedef struct policy_context_t {
 	addon_t* addons;
 	int addon_count;
 	/* new members here for aggregation policy */
+	queue_t* decider_queue;
 } policy_context_t;
 
 typedef struct thread_param_t {

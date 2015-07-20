@@ -58,6 +58,10 @@ void close_addons(addon_t* addons, size_t addon_count) {
 	int i;
 	for (i = 0; i < addon_count; i++) {
 		addons[i].addon_finalize();
+		free(addons[i].name);
+		free(addons[i].desc);
+		free(addons[i].ver);
+		free(addons[i].type_handled);
 	}
 	free(addons);
 	return;
