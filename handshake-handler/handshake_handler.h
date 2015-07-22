@@ -45,6 +45,7 @@ typedef struct handler_state_t {
 	buf_state_t send_state;
 	int is_attack;
 	struct socket* orig_sock;
+	struct socket* mitm_sock;
 	int is_ipv6;
 	union {
 		struct sockaddr_in addr_v4;
@@ -72,5 +73,6 @@ int th_update_bytes_forwarded_send(void* state, size_t forwarded);
 int th_update_bytes_forwarded_recv(void* state, size_t forwarded);
 int th_get_bytes_to_read_send(void* state);
 int th_get_bytes_to_read_recv(void* state);
+struct sock* th_get_mitm_sock(void* state);
 
 #endif

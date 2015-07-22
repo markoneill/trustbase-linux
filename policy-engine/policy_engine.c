@@ -141,7 +141,7 @@ void* decider_thread_init(void* arg) {
 		pthread_mutex_unlock(&query->mutex);
 		printf("All plugins have submitted an answer\n");
 		free_query(query);
-		send_response(query->state_pointer, 1);
+		send_response(query->state_pointer, 0);
 	}
 	return NULL;
 }

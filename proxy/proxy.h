@@ -46,8 +46,8 @@
 
 // Private key settings.
 #define RSA_BITS (1024)
-#define TRUST_HUB_PKEY_FILE ("/home/mark/trusthub-linux/proxy/trusthub.key")
-#define TRUST_HUB_CERT_FILE ("/home/mark/trusthub-linux/proxy/trusthub.pem")
+#define TRUST_HUB_PKEY_FILE ("/home/Phoenix_1/trusthub-linux/proxy/trusthub.key")
+#define TRUST_HUB_CERT_FILE ("/home/Phoenix_1/trusthub-linux/proxy/trusthub.pem")
 
 /**
  * Structure for the local connection's settings.

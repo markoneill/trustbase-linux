@@ -55,10 +55,12 @@ int __init loader_start(void) {
 		.inc_recv_bytes_forwarded = th_update_bytes_forwarded_recv,
 		.bytes_to_read_send = th_get_bytes_to_read_send,
 		.bytes_to_read_recv = th_get_bytes_to_read_recv,
+		.get_mitm_sock = th_get_mitm_sock,
 	};
 	
+	start_mitm_proxy("/home/Phoenix_1/trusthub-linux/ssl_proxy");
+	accept_modifier_register(mitm_proxy_task->pid);
 	proxy_register(&trusthub_ops);
-	start_mitm_proxy("/home/mark/trusthub-linux/ssl_proxy");
 	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
 
 	return 0;
@@ -70,6 +72,7 @@ int __init loader_start(void) {
  */
 void __exit loader_end(void) {
 	proxy_unregister();
+	accept_modifier_unregister();
 	// Unregister the IPC 
 	th_unregister_netlink();
 
