@@ -119,13 +119,13 @@ int load_signing_info() {
 	// Load the signing cert.
 	fp = fopen(TRUST_HUB_CERT_FILE, "rb");
 	if (fp == NULL) {
-		fprintf(stderr, "Failed to read file %s\n", TRUST_HUB_PKEY_FILE);
+		fprintf(stderr, "Failed to read file %s\n", TRUST_HUB_CERT_FILE);
 		return -1;
 	}
 
 	trust_hub_cert = PEM_read_X509(fp, NULL, NULL, NULL);
 	if (trust_hub_cert == NULL) {
-		fprintf(stderr, "Bad private key %s\n", TRUST_HUB_PKEY_FILE);
+		fprintf(stderr, "Bad certificate %s\n", TRUST_HUB_CERT_FILE);
 		if (private_key != NULL) {
 			EVP_PKEY_free(trust_hub_signing_key);
 		}
