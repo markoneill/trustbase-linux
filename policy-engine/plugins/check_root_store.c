@@ -21,6 +21,7 @@ static STACK_OF(X509)* pem_to_stack(char*);
 static void print_certificate(X509* cert);
 static void print_chain(STACK_OF(X509)*);
 static const char* get_validation_errstr(long e);
+static int test(int argc, char *argv[]);
 
 /** This function returns a new X509_STORE* that contains the default CA system store.
  * You must free this STORE after use with X509_STORE_free.
@@ -337,7 +338,7 @@ static const char* get_validation_errstr(long e) {
 	}
 }
 
-int main(int argc, char *argv[]) {
+static int test(int argc, char *argv[]) {
 	char* hostname;
 	STACK_OF(X509)* chain;
 	X509_STORE* root_store;
@@ -355,7 +356,7 @@ int main(int argc, char *argv[]) {
 	}
 	
 	root_store = make_new_root_store();
-	printf("All Passed = %d\n", query_store(hostname, chain, root_store));
+	printf("Certificate Chain Passed = %d\n", query_store(hostname, chain, root_store));
 	X509_STORE_free(root_store);
 	sk_X509_pop_free(chain, X509_free);
 	return 0;
