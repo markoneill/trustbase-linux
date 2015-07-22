@@ -2,10 +2,9 @@
 #include <openssl/x509v3.h>
 #include <dlfcn.h>
 #include <string.h>
+#include "query_queue.h"
 #include "plugins.h"
 #include "addons.h"
-
-static void close_internal_plugins(plugin_t* plugins, size_t plugin_count);
 
 void print_plugins(plugin_t* plugins, size_t plugin_count) {
 	int i;
@@ -15,18 +14,24 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 		printf("\t\tDescription: %s\n", plugins[i].desc);
 		printf("\t\tVersion: %s\n", plugins[i].ver);
 		printf("\t\tPath: %s\n", plugins[i].path);
-		if (plugins[i].type == PLUGIN_TYPE_EXTERNAL) {
-			printf("\t\tType: External\n");
-			printf("\t\tService: %s:%d\n", plugins[i].hostname, plugins[i].port);
+		if (plugins[i].type == PLUGIN_TYPE_ASYNCHRONOUS) {
+			printf("\t\tType: Asynchronous\n");
 		}
-		else if (plugins[i].type == PLUGIN_TYPE_INTERNAL_RAW ||
-			 plugins[i].type == PLUGIN_TYPE_INTERNAL_OPENSSL) {
-			printf("\t\tType: Internal\n");
-			printf("\t\tFunction: %p\n", plugins[i].query_func_openssl);
+		else {
+			printf("\t\tType: Synchronous\n");
 		}
-		else if (plugins[i].type == PLUGIN_TYPE_ADDON_HANDLED) {
-			printf("\t\tType: Addon-handled (%s)\n", plugins[i].type_str);
-			printf("\t\tAddon-supplied query function: %p\n", plugins[i].query_func_by_addon);
+
+		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_RAW) {
+			printf("\t\tHandler Type: Raw Data\n");
+			printf("\t\tFunction: %p\n", plugins[i].generic_query_func);
+		}
+		else if(plugins[i].handler_type == PLUGIN_HANDLER_TYPE_OPENSSL) {
+			printf("\t\tHandler Type: OpenSSL Data\n");
+			printf("\t\tFunction: %p\n", plugins[i].generic_query_func);
+		}
+		else if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_ADDON) {
+			printf("\t\tHandler Type: Addon-handled (%s)\n", plugins[i].handler_str);
+			printf("\t\tAddon-supplied query function: %p\n", plugins[i].generic_query_func);
 		}
 		else {
 			printf("\t\tType: Unknown\n");
@@ -35,60 +40,55 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 	return;
 }
 
-int query_plugin(plugin_t* plugin, int id, const char* hostname, STACK_OF(X509)* x509_certs, const unsigned char* certs, size_t certs_len) {
-	switch (plugin->type) {
-		case PLUGIN_TYPE_INTERNAL_RAW:
-			return query_raw_plugin(plugin, hostname, certs, certs_len);
-			break;
-		case PLUGIN_TYPE_INTERNAL_OPENSSL:
-			return query_openssl_plugin(plugin, hostname, x509_certs);
-			break;
-		case PLUGIN_TYPE_EXTERNAL:
-			return PLUGIN_RESPONSE_ABSTAIN; // XXX not implemented
-			break;
-		case PLUGIN_TYPE_ADDON_HANDLED:
-			return plugin->query_func_by_addon(id, hostname, certs, certs_len);
-			break;
-		default:
-			return PLUGIN_RESPONSE_ABSTAIN;
-			break;
+int query_async_plugin(plugin_t* plugin, int id, query_t* query) {
+	switch (plugin->handler_type) {
+		case PLUGIN_HANDLER_TYPE_RAW:
+			return plugin->query_async_raw(query, query->hostname, query->raw_chain, query->raw_chain_len);
+		case PLUGIN_HANDLER_TYPE_OPENSSL:
+			return plugin->query_async_openssl(query, query->hostname, query->chain);
+		case PLUGIN_HANDLER_TYPE_ADDON:
+			return plugin->query_async_by_addon(query, id, query->hostname, query->raw_chain, query->raw_chain_len);
 	}
+	return PLUGIN_RESPONSE_ABSTAIN;
 }
-
-int query_openssl_plugin(plugin_t* plugin, const char* hostname, STACK_OF(X509)* certs) {
-	query_func_openssl func;
-	func = plugin->query_func_openssl;
-	return (*func)(hostname, certs);
-}
-
-int query_raw_plugin(plugin_t* plugin, const char* hostname, const unsigned char* certs, size_t certs_length) {
-	query_func_raw func;
-	func = plugin->query_func_raw;
-	return (*func)(hostname, certs, certs_length);
+int query_sync_plugin(plugin_t* plugin, int id, query_t* query) {
+	switch (plugin->handler_type) {
+		case PLUGIN_HANDLER_TYPE_RAW:
+			return plugin->query_sync_raw(query->hostname, query->raw_chain, query->raw_chain_len);
+		case PLUGIN_HANDLER_TYPE_OPENSSL:
+			return plugin->query_sync_openssl(query->hostname, query->chain);
+		case PLUGIN_HANDLER_TYPE_ADDON:
+			return plugin->query_sync_by_addon(id, query->hostname, query->raw_chain, query->raw_chain_len);
+	}
+	return PLUGIN_RESPONSE_ABSTAIN;
 }
 
 void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t plugin_count) {
 	int i;
 	int j;
 	for (i = 0; i < plugin_count; i++) {
-		if (plugins[i].type == PLUGIN_TYPE_INTERNAL_OPENSSL) {
-			load_query_func_openssl(&plugins[i]);
+		if (plugins[i].handler_type != PLUGIN_HANDLER_TYPE_UNKNOWN) {
+			load_plugin_functions(&plugins[i]);
 		}
-		else if (plugins[i].type == PLUGIN_TYPE_INTERNAL_RAW) {
-			load_query_func_raw(&plugins[i]);
-		}
-		// XXX external plugins
 		else {
 			for (j = 0; j < addon_count; j++) {
-				if (strcmp(addons[j].type_handled, plugins[i].type_str) == 0) {
-					plugins[i].type = PLUGIN_TYPE_ADDON_HANDLED;
+				if (strcmp(addons[j].type_handled, plugins[i].handler_str) == 0) {
+					plugins[i].handler_type = PLUGIN_HANDLER_TYPE_ADDON;
 					addons[j].addon_load_plugin(i, plugins[i].path);
-					plugins[i].query_func_by_addon = addons[j].addon_query_plugin;
+					if (plugins[i].type == PLUGIN_TYPE_SYNCHRONOUS) {
+						plugins[i].query_sync_by_addon = addons[j].addon_query_plugin;
+					}
+					else {
+						// XXX see below
+						fprintf(stderr, "Asynchronous addon-handled plugins are not current supported\n");
+						// plugins[i].query_async_by_addon = addons[j].addon_async_query_plugin;
+					}
+
 					break;
 				}
 			}
 		}
-		if (plugins[i].type == PLUGIN_TYPE_UNKNOWN) {
+		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
 			fprintf(stderr, "Unhandled plugin type for plugin %02d\n", i);
 		}
 	}
@@ -96,25 +96,29 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 }
 
 void close_plugins(plugin_t* plugins, size_t plugin_count) {
-	close_internal_plugins(plugins, plugin_count);
-	//close_external_plugins(plugins, plugin_count); // XXX
+	int i;
+	for (i = 0; i < plugin_count; i++) {
+		/* addon-handled plugins do not need to be closed */
+		/* addons themselves get closed instead in that case */
+		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_ADDON ||
+			plugins[i].handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
+			continue;
+		}
+		if (plugins[i].finalize != NULL) {
+			plugins[i].finalize();
+		}
+		dlclose(plugins[i].so_handle);
+		free(plugins[i].name);
+		free(plugins[i].desc);
+		free(plugins[i].ver);
+		free(plugins[i].handler_str);
+		free(plugins[i].path);
+	}
 	free(plugins);
 	return;
 }
 
-void close_internal_plugins(plugin_t* plugins, size_t plugin_count) {
-	int i;
-	for (i = 0; i < plugin_count; i++) {
-		if (plugins[i].type == PLUGIN_TYPE_INTERNAL_OPENSSL ||
-			plugins[i].type == PLUGIN_TYPE_INTERNAL_RAW) {
-			dlclose(plugins[i].so_handle);
-		}
-	}
-	return;
-}
-
-int load_query_func_raw(plugin_t* plugin) {
-	query_func_raw func;
+int load_plugin_functions(plugin_t* plugin) {
 	void* handle;
 	handle = dlopen(plugin->path, RTLD_LAZY);
 	if (!handle) {
@@ -122,27 +126,15 @@ int load_query_func_raw(plugin_t* plugin) {
 	}
 	plugin->so_handle = handle;
 	dlerror(); // clear error (if any)
-	func = dlsym(handle, "query");
-	plugin->query_func_raw = func;
+	plugin->generic_query_func = dlsym(handle, "query");
 	if (dlerror() != NULL) {
 		return 2;
 	}
+	/* dlsym returns null on failure and we use null to denote
+ 	 * that no function has been provided so we don't need to
+ 	 * error check here */
+	plugin->generic_init_func = dlsym(handle, "initialize");
+	plugin->finalize = dlsym(handle, "finalize");
 	return 0;
 }
 
-int load_query_func_openssl(plugin_t* plugin) {
-	query_func_openssl func;
-	void* handle;
-	handle = dlopen(plugin->path, RTLD_LAZY);
-	if (!handle) {
-		return 1;
-	}
-	plugin->so_handle = handle;
-	dlerror(); // clear error (if any)
-	func = dlsym(handle, "query");
-	plugin->query_func_openssl = func;
-	if (dlerror() != NULL) {
-		return 2;
-	}
-	return 0;
-}

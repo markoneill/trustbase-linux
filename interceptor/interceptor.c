@@ -14,6 +14,7 @@
 #include <linux/socket.h> // For socket structures
 #include <linux/slab.h> // For memory allocation
 #include <linux/tcp.h> // For TCP structures
+#include <net/ip.h>
 
 #include "../util/utils.h"
 #include "interceptor.h"
@@ -29,6 +30,10 @@ void (*ref_tcp_close)(struct sock *sk, long timeout);
 int (*ref_tcp_sendmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
 int (*ref_tcp_recvmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
 
+// Reference function for tcp v4 and v6 accept() calls
+struct sock *(*ref_inet_csk_accept)(struct sock *sk, int flags, int *err);
+struct proxy_accept_list_t proxy_accept_list; 
+
 // TCP IPv4-specific reference functions
 int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
 // TCP IPv6-specific wrapper functions
@@ -39,23 +44,27 @@ void new_tcp_close(struct sock *sk, long timeout);
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
 
+// New function for tcp v4 and v6 accept() calls
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err);
+
+
 // Helpers
 static conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
 static int stop_conn_state(conn_state_t* conn_state);
 
 // Global ops registration
 static proxy_handler_ops_t* ops;
+static pid_t local_nat_pid;
 
 // OS Structures to hook into for interception
 extern struct proto tcp_prot;
 struct proto * tcpv6_prot_ptr;
 
 /**
- * Register the proxy by storing the old TCP function pointers,
- * then replaces them with TrustHub functions.
- * @param reg_ops the struct containg the TrustHub operation functions.
+ * Register the proxy by storing the old TCP function pointers, and replacing them with custom functions.
+ * @param reg_ops the struct containg the custom operation functions.
  * @pre System TCP pointers point to the original tcp_prot functions.
- * @post System TCP pointers point to TrustHub functions and ops has pointers to the correct TrustHub operation functions.
+ * @post System TCP pointers point to custom functions and ops has pointers to the correct TrustHub operation functions.
  * @return 0
  */
 int proxy_register(proxy_handler_ops_t* reg_ops) {
@@ -71,11 +80,13 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	ref_tcp_close = (void *)tcp_prot.close;
 	ref_tcp_sendmsg = (void *)tcp_prot.sendmsg;
 	ref_tcp_recvmsg = (void *)tcp_prot.recvmsg;
+	ref_inet_csk_accept = (void *)tcp_prot.accept;
 	tcp_prot.connect = new_tcp_v4_connect;
 	tcp_prot.disconnect = new_tcp_disconnect;
 	tcp_prot.close = new_tcp_close;
 	tcp_prot.sendmsg = new_tcp_sendmsg;
 	tcp_prot.recvmsg = new_tcp_recvmsg;
+	tcp_prot.accept = new_inet_csk_accept;
 	if ((tcpv6_prot_ptr = (void *)kallsyms_lookup_name("tcpv6_prot")) == 0) {
 		printk(KERN_ALERT "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
 	}
@@ -87,6 +98,7 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 		tcpv6_prot_ptr->close = new_tcp_close;
 		tcpv6_prot_ptr->sendmsg = new_tcp_sendmsg;
 		tcpv6_prot_ptr->recvmsg = new_tcp_recvmsg;
+		tcpv6_prot_ptr->accept = new_inet_csk_accept;
 	}
 	return 0;
 }
@@ -103,16 +115,51 @@ int proxy_unregister(void) {
 	tcp_prot.close = ref_tcp_close;
 	tcp_prot.sendmsg = ref_tcp_sendmsg;
 	tcp_prot.recvmsg = ref_tcp_recvmsg;
+	tcp_prot.accept = ref_inet_csk_accept;
 	if (tcpv6_prot_ptr != 0) {
 		tcpv6_prot_ptr->connect = ref_tcp_v6_connect;
 		tcpv6_prot_ptr->disconnect = ref_tcp_disconnect;
 		tcpv6_prot_ptr->close = ref_tcp_close;
 		tcpv6_prot_ptr->sendmsg = ref_tcp_sendmsg;
 		tcpv6_prot_ptr->recvmsg = ref_tcp_recvmsg;
+		tcpv6_prot_ptr->accept = ref_inet_csk_accept;
 	}
 
 	// Free up conn state memory
 	conn_state_delete_all();
+	return 0;
+}
+
+int accept_modifier_register(pid_t pid) {
+	INIT_LIST_HEAD(&proxy_accept_list.list);
+	local_nat_pid = pid;
+	return 0;
+}
+
+int accept_modifier_unregister(void) {
+	struct list_head* cur;
+	struct list_head* q;
+	proxy_accept_list_t* tmp;
+	list_for_each_safe(cur, q, &proxy_accept_list.list) {
+		tmp = list_entry(cur, proxy_accept_list_t, list);
+		list_del(cur);
+		kfree(tmp);
+	}
+	local_nat_pid = 0;
+	return 0;
+}
+
+int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6) {
+	struct proxy_accept_list_t* tmp;
+	tmp = (proxy_accept_list_t*)kmalloc(GFP_KERNEL, sizeof(proxy_accept_list_t));
+	if (is_ipv6) {
+		tmp->addr_v6 = *(struct sockaddr_in6*)addr;
+	}
+	else {
+		tmp->addr_v4 = *(struct sockaddr_in*)addr;
+	}
+	tmp->src_port = src_port;
+	list_add(&(tmp->list), &(proxy_accept_list.list));
 	return 0;
 }
 
@@ -248,7 +295,12 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
-		return ref_tcp_sendmsg(iocb, sk, msg, size);
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), msg, size);
+		set_fs(oldfs);
+		return real_ret;
+		//return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
 
 	// Copy attributes of existing message into our custom one
@@ -309,7 +361,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if (iov.iov_len <= 0) { //should never really be negative
 		if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
 			//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-			stop_conn_state(conn_state); 
+	stop_conn_state(conn_state); 
 	        }
 		// Tell the user we sent everything he wanted
 		return size;
@@ -386,7 +438,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
-		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), msg, len, nonblock, flags, addr_len);
+		set_fs(oldfs);
+		return ret;
+		//return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 	}
 
 	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
@@ -518,5 +575,33 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	//printk(KERN_ALERT "returning at end with %d", bytes_sent);
 	return bytes_sent;
 
+}
+
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
+	struct sock* ret;
+	__be16 src_port;
+	struct list_head* cur;
+	struct list_head* q;
+	proxy_accept_list_t* tmp;
+	ret = ref_inet_csk_accept(sk, flags, err);
+	if (ret == NULL) {
+		return ret;
+	}
+	if (local_nat_pid && local_nat_pid == current->pid) {
+		src_port = inet_sk(ret)->inet_dport;
+		printk(KERN_INFO "Accepted socket Source Port is %d", ntohs(src_port));
+		list_for_each_safe(cur, q, &proxy_accept_list.list) {
+			tmp = list_entry(cur, proxy_accept_list_t, list);
+			if (tmp->src_port == src_port) {
+				printk(KERN_INFO "Found data in list");
+				ip_setsockopt(ret, SOL_IP, IP_ORIGDSTADDR, 
+					sizeof(struct sockaddr), &tmp->addr);
+				list_del(cur);
+				kfree(tmp);
+			}
+		}
+		//sock_setsockopt();
+	}
+	return ret;
 }
 

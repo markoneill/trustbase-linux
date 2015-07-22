@@ -24,6 +24,8 @@ except Exception as e:
 	sys.exit(1)
 
 def query(host, cert_chain):
+	if "byu.edu" in host or "youtube.com" in host:
+		return False
 	is_valid = False
 	try:
 		print "Checking cert for Host: %s" % (host)

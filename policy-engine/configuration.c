@@ -11,6 +11,7 @@
 
 static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin);
 static int parse_addon(config_setting_t* plugin_data, addon_t* addon);
+static char* copy_string(const char* original);
 
 int load_config(policy_context_t* policy_context) {
 	plugin_t* plugins;
@@ -92,10 +93,10 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
 		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
 	}
-	snprintf(addon->name, ADDON_NAME_MAX, "%s", name);
-	snprintf(addon->desc, ADDON_DESC_MAX, "%s", desc);
-	snprintf(addon->ver, ADDON_VERSION_STR_MAX, "%s", version);
-	snprintf(addon->type_handled, ADDON_TYPE_HANDLED_MAX, "%s", type_handled);
+	addon->name = copy_string(name);
+	addon->desc = copy_string(desc);
+	addon->ver = copy_string(version);
+	addon->type_handled = copy_string(type_handled);
 	if (load_addon(path, addon) != 0) {
 		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
@@ -108,54 +109,61 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin) {
 	const char* desc;
 	const char* version;
 	const char* type;
-	const char* path;
-	const char* hostname;
-	int port;
+	const char* handler;
 	int openSSL;
+	const char* path;
 	if (!(config_setting_lookup_string(plugin_data, "name", &name) &&
 	    config_setting_lookup_string(plugin_data, "description", &desc) &&
 	    config_setting_lookup_string(plugin_data, "version", &version) &&
-	    config_setting_lookup_string(plugin_data, "type", &type))) {
+	    config_setting_lookup_string(plugin_data, "type", &type) &&
+	    config_setting_lookup_string(plugin_data, "handler", &handler) &&
+	    config_setting_lookup_int(plugin_data, "openssl", &openSSL) &&
+	    config_setting_lookup_string(plugin_data, "path", &path))) {
 		fprintf(stderr, "Syntax error in configuration file: section plugins\n");
 		return 1;
 	}
-	snprintf(plugin->name, PLUGIN_NAME_MAX, "%s", name);
-	snprintf(plugin->desc, PLUGIN_DESC_MAX, "%s", desc);
-	snprintf(plugin->ver, PLUGIN_VERSION_STR_MAX, "%s", version);
-	snprintf(plugin->type_str, PLUGIN_TYPE_STR_MAX, "%s", type);
 
-	if (strncmp(type, "internal", sizeof("internal")) == 0) {
-		if (!(config_setting_lookup_string(plugin_data, "path", &path) &&
-			config_setting_lookup_int(plugin_data, "openssl", &openSSL))) {
-			fprintf(stderr, "Syntax error in configuration file: section plugins\n");
-			return 2;
-		}
-		snprintf(plugin->path, PLUGIN_PATH_MAX, "%s", path);
-		if (openSSL) {
-			plugin->type = PLUGIN_TYPE_INTERNAL_OPENSSL;
-		}
-		else {
-			plugin->type = PLUGIN_TYPE_INTERNAL_RAW;
-		}
+	plugin->name = copy_string(name);
+	plugin->desc = copy_string(desc);
+	plugin->ver = copy_string(version);
+	plugin->handler_str = copy_string(handler);
+	plugin->path = copy_string(path);
+
+	if (strncmp(type, "synchronous", sizeof("synchronous")) == 0) {
+		plugin->type = PLUGIN_TYPE_SYNCHRONOUS;
 	}
-	else if (strncmp(type, "external", sizeof("external")) == 0) {
-		if (!(config_setting_lookup_string(plugin_data, "hostname", &hostname) &&
-			config_setting_lookup_int(plugin_data, "port", &port))) {
-			fprintf(stderr, "Syntax error in configuration file: section plugins\n");
-			return 2;
-		}
-		plugin->port = port;
-		snprintf(plugin->hostname, PLUGIN_HOSTNAME_MAX, "%s", hostname);
+	else if (strncmp(type, "asynchronous", sizeof("asynchronous")) == 0) {
+		plugin->type = PLUGIN_TYPE_ASYNCHRONOUS;
 	}
 	else {
-		// Every unknown plugin should at least have a path (name, desc, ver, and type)
-		// handled earlier
-		if (!(config_setting_lookup_string(plugin_data, "path", &path))) {
-			fprintf(stderr, "Syntax error in configuration file: section plugins\n");
-			return 2;
+		fprintf(stderr, "Unknown plugin type in configuration file\n");
+		return 1;
+	}
+
+	if (strncmp(handler, "native", sizeof("native")) == 0) {
+		if (openSSL) {
+			plugin->handler_type = PLUGIN_HANDLER_TYPE_OPENSSL;
 		}
-		snprintf(plugin->path, PLUGIN_PATH_MAX, "%s", path);
-		plugin->type = PLUGIN_TYPE_UNKNOWN;
+		else {
+			plugin->handler_type = PLUGIN_HANDLER_TYPE_RAW;
+		}
+	}
+	else { /* This will (if possible) be resolved after addon loading */
+		plugin->handler_type = PLUGIN_HANDLER_TYPE_UNKNOWN;
 	}
 	return 0;
 }
+
+char* copy_string(const char* original) {
+	char* copy;
+	int len;
+	len = strlen(original)+1; /* +1 for null terminator */
+	copy = (char*)malloc(len);
+	if (copy == NULL) {
+		fprintf(stderr, "Unable to allocate space for a string during configuration loading\n");
+		return NULL;
+	}
+	memcpy(copy, original, len);
+	return copy;
+}
+

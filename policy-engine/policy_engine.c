@@ -1,284 +1,167 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <netlink/netlink.h>
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-#include <openssl/bio.h>
+#include <pthread.h>
 
+#include "netlink.h"
 #include "configuration.h"
+#include "query.h"
+#include "query_queue.h"
 #include "plugins.h"
-#include "../handshake-handler/communications.h"
 
-#define MAX_LENGTH	1024
-#define CERT_LENGTH_FIELD_SIZE	3
 
-int chains_received;
-int family;
 policy_context_t context;
 
-static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
-        [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
-	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
-        [TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
-        [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
-};
+static void* plugin_thread_init(void* arg);
+static void* decider_thread_init(void* arg);
+static int async_callback(int plugin_id, int query_id, int result);
 
-static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
-static int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len);
-static int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* rcerts, int rcerts_len);
 
 typedef struct { unsigned char b[3]; } be24, le24;
 
 
-static void hton24(int x, unsigned char* buf) {
-	buf[0] = x >> 16 & 0xff;
-	buf[1] = x >> 8 & 0xff;
-	buf[2] = x & 0xff;
-	return;
-}
-
-static int ntoh24(const unsigned char* data) {
-	int ret = (data[0] << 16) | (data[1] << 8) | data[2];
-	return ret;
-}
-
-static void print_certificate(X509* cert) {
-	char subj[MAX_LENGTH+1];
-	char issuer[MAX_LENGTH+1];
-	X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
-	X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-	printf("subject: %s\n", subj);
-	printf("issuer: %s\n", issuer);
-}
-
-int send_response(struct nl_sock* sock, uint64_t stptr, int result, unsigned char* ret_certs, int ret_length) {
-	int rc;
-	struct nl_msg* msg;
-	void* msg_head;
-	msg = nlmsg_alloc();
-	if (msg == NULL) {
-		printf("failed to allocate message buffer\n");
-		return -1;
-	}
-	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_RESPONSE, 1);
-	if (msg_head == NULL) {
-		printf("failed in genlmsg_put\n");
-		return -1;
-	}
-	rc = nla_put_u64(msg, TRUSTHUB_A_STATE_PTR, stptr);
-	if (rc != 0) {
-		printf("failed to insert state pointer\n");
-		return -1;
-	}
-	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, result);
-	if (rc != 0) {
-		printf("failed to insert result\n");
-		return -1;
-	}
-	/*if (result == 0) { // Only send back new chain if we're going to claim invalidity
-		rc = nla_put(msg, TRUSTHUB_A_CERTCHAIN, ret_length, ret_certs);
-		if (rc != 0) {
-			printf("failed to insert return chain\n");
-			return -1;
-		}
-	}*/
-	rc = nl_send_auto(sock, msg);
-	if (rc < 0) {
-		printf("failed in nl send with error code %d\n", rc);
-		return -1;
-	}
-	return 0;	
-}
-
-STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
-	unsigned char* start_pos;
-	unsigned char* current_pos;
-	const unsigned char* cert_ptr;
-	X509* cert;
-	int cert_len;
-	start_pos = data;
-	current_pos = data;
-	STACK_OF(X509)* chain;
-
-	chain = sk_X509_new_null();
-	while ((current_pos - start_pos) < len) {
-		cert_len = ntoh24(current_pos);
-		current_pos += CERT_LENGTH_FIELD_SIZE;
-		//printf("The next cert to parse is %d bytes\n", cert_len);
-		cert_ptr = current_pos;
-		cert = d2i_X509(NULL, &cert_ptr, cert_len);
-		if (!cert) {
-			fprintf(stderr,"unable to parse certificate\n");
-		}
-		print_certificate(cert);
-		
-		sk_X509_push(chain, cert);
-		current_pos += cert_len;
-	}
-	return chain;
-}
-
-int poll_schemes(char* hostname, unsigned char* data, size_t len, unsigned char** rcerts, int* rcerts_len) {
-	int result;
-	unsigned char* p;
-	X509* bad_cert;
-	STACK_OF(X509)* chain;
+int poll_schemes(uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
 	int i;
-	int ret_chain_len;
-	int* cert_lens;
-	unsigned char* ret_chain;
-	ret_chain_len = 0;
-	ret_chain = NULL;
-
-	// Parse chain to X509 structures
-	chain = parse_chain(data, len);
-	if (sk_X509_num(chain) <= 0) {
-		// XXX yeah...
-	}
-	
-	// Validation
-	//if (query_raw_plugin(&context.plugins[0], hostname, data, len) == 0) {
-	if (query_plugin(&context.plugins[2], 2, hostname, chain, data, len) == 0) {
-		result = 0;
-
-		bad_cert = sk_X509_value(chain, 0); // Get first cert
-		// Calculate bytes needed to represent chain in TLS message
-		cert_lens = (int*)malloc(sizeof(int) * sk_X509_num(chain));
-		for (i = 0; i < sk_X509_num(chain); i++) {
-			bad_cert = sk_X509_value(chain, i);
-			cert_lens[i] = i2d_X509(bad_cert, NULL);
-			ret_chain_len += cert_lens[i] + 3; // +3 for length field length
-		}
-
-		// Create substitute TLS certificate message
-		ret_chain = OPENSSL_malloc(ret_chain_len);
-		p = ret_chain;
-		for (i = 0; i < sk_X509_num(chain); i++) {
-			bad_cert = sk_X509_value(chain, i);
-			hton24(cert_lens[i], p); // Assign length
-			p += 3; // Skip past length field (24 bits)
-			i2d_X509(bad_cert, &p); // Write certificate
-		}
-		*rcerts_len = ret_chain_len;
-		*rcerts = ret_chain;
-		free(cert_lens);
-		printf("sending fail response\n");
-	}
-	else {
-		result = 1;
-		*rcerts = NULL;
-		*rcerts_len = 0;
-		printf("sending valid response\n");
-	}
-	sk_X509_pop_free(chain, X509_free);
-	return result;
-}
-
-int recv_query(struct nl_msg *msg, void *arg) {
-	// Netlink Variables
-	struct nlmsghdr* nlh;
-	struct genlmsghdr* gnlh;
-	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
-	char* hostname;
-	unsigned char* cert_chain;
-	int chain_length;
-	uint64_t stptr;
-
-	// Decision variables
-	int result;
-	int rcert_len;
-	unsigned char* rcert;
-	
-
-	// Get Message
-	nlh = nlmsg_hdr(msg);
-	gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
-	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
-	switch (gnlh->cmd) {
-		case TRUSTHUB_C_QUERY:
-			// Get message fields
-			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
-			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
-			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
-			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
-
-			// Query registered schemes
-			result = poll_schemes(hostname, cert_chain, chain_length, &rcert, &rcert_len);
-			if (result == 0) { // Invalid
-				send_response(arg, stptr, result, rcert, rcert_len);
-				OPENSSL_free(rcert);
-			}
-			else { // Valid
-				send_response(arg, stptr, result, NULL, 0);
-			}
-			//chains_received++;
-			//printf("chains receieved: %d\n", chains_received);
-			//printf("Got a certificate chain for %s of %d bytes\n", hostname, chain_length);
-			//printf("Got state pointer value of %p\n",(void*)stptr);
-			break;
-		default:
-			printf("Got something unusual...\n");
-			break;
+	query_t* query;
+	/* Validation */
+	query = create_query(context.plugin_count, stptr, hostname, cert_data, len);
+	enqueue(context.decider_queue, query);
+	for (i = 0; i < context.plugin_count; i++) {
+		printf("Enqueuing query\n");
+		enqueue(context.plugins[i].queue, query);
+		printf("query enqueued\n");
 	}
 	return 0;
 }
 
+
 int main() {
-	int group;
-	struct nl_sock* sock;
-	//pthread_t socket_api_thread;
-	//pthread_t user_notification_thread;
-	//pthread_create(&socket_api_thread, NULL, socket_api_listen, (void*)NULL);
-	//pthread_create(&user_notification_thread, NULL, notification_listen, (void*)NULL);
+	int i;
+	pthread_t decider_thread;
+	pthread_t* plugin_threads;
+	thread_param_t decider_thread_params;
+	thread_param_t* plugin_thread_params;
+
 	load_config(&context);
 	init_addons(context.addons, context.addon_count, context.plugin_count);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
-	printf("Loaded %d addons and %d plugins\n", context.addon_count, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
 	print_plugins(context.plugins, context.plugin_count);
-	//close_plugins(context.plugins, context.plugin_count);
-	//close_addons(context.addons, context.addon_count);
-	sock = nl_socket_alloc();
 
-	nl_socket_disable_seq_check(sock);
-	nl_socket_modify_cb(sock, NL_CB_VALID, NL_CB_CUSTOM, recv_query, (void*)sock);
-	if (sock == NULL) {
-		fprintf(stderr, "Failed to allocate socket\n");
-		return -1;
-	}
-	/* Internally this calls socket() and bind() using Netlink
- 	 (specifically Generic Netlink)
- 	 */
-	if (genl_connect(sock) != 0) {
-		fprintf(stderr, "Failed to connect to Generic Netlink control\n");
-		return -1;
-	}
-	
-	if ((family = genl_ctrl_resolve(sock, "TRUSTHUB")) < 0) {
-		fprintf(stderr, "Failed to resolve TRUSTHUB family identifier\n");
-		return -1;
+	/* Decider thread (runs CA system and aggregates plugin verdicts */
+	decider_thread_params.plugin_id = -1;
+	context.decider_queue = make_queue("decider");
+	pthread_create(&decider_thread, NULL, decider_thread_init, &decider_thread_params);
+
+
+	/* Plugin Threading */
+	plugin_thread_params = (thread_param_t*)malloc(sizeof(thread_param_t) * context.plugin_count);
+	plugin_threads = (pthread_t*)malloc(sizeof(pthread_t) * context.plugin_count);
+	for (i = 0; i < context.plugin_count; i++) {
+		context.plugins[i].queue = make_queue(context.plugins[i].name); // XXX relocate this
+		plugin_thread_params[i].plugin_id = i;
+		pthread_create(&plugin_threads[i], NULL, plugin_thread_init, &plugin_thread_params[i]);
 	}
 
-	if ((group = genl_ctrl_resolve_grp(sock, "TRUSTHUB", "query")) < 0) {
-		fprintf(stderr, "Failed to resolve group identifier\n");
-		return -1;
-	}
+	listen_for_queries();
 
-	if (nl_socket_add_membership(sock, group) < 0) {
-		fprintf(stderr, "Failed to add membership to group\n");
-		return -1;
+	// Cleanup
+	for (i = 0; i < context.plugin_count; i++) {
+		free_queue(context.plugins[i].queue); // XXX relocate this
+		pthread_join(plugin_threads[i], NULL);
 	}
-	
-	while (1) {
-		if (nl_recvmsgs_default(sock) < 0) {
-			printf("Failing out of main loop\n");
-			break;
-		}
-	}
-
-	nl_socket_free(sock);
+	pthread_join(decider_thread, NULL);
+	free_queue(context.decider_queue);
+	close_plugins(context.plugins, context.plugin_count);
+	close_addons(context.addons, context.addon_count);
+	free(plugin_thread_params);
+	free(plugin_threads);
 	return 0;
 }
 
+void* plugin_thread_init(void* arg) {
+	queue_t* queue;
+	int plugin_id;
+	thread_param_t* params;
+	plugin_t* plugin;
+	query_t* query;
+	int result;
 
+	params = (thread_param_t*)arg;
+	plugin_id = params->plugin_id;
+	plugin = &context.plugins[plugin_id];
+	queue = plugin->queue;
+	
+	if (plugin->generic_init_func != NULL) {
+		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
+			plugin->init_sync(plugin_id);
+		}
+		else {
+			plugin->init_async(plugin_id, async_callback);
+		}
+	}
+	while (1) {
+		printf("Dequeuing query\n");
+		query = dequeue(queue);
+		printf("Query dequeued\n");
+		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
+			result = query_sync_plugin(plugin, plugin_id, query);
+			query->responses[plugin_id] = result;
+			pthread_mutex_lock(&query->mutex);
+			query->num_responses++;
+			printf("%d plugins have submitted an answer\n", query->num_responses);
+			if (query->num_responses == context.plugin_count) {
+				pthread_cond_signal(&query->threshold_met);
+			}
+			pthread_mutex_unlock(&query->mutex);
+		}
+		else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
+			query_async_plugin(plugin, plugin_id, query);
+		}
+	}
+	return NULL;
+}
+
+void* decider_thread_init(void* arg) {
+	queue_t* queue;
+	query_t* query;
+	int ca_system_response;
+	queue = context.decider_queue;
+	// XXX Init CA system here
+	while (1) {
+		query = dequeue(queue);
+		// XXX actually query CA system here
+		ca_system_response = PLUGIN_RESPONSE_ABSTAIN;
+		pthread_mutex_lock(&query->mutex);
+		while (query->num_responses < context.plugin_count) {
+			pthread_cond_wait(&query->threshold_met, &query->mutex);
+		}
+		pthread_mutex_unlock(&query->mutex);
+		printf("All plugins have submitted an answer\n");
+		free_query(query);
+		send_response(query->state_pointer, 0);
+	}
+	return NULL;
+}
+
+int async_callback(int plugin_id, int query_id, int result) {
+	query_t* query;
+
+	query = (query_t*)(query_id);
+	if (query == NULL) {
+		return 0; /* let plugin know this result timed out */
+	}
+
+	query->responses[plugin_id] = result;
+	pthread_mutex_lock(&query->mutex);
+	query->num_responses++;
+	if (query->num_responses == context.plugin_count) {
+	printf("%d plugins have submitted an answer\n", query->num_responses);
+		pthread_cond_signal(&query->threshold_met);
+	}
+	pthread_mutex_unlock(&query->mutex);
+	printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
+	return 1; /* let plugin know the callback was successful */
+}

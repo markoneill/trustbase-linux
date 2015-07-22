@@ -3,10 +3,12 @@
 #include <linux/in.h>
 #include <linux/in6.h>
 #include <linux/socket.h>
+#include <net/inet_sock.h>
 #include <linux/byteorder/generic.h>
 #include <asm/byteorder.h>
 #include <asm/uaccess.h>
 #include <linux/net.h>
+#include <net/inet_connection_sock.h>
 
 #include "handshake_handler.h"
 #include "communications.h"
@@ -28,7 +30,7 @@
 #define TYPE_FINISHED			20
 
 inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
-inline int th_buf_state_can_transition(buf_state_t* buf_state);
+inline int th_buf_state_can_transition(buf_state_t* buf_state, int interest);
 static void* buf_state_init(buf_state_t* buf_state);
 
 // Interception helpers
@@ -78,6 +80,7 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 		state->is_ipv6 = is_ipv6;
 		state->addr_len = addr_len;
 		state->orig_sock = sock;
+		state->mitm_sock = NULL;
 		buf_state_init(&state->send_state);
 		buf_state_init(&state->recv_state);
 	}
@@ -143,7 +146,7 @@ int th_update_state_send(void* state) {
 	buf_state_t* bs;
 	s = (handler_state_t*)state;
 	bs = &s->send_state;
-        while (th_buf_state_can_transition(bs)) {
+        while (th_buf_state_can_transition(bs, s->interest)) {
                 update_buf_state_send(state, bs);
         }
 	if (s->interest == UNINTERESTED) {
@@ -157,7 +160,7 @@ int th_update_state_recv(void* state) {
 	buf_state_t* bs;
 	s = (handler_state_t*)state;
 	bs = &s->recv_state;
-        while (th_buf_state_can_transition(bs)) {
+        while (th_buf_state_can_transition(bs, s->interest)) {
                 update_buf_state_recv(state, bs);
         }
 	if (s->interest == UNINTERESTED) {
@@ -401,6 +404,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			state->interest = UNINTERESTED;
 			buf_state->user_cur_max = buf_state->buf_length;
 			printk(KERN_ALERT "Someone sent a weird thing: %x", (unsigned int)cs_buf[0]);
+			printk(KERN_ALERT "It was from the %s buffer", buf_state == &state->recv_state ? "receive" : "send");
 			cs_buf += handshake_message_length;
 			tls_record_bytes = 0; // Out
 		}
@@ -531,9 +535,10 @@ size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state) {
 	return buf_state->buf_length - buf_state->bytes_read;
 }
 
-int th_buf_state_can_transition(buf_state_t* buf_state) {
+int th_buf_state_can_transition(buf_state_t* buf_state, int interest) {
 	size_t unread = th_buf_state_get_num_bytes_unread(buf_state);
 	//printk(KERN_ALERT "Unread: %u", unread);
+	if (interest == PROXIED) return 0;
 	return buf_state->bytes_to_read && unread && unread >= buf_state->bytes_to_read;
 }
 
@@ -596,30 +601,58 @@ void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, 
 
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
+	__be16 src_port;
+	int yes;
 	struct sockaddr_in proxy_addr = {
 		.sin_family = AF_INET,
 		.sin_port = htons(8888),
 		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
 	};
+	struct sockaddr_in source_addr = {
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
+	yes = 1;
 	
-	ref_tcp_disconnect(state->orig_sock->sk, 0);
-	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
+	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
+	printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
+	//ref_tcp_close(state->orig_sock->sk, 0);
+	error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
+	if (error < 0) {
+		printk(KERN_ALERT "Failed to create kernel socket");
+	}
+	//source_addr.sin_port = src_port;
+	kernel_bind(state->mitm_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
+	//kernel_setsockopt(state->orig_sock, SOL_SOCKET, SO_REUSEPORT, (char*)&yes, sizeof(yes));
+	src_port = inet_sk(state->mitm_sock->sk)->inet_sport;
+	printk(KERN_INFO "Source Port during reconnect is %d", ntohs(src_port));
+	//ip_setsockopt(state->orig_sock->sk);
+	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
+	ref_tcp_v4_connect(state->mitm_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
+	src_port = inet_sk(state->mitm_sock->sk)->inet_sport;
+	printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
 	//printk(KERN_INFO "Sending proxy meta information");
 	//error = kernel_tcp_send_buffer(state->orig_sock, );
+	printk(KERN_INFO "Sending meta data");
 	if (state->is_ipv6 == 1) {
 		//send_proxy_meta_data(&state->addr_v6, state->hostname);
-		send_proxy_meta_data(state->orig_sock,
+		send_proxy_meta_data(state->mitm_sock,
 			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname,
 			state->orig_leaf_cert, state->orig_leaf_cert_len);
+		
 	}
 	else {
-		send_proxy_meta_data(state->orig_sock,
+		send_proxy_meta_data(state->mitm_sock,
 			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname,
 			state->orig_leaf_cert, state->orig_leaf_cert_len);
 	}
+	printk(KERN_INFO "Finished Sending meta data");
 	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
-	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
+	printk(KERN_INFO "Sending hello data");
+	error = kernel_tcp_send_buffer(state->mitm_sock, state->send_state.buf, state->send_state.buf_length);
+	printk(KERN_INFO "Finished sending hello data");
 
 	//printk(KERN_ALERT "%d", error);
 	return;
@@ -645,5 +678,10 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 	len = sock_sendmsg(sock, &msg, length);
 	set_fs(oldfs);
 	return len;
+}
+
+struct sock* th_get_mitm_sock(void* state) {
+	handler_state_t* s = (handler_state_t*)state;
+	return (struct sock*)s->mitm_sock->sk;
 }
 
