@@ -6,9 +6,12 @@ import subprocess
 import os.path
 import re
 
+from ctypes import cdll
+
 program = "check_root_store"
 temp_file = ".test_chain"
 erase_temp_file = True
+erase_shared_library = False
 
 def main():
 	if len(sys.argv) < 2 or sys.argv[1] in ['-h', '-?', '--help', 'help']:
@@ -19,25 +22,25 @@ def main():
 		global temp_file, erase_temp_file
 		temp_file = sys.argv[2]
 		erase_temp_file = False
-	
-	if not os.path.isfile(program):
-		print "{0} needs to see {1} in the current working directory.".format(sys.argv[0], program)
+	if not os.path.isfile(program + '.o'):
+		print "{0} needs to see the shared library {1} in the current working directory.".format(sys.argv[0], program = '.o')
 		print "Unable to find an executable '{0}'".format(program)
 		if os.path.isfile(program +".c"):
 			print "But found {0}.c, would you like to compile this to {0}?".format(program)
 			response = raw_input("[y/N]")
 			response = response.lower()
 			if response != '' and not response.startswith('n'):
-				p = subprocess.Popen("gcc -l crypto {0}.c -o {0}".format(program), shell=True)
+				p = subprocess.Popen("gcc -l crypto {0}.c -shared -fPIC -o {0}.o".format(program), shell=True)
 				rc = p.wait()
 				if rc != 0:
 					print "Unable to compile {0}.c".format(program)
 					sys.exit(1)
+				else:
+					erase_shared_library = True
 			else:
 				sys.exit(1)
 		else:
 			sys.exit(1)
-	
 	#make certificate file
 	p = subprocess.Popen("openssl s_client -showcerts -connect {0}:443 </dev/null".format(sys.argv[1]), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 	out, err = p.communicate()
@@ -58,15 +61,11 @@ def main():
 			out = out[back+len(ed):]
 	
 	#test against program
-	p = subprocess.Popen("./{0} {1} {2}".format(program, sys.argv[1], temp_file), shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-	out, err = p.communicate()
-	if p.returncode != 0:
-		print "There was an error in {0}".format(program)
-		os.remove(temp_file)
-		sys.exit(1)
+	lib = cdll.LoadLibrary("./{0}.o".format(program))
+	root_store = lib.make_new_root_store()
+	stack = lib.pem_to_stack(temp_file)
+	rc = lib.query_store(sys.argv[1], stack, root_store)
 	
-	m = re.search(r"-\d|\d", out[::-1])
-	rc = int(m.group(0))
 	if rc == -1:
 		print "{0} returned an error".format(program)
 	elif rc == 0:

@@ -1,7 +1,6 @@
-//#include <openssl/ssl.h>
+#include "check_root_store.h"
 #include <stdio.h>
 #include <openssl/x509.h>
-#include <openssl/x509v3.h>
 #include <string.h>
 #include <fnmatch.h>
 #include <openssl/evp.h>
@@ -14,14 +13,10 @@
 #define PLUGIN_RESPONSE_ABSTAIN	2
 #define CRS_DEBUG 0
 
-X509_STORE* getRootStore(void);
-int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_store);
 static int verify_hostname(const char* hostname, X509* cert);
-static STACK_OF(X509)* pem_to_stack(char*);
 static void print_certificate(X509* cert);
 static void print_chain(STACK_OF(X509)*);
 static const char* get_validation_errstr(long e);
-static int test(int argc, char *argv[]);
 
 /** This function returns a new X509_STORE* that contains the default CA system store.
  * You must free this STORE after use with X509_STORE_free.
@@ -221,7 +216,7 @@ static int verify_hostname(const char* hostname, X509* cert) {
 /** returns a STACK_OF(X509)* from a pem file containing certificates
  *
  */
-static STACK_OF(X509)* pem_to_stack(char* filename) {
+STACK_OF(X509)* pem_to_stack(char* filename) {
 	FILE *fp = NULL;
 	STACK_OF(X509)* chain;
 	X509* cert = NULL;
@@ -336,29 +331,5 @@ static const char* get_validation_errstr(long e) {
 	default:
 		return "ERR_UNKNOWN";
 	}
-}
-
-static int test(int argc, char *argv[]) {
-	char* hostname;
-	STACK_OF(X509)* chain;
-	X509_STORE* root_store;
-
-	if (argc < 3) {
-		printf("Usage: %s hostname cert_chain.pem\n", argv[0]);
-		return -1;
-	}
-	
-	hostname = argv[1];
-	chain = pem_to_stack(argv[2]);
-	if (chain == NULL) {
-		printf("Could not open %s\n", argv[2]);
-		return -1;
-	}
-	
-	root_store = make_new_root_store();
-	printf("Certificate Chain Passed = %d\n", query_store(hostname, chain, root_store));
-	X509_STORE_free(root_store);
-	sk_X509_pop_free(chain, X509_free);
-	return 0;
 }
 
