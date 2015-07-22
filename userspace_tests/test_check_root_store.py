@@ -21,6 +21,7 @@ def main():
 		erase_temp_file = False
 	
 	if not os.path.isfile(program):
+		print "{0} needs to see {1} in the current working directory.".format(sys.argv[0], program)
 		print "Unable to find an executable '{0}'".format(program)
 		if os.path.isfile(program +".c"):
 			print "But found {0}.c, would you like to compile this to {0}?".format(program)
