@@ -13,7 +13,7 @@ static int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
 static void print_certificate(X509* cert);
 
-query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
+query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
 	int hostname_len;
 	query_t* query;
 	printf("Creating query for host %s\n", hostname);
@@ -73,6 +73,7 @@ query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned 
 	memcpy(query->hostname, hostname, hostname_len);
 	memcpy(query->raw_chain, cert_data, len);
 	query->state_pointer = stptr;
+	query->id = id;
 	return query;
 }
 

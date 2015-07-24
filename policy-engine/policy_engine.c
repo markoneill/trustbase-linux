@@ -4,11 +4,13 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include <pthread.h>
+#include <errno.h>
 
 #include "netlink.h"
 #include "configuration.h"
 #include "query.h"
 #include "query_queue.h"
+#include "linked_list.h"
 #include "plugins.h"
 
 
@@ -23,10 +25,12 @@ typedef struct { unsigned char b[3]; } be24, le24;
 
 
 int poll_schemes(uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
+	static int id = 0;
 	int i;
 	query_t* query;
 	/* Validation */
-	query = create_query(context.plugin_count, stptr, hostname, cert_data, len);
+	query = create_query(context.plugin_count, id++, stptr, hostname, cert_data, len);
+	list_add(context.timeout_list, query);
 	enqueue(context.decider_queue, query);
 	for (i = 0; i < context.plugin_count; i++) {
 		printf("Enqueuing query\n");
@@ -53,6 +57,7 @@ int main() {
 	/* Decider thread (runs CA system and aggregates plugin verdicts */
 	decider_thread_params.plugin_id = -1;
 	context.decider_queue = make_queue("decider");
+	context.timeout_list = list_create();
 	pthread_create(&decider_thread, NULL, decider_thread_init, &decider_thread_params);
 
 
@@ -74,6 +79,7 @@ int main() {
 	}
 	pthread_join(decider_thread, NULL);
 	free_queue(context.decider_queue);
+	list_free(context.timeout_list);
 	close_plugins(context.plugins, context.plugin_count);
 	close_addons(context.addons, context.addon_count);
 	free(plugin_thread_params);
@@ -128,20 +134,39 @@ void* decider_thread_init(void* arg) {
 	queue_t* queue;
 	query_t* query;
 	int ca_system_response;
+	struct timespec time_to_wait;
+	struct timeval now;
+	int err;
+	int timed_out;
 	queue = context.decider_queue;
+	
 	// XXX Init CA system here
 	while (1) {
 		query = dequeue(queue);
 		// XXX actually query CA system here
 		ca_system_response = PLUGIN_RESPONSE_ABSTAIN;
+		timed_out = 0;
+		gettimeofday(&now, NULL);
+		time_to_wait.tv_sec = now.tv_sec+5;
+		time_to_wait.tv_nsec = now.tv_usec*1000UL;
 		pthread_mutex_lock(&query->mutex);
 		while (query->num_responses < context.plugin_count) {
-			pthread_cond_wait(&query->threshold_met, &query->mutex);
+			err = pthread_cond_timedwait(&query->threshold_met, &query->mutex, &time_to_wait);
+			if (err == ETIMEDOUT) {
+				fprintf(stderr, "A plugin timed out!\n");
+				timed_out = 1;
+				break;
+			}
 		}
 		pthread_mutex_unlock(&query->mutex);
+		/* Either all plugins reported or some timed out.
+ 		 * either way, remove the query from the timeout storage */
+		list_remove(context.timeout_list, query->id);
+		
 		printf("All plugins have submitted an answer\n");
+		// XXX Aggregate here
 		free_query(query);
-		send_response(query->state_pointer, 0);
+		send_response(query->state_pointer, 1);
 	}
 	return NULL;
 }
@@ -149,8 +174,9 @@ void* decider_thread_init(void* arg) {
 int async_callback(int plugin_id, int query_id, int result) {
 	query_t* query;
 
-	query = (query_t*)(query_id);
+	query = list_get(context.timeout_list, query_id);
 	if (query == NULL) {
+		fprintf(stderr, "Plugin %d timed out on query %d but sent data anyway\n", plugin_id, query_id);
 		return 0; /* let plugin know this result timed out */
 	}
 

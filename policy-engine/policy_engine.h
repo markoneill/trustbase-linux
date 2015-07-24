@@ -4,6 +4,7 @@
 #include "addons.h"
 #include "plugins.h"
 #include "query_queue.h"
+#include "linked_list.h"
 
 enum {
 	AGGREGATION_UNANIMITY,
@@ -18,6 +19,7 @@ typedef struct policy_context_t {
 	int addon_count;
 	/* new members here for aggregation policy */
 	queue_t* decider_queue;
+	list_t* timeout_list;
 } policy_context_t;
 
 typedef struct thread_param_t {

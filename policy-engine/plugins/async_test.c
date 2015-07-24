@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <openssl/x509.h>
+#include <pthread.h>
 
 #define MAX_LENGTH	1024
 
@@ -10,6 +11,7 @@ void print_certificate(X509* cert);
 
 int (*result_callback)(int plugin_id, int query_id, int result);
 int plugin_id;
+pthread_t worker;
 
 int initialize(int id, int(*callback)(int, int, int)) {
 	result_callback = callback;
@@ -34,7 +36,7 @@ void print_certificate(X509* cert) {
 int query(int query_id, const char* hostname, STACK_OF(X509)* certs) {
 	//int i;
 	//X509* cert;
-	printf("Asynchronous Test Plugin checking cert for host: %s\n", hostname);
+	printf("Asynchronous Test Plugin checking cert for host: %s (query ID: %d)\n", hostname, query_id);
 	result_callback(plugin_id, query_id, 1);
 	/*printf("Certificate Data:\n");
 	for (i = 0; i < sk_X509_num(certs); i++) {
