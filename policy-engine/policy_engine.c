@@ -13,6 +13,7 @@
 #include "linked_list.h"
 #include "plugins.h"
 
+#define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
 
 policy_context_t context;
 
@@ -137,7 +138,6 @@ void* decider_thread_init(void* arg) {
 	struct timespec time_to_wait;
 	struct timeval now;
 	int err;
-	int timed_out;
 	queue = context.decider_queue;
 	
 	// XXX Init CA system here
@@ -145,16 +145,14 @@ void* decider_thread_init(void* arg) {
 		query = dequeue(queue);
 		// XXX actually query CA system here
 		ca_system_response = PLUGIN_RESPONSE_ABSTAIN;
-		timed_out = 0;
 		gettimeofday(&now, NULL);
-		time_to_wait.tv_sec = now.tv_sec+5;
+		time_to_wait.tv_sec = now.tv_sec + TRUSTHUB_PLUGIN_TIMEOUT;
 		time_to_wait.tv_nsec = now.tv_usec*1000UL;
 		pthread_mutex_lock(&query->mutex);
 		while (query->num_responses < context.plugin_count) {
 			err = pthread_cond_timedwait(&query->threshold_met, &query->mutex, &time_to_wait);
 			if (err == ETIMEDOUT) {
 				fprintf(stderr, "A plugin timed out!\n");
-				timed_out = 1;
 				break;
 			}
 		}
