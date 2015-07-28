@@ -29,6 +29,7 @@ void list_node_free(list_node_t* node) {
 
 query_t* list_node_remove(list_t* list, list_node_t* node) {
 	query_t* query;
+	pthread_mutex_lock(&list->mutex);
 	assert(list != NULL);
 	assert(list->head != NULL);
 	assert(list->tail != NULL);
@@ -51,6 +52,7 @@ query_t* list_node_remove(list_t* list, list_node_t* node) {
 
 	query = node->query;
 	list_node_free(node);
+	pthread_mutex_unlock(&list->mutex);
 	return query;
 }
 
