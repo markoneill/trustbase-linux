@@ -3,6 +3,7 @@
 #include <string.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#include "plugins.h"
 #include "query.h"
 
 #define MAX_LENGTH	1024
@@ -15,6 +16,7 @@ static void print_certificate(X509* cert);
 
 query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
 	int hostname_len;
+	int i;
 	query_t* query;
 	printf("Creating query for host %s\n", hostname);
 	query = (query_t*)malloc(sizeof(query_t));
@@ -29,6 +31,10 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		fprintf(stderr, "Could not create response array for query\n");
 		free(query);
 		return NULL;
+	}
+	for (i = 0; i < num_plugins; i++) {
+		/* Default to error */
+		query->responses[i] = PLUGIN_RESPONSE_ERROR;
 	}
 	query->num_responses = 0;
 	

@@ -24,6 +24,12 @@ enum {
 	PLUGIN_TYPE_ASYNCHRONOUS,
 };
 
+enum {
+	AGGREGATION_NONE,
+	AGGREGATION_CONGRESS,
+	AGGREGATION_NECESSARY,
+};
+
 typedef int (*query_func_raw)(const char*, const unsigned char*, size_t);
 typedef int (*query_func_openssl)(const char*, STACK_OF(X509)*);
 
@@ -60,6 +66,8 @@ typedef struct plugin_t {
 	/* used for plugins that want a finalize stage (optional) */
 	int (*finalize)(void);
 	char* path; // null-terminated path to plugin file
+	/* Aggregation group this plugin belongs to */
+	int aggregation;
 } plugin_t;
 
 void print_plugins(plugin_t* plugins, size_t plugin_count);

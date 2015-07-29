@@ -12,6 +12,7 @@
 #include "query_queue.h"
 #include "linked_list.h"
 #include "plugins.h"
+#include "policy_response.h"
 
 #define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
 
@@ -20,7 +21,7 @@ policy_context_t context;
 static void* plugin_thread_init(void* arg);
 static void* decider_thread_init(void* arg);
 static int async_callback(int plugin_id, int query_id, int result);
-
+static int aggregate_responses(query_t* query, int ca_system_response);
 
 typedef struct { unsigned char b[3]; } be24, le24;
 
@@ -53,6 +54,7 @@ int main() {
 	init_addons(context.addons, context.addon_count, context.plugin_count);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
+	printf("Congress Threshold is %2.1lf\n", context.congress_threshold);
 	print_plugins(context.plugins, context.plugin_count);
 
 	/* Decider thread (runs CA system and aggregates plugin verdicts */
@@ -138,6 +140,7 @@ void* decider_thread_init(void* arg) {
 	struct timespec time_to_wait;
 	struct timeval now;
 	int err;
+	int final_response;
 	queue = context.decider_queue;
 	
 	// XXX Init CA system here
@@ -162,9 +165,9 @@ void* decider_thread_init(void* arg) {
 		list_remove(context.timeout_list, query->id);
 		
 		printf("All plugins have submitted an answer\n");
-		// XXX Aggregate here
+		final_response = aggregate_responses(query, ca_system_response);
 		free_query(query);
-		send_response(query->state_pointer, 1);
+		send_response(query->state_pointer, final_response);
 	}
 	return NULL;
 }
@@ -189,3 +192,46 @@ int async_callback(int plugin_id, int query_id, int result) {
 	printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
 	return 1; /* let plugin know the callback was successful */
 }
+
+int aggregate_responses(query_t* query, int ca_system_response) {
+	int i;
+	double congress_approved_count;
+	double congress_total;
+	congress_approved_count = 0;
+	congress_total = 0;
+	for (i = 0; i < context.plugin_count; i++) {
+		switch (context.plugins[i].aggregation) {
+			case AGGREGATION_NECESSARY:
+				/* We don't need to count necessary plugins' responses.
+ 				 * If any of them don't say yes we just say no immediately */
+				if (query->responses[i] != PLUGIN_RESPONSE_VALID) {
+					return POLICY_RESPONSE_INVALID;
+				}
+				break;
+			case AGGREGATION_CONGRESS:
+				if (query->responses[i] == PLUGIN_RESPONSE_VALID) {
+					congress_approved_count++;
+				}
+				congress_total++;
+				break;
+			case AGGREGATION_NONE:
+			default:
+				fprintf(stderr, "A plugin without an aggregation setting is running\n");
+				break;
+		}
+	}
+	/* At this point we know that all necessary plugins have indicate the certificates
+ 	 * found were valid, otherwise we'd have returned already.  Therefore the decision
+ 	 * is in the hands of the congress plugins */
+	if ((congress_approved_count / congress_total) < context.congress_threshold) {
+		return POLICY_RESPONSE_INVALID;
+	}
+
+	/* At this point we know the certificates are valid, but what we send back depends on
+         * what the CA system said */
+	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
+		return POLICY_RESPONSE_VALID_PROXY;
+	}
+	return POLICY_RESPONSE_VALID;
+}
+

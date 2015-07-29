@@ -12,12 +12,13 @@ enum {
 	AGGREGATION_THRESHOLD,
 };
 
+
 typedef struct policy_context_t {
 	plugin_t* plugins;
 	int plugin_count;
 	addon_t* addons;
 	int addon_count;
-	/* new members here for aggregation policy */
+	double congress_threshold;
 	queue_t* decider_queue;
 	list_t* timeout_list;
 } policy_context_t;

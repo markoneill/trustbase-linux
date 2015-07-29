@@ -15,6 +15,8 @@
 #include "../util/utils.h"
 #include "../interceptor/interceptor.h"
 #include "../loader.h"
+#include "../policy-engine/policy_response.h"
+
 #define CERTIFICATE_LENGTH_FIELD_SIZE	3
 
 // Handshake type identifiers
@@ -67,7 +69,8 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 	if (state != NULL) {
 		state->pid = pid;
 		state->interest = INTERESTED;
-		state->is_attack = 0;
+		/* For security, default to invalid */
+		state->policy_response = POLICY_RESPONSE_INVALID;
 		state->new_cert = NULL;
 		state->new_cert_length = 0;
 		state->hostname = NULL; // This is initialized only if we get a client hello
@@ -313,7 +316,7 @@ void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_sta
 }
 
 void handle_state_server_hello_done_sent(handler_state_t* state, buf_state_t* buf_state) {
-	if (!state->is_attack) {
+	if (!state->policy_response != POLICY_RESPONSE_INVALID) {
 		buf_state->user_cur_max = buf_state->buf_length;
 	}
 	return;
@@ -359,15 +362,24 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
-			if (state->is_attack) {
+			if (state->policy_response == POLICY_RESPONSE_VALID_PROXY) {
 				state->interest = PROXIED;
 				setup_ssl_proxy(state);
 				buf_state->user_cur_max = 0; // don't forward jack squat if we need to mitm
 				buf_state->bytes_to_read = 0;
 				return; // break out early, we no longer care about anything here
 			}
-			else {
+			else if (state->policy_response == POLICY_RESPONSE_VALID) {
 				buf_state->user_cur_max = buf_state->buf_length;
+				buf_state->bytes_to_read = 0;
+				buf_state->state = IRRELEVANT;
+				state->interest = UNINTERESTED;
+			}
+			else { /* Invalid case */
+				// XXX scramble, disconnect
+				// For now just mess up cert
+				cs_buf[1] = 'd';
+				cs_buf[2] = '2';
 			}
 			cs_buf += handshake_message_length;
 		}
@@ -433,31 +445,6 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	//printk(KERN_ALERT "Sending certificates to policy engine");
 	set_orig_leaf_cert(state, bufptr, certificates_length);
 	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
-	if (state->is_attack) {
-/*
-		// Override certificate data
-		memcpy(bufptr, state->new_cert, state->new_cert_length);
-
-		// Update length of all certificates
-		bufptr -= 3;
-		be_certificates_length = cpu_to_be24(state->new_cert_length);
-		//memcpy(bufptr, &be_certificates_length, 3);
-		bufptr[0] = ((unsigned char*)&be_certificates_length)[0];
-		bufptr[1] = ((unsigned char*)&be_certificates_length)[1];
-		bufptr[2] = ((unsigned char*)&be_certificates_length)[2];
-
-		// Update handshake message length
-		bufptr -= 3;
-		be_handshake_message_length = cpu_to_be24(state->new_cert_length + 3);
-		bufptr[0] = ((unsigned char*)&be_handshake_message_length)[0];
-		bufptr[1] = ((unsigned char*)&be_handshake_message_length)[1];
-		bufptr[2] = ((unsigned char*)&be_handshake_message_length)[2];
-		//memcpy(bufptr, &be_handshake_message_length, 3);
-		
-		printk(KERN_ALERT "attack! and certlength is %d", state->new_cert_length);
-		return state->new_cert_length + 6;
-*/
-	}
 	return 0;
 }
 

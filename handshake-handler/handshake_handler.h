@@ -43,7 +43,7 @@ typedef struct handler_state_t {
 	char* hostname;
 	buf_state_t recv_state;
 	buf_state_t send_state;
-	int is_attack;
+	int policy_response;
 	struct socket* orig_sock;
 	struct socket* mitm_sock;
 	int is_ipv6;
