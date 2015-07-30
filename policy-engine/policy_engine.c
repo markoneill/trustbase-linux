@@ -232,6 +232,6 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
-	return POLICY_RESPONSE_VALID;
+	return POLICY_RESPONSE_VALID_PROXY;
 }
 

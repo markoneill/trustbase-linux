@@ -60,6 +60,7 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
+	//if (pid == mitm_proxy_task->pid || pid == 16540) {
 	if (pid == mitm_proxy_task->pid) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
@@ -589,6 +590,49 @@ void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, 
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
 	__be16 src_port;
+	struct sockaddr_in proxy_addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(8888),
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
+	struct sockaddr_in source_addr = {
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
+	
+	ref_tcp_disconnect(state->orig_sock->sk, 0);
+
+	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
+	printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
+	source_addr.sin_port = src_port;
+	kernel_bind(state->orig_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
+	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
+	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
+	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
+	printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
+
+	if (state->is_ipv6 == 1) {
+		//send_proxy_meta_data(&state->addr_v6, state->hostname);
+		send_proxy_meta_data(state->orig_sock,
+			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname,
+			state->orig_leaf_cert, state->orig_leaf_cert_len);
+	}
+	else {
+		send_proxy_meta_data(state->orig_sock,
+			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname,
+			state->orig_leaf_cert, state->orig_leaf_cert_len);
+	}
+	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
+	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
+
+	//printk(KERN_ALERT "%d", error);
+	return;
+}
+
+void setup_ssl_proxy2(handler_state_t* state) {
+	int error;
+	__be16 src_port;
 	int yes;
 	struct sockaddr_in proxy_addr = {
 		.sin_family = AF_INET,
@@ -604,24 +648,19 @@ void setup_ssl_proxy(handler_state_t* state) {
 	
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
-	//ref_tcp_close(state->orig_sock->sk, 0);
 	error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
 	if (error < 0) {
 		printk(KERN_ALERT "Failed to create kernel socket");
 	}
-	//source_addr.sin_port = src_port;
 	kernel_bind(state->mitm_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
-	//kernel_setsockopt(state->orig_sock, SOL_SOCKET, SO_REUSEPORT, (char*)&yes, sizeof(yes));
 	src_port = inet_sk(state->mitm_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port during reconnect is %d", ntohs(src_port));
-	//ip_setsockopt(state->orig_sock->sk);
 	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
 	ref_tcp_v4_connect(state->mitm_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
 	src_port = inet_sk(state->mitm_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
 	//printk(KERN_INFO "Sending proxy meta information");
-	//error = kernel_tcp_send_buffer(state->orig_sock, );
 	printk(KERN_INFO "Sending meta data");
 	if (state->is_ipv6 == 1) {
 		//send_proxy_meta_data(&state->addr_v6, state->hostname);
@@ -645,7 +684,7 @@ void setup_ssl_proxy(handler_state_t* state) {
 	return;
 }
 
-int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t length) {
+int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t length) {
 	struct msghdr	msg;
 	mm_segment_t	oldfs;
 	struct iovec	iov;

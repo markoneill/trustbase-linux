@@ -60,6 +60,7 @@ int __init loader_start(void) {
 	
 	start_mitm_proxy("/home/Phoenix_1/trusthub-linux/ssl_proxy");
 	accept_modifier_register(mitm_proxy_task->pid);
+	//accept_modifier_register(16540);
 	proxy_register(&trusthub_ops);
 	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
 

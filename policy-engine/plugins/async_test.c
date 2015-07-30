@@ -73,8 +73,7 @@ void* worker(void* arg) {
 	query_t* query;
 	while (running) {
 		query = dequeue(queue);
-		printf("Asynchronous Test Plugin checking cert for host: \
-				%s (query ID: %d)\n", query->hostname, query->id);
+		printf("Asynchronous Test Plugin checking cert for host: %s (query ID: %d)\n", query->hostname, query->id);
 		printf("Certificate Data:\n");
 		for (i = 0; i < sk_X509_num(query->chain); i++) {
 			cert = sk_X509_value(query->chain, i);

@@ -293,15 +293,6 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
 
-	// XXX Enum this later
-	if (ops->get_state(conn_state->state) == 2) {
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), msg, size);
-		set_fs(oldfs);
-		return real_ret;
-		//return ref_tcp_sendmsg(iocb, sk, msg, size);
-	}
 
 	// Copy attributes of existing message into our custom one
 	kmsg = *msg;
@@ -317,6 +308,17 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	new_data = msg->msg_iov->iov_base;
 	#endif
 
+	// XXX Enum this later
+	if (ops->get_state(conn_state->state) == 2) {
+		return ref_tcp_sendmsg(iocb, sk, msg, size);
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		iov.iov_len = size;
+		iov.iov_base = new_data;
+		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, size);
+		set_fs(oldfs);
+		return real_ret;
+	}
 
 	// 0) If last send attempt was an error, don't copy or update state
 	if (conn_state->queued_send_ret > 0) {
@@ -436,21 +438,42 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ret;
 	}
 
-	// XXX Enum this later
-	if (ops->get_state(conn_state->state) == 2) {
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), msg, len, nonblock, flags, addr_len);
-		set_fs(oldfs);
-		return ret;
-		//return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
-	}
-
 	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 	user_buffer = (void __user*)msg->msg_iter.iov->iov_base;
 	#else
 	user_buffer = (void __user *)msg->msg_iov->iov_base;
 	#endif
+
+	// XXX Enum this later
+	if (ops->get_state(conn_state->state) == 2) {
+		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		kmsg = *msg;
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+		kmsg.msg_iter.iov = &iov;
+		#else
+		kmsg.msg_iov = &iov;
+		#endif
+		b_to_read = ops->bytes_to_read_recv(conn_state->state);
+	        buffer = kmalloc(b_to_read, GFP_KERNEL);
+		iov.iov_len = b_to_read;
+		iov.iov_base = buffer;
+
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, iov.iov_len, nonblock, flags, addr_len);
+		if (ret == -EIOCBQUEUED) {
+			ret = wait_on_sync_kiocb(iocb);
+		}
+		set_fs(oldfs);
+		if (ret > 0) {
+			if (copy_to_user(user_buffer, buffer, ret) != 0) {
+				printk(KERN_ALERT "Copy to user failed in proxy");
+			}
+		}
+		kfree(buffer);
+		return ret;
+	}
+
 
 	bytes_sent = 0;
 	// 1) Place into user's buffer any data already marked for fowarding
@@ -583,6 +606,8 @@ struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
 	struct list_head* cur;
 	struct list_head* q;
 	proxy_accept_list_t* tmp;
+	mm_segment_t oldfs;
+	int setsockoptret;
 	ret = ref_inet_csk_accept(sk, flags, err);
 	if (ret == NULL) {
 		return ret;
@@ -594,8 +619,15 @@ struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
 			tmp = list_entry(cur, proxy_accept_list_t, list);
 			if (tmp->src_port == src_port) {
 				printk(KERN_INFO "Found data in list");
-				ip_setsockopt(ret, SOL_IP, IP_ORIGDSTADDR, 
-					sizeof(struct sockaddr), &tmp->addr);
+				oldfs = get_fs();
+				set_fs(KERNEL_DS);
+				setsockoptret = ip_setsockopt(ret, SOL_IP, IP_ORIGDSTADDR,
+					(char*)&tmp->addr, sizeof(struct sockaddr_in));
+				printk(KERN_ALERT "setting sockopt with address %pI4:%d", &tmp->addr_v4.sin_addr, ntohs(tmp->addr_v4.sin_port));
+				if (setsockoptret != 0) {
+					printk(KERN_ALERT "setsockopt failed with %d", setsockoptret);
+				}
+				set_fs(oldfs);
 				list_del(cur);
 				kfree(tmp);
 			}
