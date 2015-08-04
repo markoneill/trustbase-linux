@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <openssl/x509.h>
+#include "../plugin_response.h"
 
 #define MAX_LENGTH	1024
 
 int query(const char* hostname, STACK_OF(X509)* certs);
-static void print_certificate(X509* cert);
+void print_certificate(X509* cert);
 
 void print_certificate(X509* cert) {
 	char subj[MAX_LENGTH+1];
@@ -16,13 +17,13 @@ void print_certificate(X509* cert) {
 }
 
 int query(const char* hostname, STACK_OF(X509)* certs) {
-	int i;
-	X509* cert;
-	printf("OpenSSL Test Plugin checking cert for host: %s\n", hostname);
-	printf("Certificate Data:\n");
+	//int i;
+	//X509* cert;
+	//printf("OpenSSL Test Plugin checking cert for host: %s\n", hostname);
+	/*printf("Certificate Data:\n");
 	for (i = 0; i < sk_X509_num(certs); i++) {
 		cert = sk_X509_value(certs, i);
 		print_certificate(cert);
-	}
-	return 1;
+	}*/
+	return PLUGIN_RESPONSE_VALID;
 }

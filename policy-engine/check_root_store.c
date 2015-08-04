@@ -1,16 +1,14 @@
 #include "check_root_store.h"
 #include <stdio.h>
 #include <openssl/x509.h>
+#include <openssl/pem.h>
 #include <string.h>
 #include <fnmatch.h>
 #include <openssl/evp.h>
+#include "plugin_response.h"
 
 #define MAX_LENGTH 1024
 
-#define PLUGIN_RESPONSE_ERROR	-1
-#define PLUGIN_RESPONSE_INVALID	0
-#define PLUGIN_RESPONSE_VALID	1
-#define PLUGIN_RESPONSE_ABSTAIN	2
 #define CRS_DEBUG 0
 
 static int verify_hostname(const char* hostname, X509* cert);
@@ -154,7 +152,7 @@ static int verify_hostname(const char* hostname, X509* cert) {
 	result = 0;
 	
 	lastpos = -1;
-	for (;;){
+	for (;;) {
 		tempstr = NULL;
 		lastpos = X509_NAME_get_index_by_NID(subj, NID_commonName, lastpos);
 		if (lastpos == -1) {
@@ -162,7 +160,7 @@ static int verify_hostname(const char* hostname, X509* cert) {
 		}
 		entry = X509_NAME_get_entry(subj, lastpos);
 		data = X509_NAME_ENTRY_get_data(entry);
-		cn = ASN1_STRING_data(data);
+		cn = (char*)ASN1_STRING_data(data);
 		/* Note, if the hostname starts with a dot, it should be valid for any subdomain */
 		if (hostname[0] == '.') {
 			count = 0;

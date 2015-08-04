@@ -3,7 +3,7 @@
 #include <string.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
-#include "plugins.h"
+#include "plugin_response.h"
 #include "query.h"
 
 #define MAX_LENGTH	1024
@@ -12,7 +12,7 @@
 static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
 static int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
-static void print_certificate(X509* cert);
+void print_certificate(X509* cert);
 
 query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
 	int hostname_len;
@@ -124,7 +124,7 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 		if (!cert) {
 			fprintf(stderr,"unable to parse certificate\n");
 		}
-		print_certificate(cert);
+		//print_certificate(cert);
 		
 		sk_X509_push(chain, cert);
 		current_pos += cert_len;

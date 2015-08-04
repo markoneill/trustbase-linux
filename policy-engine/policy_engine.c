@@ -13,6 +13,8 @@
 #include "linked_list.h"
 #include "plugins.h"
 #include "policy_response.h"
+#include "plugin_response.h"
+#include "check_root_store.h"
 
 #define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
 
@@ -35,9 +37,9 @@ int poll_schemes(uint64_t stptr, char* hostname, unsigned char* cert_data, size_
 	list_add(context.timeout_list, query);
 	enqueue(context.decider_queue, query);
 	for (i = 0; i < context.plugin_count; i++) {
-		printf("Enqueuing query\n");
+		//printf("Enqueuing query\n");
 		enqueue(context.plugins[i].queue, query);
-		printf("query enqueued\n");
+		//printf("query enqueued\n");
 	}
 	return 0;
 }
@@ -112,9 +114,9 @@ void* plugin_thread_init(void* arg) {
 		}
 	}
 	while (1) {
-		printf("Dequeuing query\n");
+		//printf("Dequeuing query\n");
 		query = dequeue(queue);
-		printf("Query dequeued\n");
+		//printf("Query dequeued\n");
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
 			result = query_sync_plugin(plugin, plugin_id, query);
 			query->responses[plugin_id] = result;
@@ -141,13 +143,14 @@ void* decider_thread_init(void* arg) {
 	struct timeval now;
 	int err;
 	int final_response;
+	X509_STORE* root_store;
 	queue = context.decider_queue;
 	
-	// XXX Init CA system here
+	root_store = make_new_root_store();
 	while (1) {
 		query = dequeue(queue);
-		// XXX actually query CA system here
-		ca_system_response = PLUGIN_RESPONSE_ABSTAIN;
+		ca_system_response =  query_store(query->hostname, query->chain, root_store);
+		printf("CA System response is %d\n", ca_system_response);
 		gettimeofday(&now, NULL);
 		time_to_wait.tv_sec = now.tv_sec + TRUSTHUB_PLUGIN_TIMEOUT;
 		time_to_wait.tv_nsec = now.tv_usec*1000UL;
@@ -205,6 +208,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 				/* We don't need to count necessary plugins' responses.
  				 * If any of them don't say yes we just say no immediately */
 				if (query->responses[i] != PLUGIN_RESPONSE_VALID) {
+					printf("Policy Engine reporting BAD cert for %s\n", query->hostname);
 					return POLICY_RESPONSE_INVALID;
 				}
 				break;
@@ -224,14 +228,17 @@ int aggregate_responses(query_t* query, int ca_system_response) {
  	 * found were valid, otherwise we'd have returned already.  Therefore the decision
  	 * is in the hands of the congress plugins */
 	if ((congress_approved_count / congress_total) < context.congress_threshold) {
+		printf("Policy Engine reporting BAD cert for %s\n", query->hostname);
 		return POLICY_RESPONSE_INVALID;
 	}
 
 	/* At this point we know the certificates are valid, but what we send back depends on
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
+		printf("Policy Engine reporting good cert for %s but it needs to be proxied\n", query->hostname);
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
-	return POLICY_RESPONSE_VALID_PROXY;
+	printf("Policy Engine reporting good cert for %s\n", query->hostname);
+	return POLICY_RESPONSE_VALID;
 }
 

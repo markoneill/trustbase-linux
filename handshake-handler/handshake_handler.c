@@ -60,7 +60,7 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	if (pid == mitm_proxy_task->pid || pid == 2931) {
+	if (pid == mitm_proxy_task->pid || pid == 7355) {
 	//if (pid == mitm_proxy_task->pid) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;

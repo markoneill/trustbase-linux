@@ -8,6 +8,7 @@
 #include <sys/stat.h> /* S_IRWXU constant */
 #include <semaphore.h>
 #include <openssl/x509.h>
+#include "../plugin_response.h"
 
 #define MAX_LENGTH	1024
 
@@ -68,19 +69,19 @@ int finalize(void) {
 }
 
 void* worker(void* arg) {
-	int i;
-	X509* cert;
+	//int i;
+	//X509* cert;
 	query_t* query;
 	while (running) {
 		query = dequeue(queue);
-		printf("Asynchronous Test Plugin checking cert for host: %s (query ID: %d)\n", query->hostname, query->id);
-		printf("Certificate Data:\n");
+		//printf("Asynchronous Test Plugin checking cert for host: %s (query ID: %d)\n", query->hostname, query->id);
+		/*printf("Certificate Data:\n");
 		for (i = 0; i < sk_X509_num(query->chain); i++) {
 			cert = sk_X509_value(query->chain, i);
 			print_certificate(cert);
-		}
+		}*/
 		/* Send back a static accept result */
-		result_callback(plugin_id, query->id, 1);
+		result_callback(plugin_id, query->id, PLUGIN_RESPONSE_VALID);
 		free(query);
 	}
 	return NULL;

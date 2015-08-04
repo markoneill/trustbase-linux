@@ -4,6 +4,7 @@
 #include <string.h>
 #include "query_queue.h"
 #include "plugins.h"
+#include "plugin_response.h"
 #include "addons.h"
 
 void print_plugins(plugin_t* plugins, size_t plugin_count) {

@@ -26,6 +26,7 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/query.c \
 		    policy-engine/query_queue.c \
 		    policy-engine/linked_list.c \
+		    policy-engine/check_root_store.c \
 		    policy-engine/policy_engine.c
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
 POLICY_ENGINE_EXE = policy_engine
