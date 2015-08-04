@@ -15,10 +15,30 @@
 #include <linux/slab.h> // For memory allocation
 #include <linux/tcp.h> // For TCP structures
 #include <net/ip.h>
+#include <linux/netfilter_ipv4.h> // For nat_ops registration	
 
 #include "../util/utils.h"
 #include "interceptor.h"
 #include "connection_state.h" // For accessing handler functions
+
+#define NAT_SOCKOPT_BASE	85
+#define NAT_SOCKOPT_SET		(NAT_SOCKOPT_BASE)
+#define NAT_SOCKOPT_GET		(NAT_SOCKOPT_BASE)
+#define NAT_SOCKOPT_MAX	(NAT_SOCKOPT_BASE + 1)
+
+// NAT functionality for sslsplit
+static int set_orig_dst(struct sock *sk, int cmd, void __user *user, unsigned int len);
+static int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len);
+static struct nf_sockopt_ops nat_ops = {
+	.pf = PF_INET,
+	.set_optmin = NAT_SOCKOPT_SET,
+	.set_optmax = NAT_SOCKOPT_MAX,
+	.set = set_orig_dst,
+	.get_optmin = NAT_SOCKOPT_GET,
+	.get_optmax = NAT_SOCKOPT_MAX,
+	.get = get_orig_dst,
+	.owner = THIS_MODULE,
+};
 
 // TCP IPv6-specific reference functions
 int (*ref_tcp_v4_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
@@ -131,7 +151,12 @@ int proxy_unregister(void) {
 }
 
 int accept_modifier_register(pid_t pid) {
+	int err;
 	INIT_LIST_HEAD(&proxy_accept_list.list);
+	err = nf_register_sockopt(&nat_ops);
+	if (err != 0) {
+		printk(KERN_ALERT "Failed to register new sock opts with kernel");
+	}
 	local_nat_pid = pid;
 	return 0;
 }
@@ -140,6 +165,7 @@ int accept_modifier_unregister(void) {
 	struct list_head* cur;
 	struct list_head* q;
 	proxy_accept_list_t* tmp;
+	nf_unregister_sockopt(&nat_ops);
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		list_del(cur);
@@ -600,20 +626,70 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 }
 
+proxy_accept_list_t* get_proxy_addr_info(struct sock *sk) {
+	struct list_head* cur;
+	struct list_head* q;
+	proxy_accept_list_t* tmp;
+	__be16 src_port;
+	src_port = inet_sk(sk)->inet_dport;
+	list_for_each_safe(cur, q, &proxy_accept_list.list) {
+		tmp = list_entry(cur, proxy_accept_list_t, list);
+		if (tmp->src_port == src_port) {
+			list_del(cur);
+			return tmp;
+		}
+	}
+	return NULL;
+}
+
+int new_getname(struct socket *sock, struct sockaddr *uaddr, int *uaddr_len, int peer) {
+	proxy_accept_list_t* info;
+	struct sock *sk         = sock->sk;
+	struct inet_sock *inet  = inet_sk(sk);
+	DECLARE_SOCKADDR(struct sockaddr_in *, sin, uaddr);
+	sin->sin_family = AF_INET;
+	if (peer) {
+		if (!inet->inet_dport || (((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_SYN_SENT)) && peer == 1))
+				return -ENOTCONN;
+		sin->sin_port = inet->inet_dport;
+		sin->sin_addr.s_addr = inet->inet_daddr;
+	} else {
+		/* TrustHub Edit */
+		info = get_proxy_addr_info(sk);
+		if (info == NULL) {
+			__be32 addr = inet->inet_rcv_saddr;
+			if (!addr)
+				addr = inet->inet_saddr;
+			sin->sin_port = inet->inet_sport;
+			sin->sin_addr.s_addr = addr;
+		}
+		else {
+			sin->sin_port = info->addr_v4.sin_port;
+			sin->sin_addr.s_addr = info->addr_v4.sin_addr.s_addr;
+			kfree(info);
+		}
+		/* End TrustHub Edit */
+	}
+	memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+	*uaddr_len = sizeof(*sin);
+	return 0;
+}
+
 struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
 	struct sock* ret;
-	__be16 src_port;
+	/*__be16 src_port;
 	struct list_head* cur;
 	struct list_head* q;
 	proxy_accept_list_t* tmp;
 	mm_segment_t oldfs;
-	int setsockoptret;
+	int setsockoptret;*/
 	ret = ref_inet_csk_accept(sk, flags, err);
 	if (ret == NULL) {
 		return ret;
 	}
 	if (local_nat_pid && local_nat_pid == current->pid) {
-		src_port = inet_sk(ret)->inet_dport;
+		//ret->sk_socket->ops->getname = new_getname;
+		/*src_port = inet_sk(ret)->inet_dport;
 		printk(KERN_INFO "Accepted socket Source Port is %d", ntohs(src_port));
 		list_for_each_safe(cur, q, &proxy_accept_list.list) {
 			tmp = list_entry(cur, proxy_accept_list_t, list);
@@ -621,7 +697,7 @@ struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
 				printk(KERN_INFO "Found data in list");
 				oldfs = get_fs();
 				set_fs(KERNEL_DS);
-				setsockoptret = ip_setsockopt(ret, SOL_IP, IP_ORIGDSTADDR,
+				setsockoptret = ip_setsockopt(ret, SOL_IP, 128,
 					(char*)&tmp->addr, sizeof(struct sockaddr_in));
 				printk(KERN_ALERT "setting sockopt with address %pI4:%d", &tmp->addr_v4.sin_addr, ntohs(tmp->addr_v4.sin_port));
 				if (setsockoptret != 0) {
@@ -631,9 +707,44 @@ struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
 				list_del(cur);
 				kfree(tmp);
 			}
-		}
-		//sock_setsockopt();
+		}*/
 	}
 	return ret;
+}
+
+int set_orig_dst(struct sock *sk, int cmd, void __user *user, unsigned int len) {
+	return 0;
+}
+
+int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
+	int ret;
+	__be16 src_port;
+	struct list_head* cur;
+	struct list_head* q;
+	proxy_accept_list_t* tmp;
+
+	if (cmd != NAT_SOCKOPT_GET) {
+		return 0;
+	}
+
+	src_port = inet_sk(sk)->inet_dport;
+	//printk(KERN_INFO "Accepted socket Source Port is %d", ntohs(src_port));
+	list_for_each_safe(cur, q, &proxy_accept_list.list) {
+		tmp = list_entry(cur, proxy_accept_list_t, list);
+		if (tmp->src_port == src_port) {
+			printk(KERN_INFO "Found data in list");
+			if (tmp->addr.sa_family == AF_INET) {
+				*len = sizeof(struct sockaddr_in);
+				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in));
+			}
+			else {
+				*len = sizeof(struct sockaddr_in6);
+				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in6));
+			}
+			list_del(cur);
+			kfree(tmp);
+		}
+	}
+	return 0;
 }
 

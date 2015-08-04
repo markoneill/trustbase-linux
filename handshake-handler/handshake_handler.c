@@ -60,8 +60,8 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	//if (pid == mitm_proxy_task->pid || pid == 16540) {
-	if (pid == mitm_proxy_task->pid) {
+	if (pid == mitm_proxy_task->pid || pid == 2931) {
+	//if (pid == mitm_proxy_task->pid) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
@@ -612,7 +612,7 @@ void setup_ssl_proxy(handler_state_t* state) {
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
-	if (state->is_ipv6 == 1) {
+	/*if (state->is_ipv6 == 1) {
 		//send_proxy_meta_data(&state->addr_v6, state->hostname);
 		send_proxy_meta_data(state->orig_sock,
 			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname,
@@ -622,7 +622,7 @@ void setup_ssl_proxy(handler_state_t* state) {
 		send_proxy_meta_data(state->orig_sock,
 			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname,
 			state->orig_leaf_cert, state->orig_leaf_cert_len);
-	}
+	}*/
 	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
 
