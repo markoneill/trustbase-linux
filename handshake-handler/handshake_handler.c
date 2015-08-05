@@ -56,12 +56,11 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 
 
 // Main proxy functionality
-void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
+void* th_state_init(pid_t pid, pid_t parent_pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	if (pid == mitm_proxy_task->pid || pid == 7355) {
-	//if (pid == mitm_proxy_task->pid) {
+	if (parent_pid == mitm_proxy_task->pid || parent_pid == 2166) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
@@ -69,6 +68,7 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
 		state->pid = pid;
+		state->parent_pid = parent_pid;
 		state->interest = INTERESTED;
 		/* For security, default to invalid */
 		state->policy_response = POLICY_RESPONSE_INVALID;
@@ -381,6 +381,9 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 				// For now just mess up cert
 				cs_buf[1] = 'd';
 				cs_buf[2] = '2';
+				buf_state->user_cur_max = buf_state->buf_length;
+				buf_state->state = IRRELEVANT;
+				state->interest = UNINTERESTED;
 			}
 			cs_buf += handshake_message_length;
 		}
@@ -485,6 +488,7 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 	compression_methods_length = be16_to_cpu(*(__be16*)bufptr);
 	bufptr += 2; // advance past compression methods length field
 	bufptr += compression_methods_length; // advance past compression methods
+	// XXX client hellos don't necessarily have extensions or extension_length fields.  Rectify
 	extensions_length = be16_to_cpu(*(__be16*)bufptr);
 	bufptr += 2; // advance past extensions length
 	//printk(KERN_ALERT "extensions length is %u", extensions_length);
@@ -604,13 +608,13 @@ void setup_ssl_proxy(handler_state_t* state) {
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
 
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
-	printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
+	//printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
 	source_addr.sin_port = src_port;
 	kernel_bind(state->orig_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
 	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
 	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
-	printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
+	//printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
 	/*if (state->is_ipv6 == 1) {
 		//send_proxy_meta_data(&state->addr_v6, state->hostname);

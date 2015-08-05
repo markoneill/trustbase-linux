@@ -18,7 +18,7 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	int hostname_len;
 	int i;
 	query_t* query;
-	printf("Creating query for host %s\n", hostname);
+	//printf("Creating query for host %s\n", hostname);
 	query = (query_t*)malloc(sizeof(query_t));
 	if (query == NULL) {
 		fprintf(stderr, "Could not create query\n");

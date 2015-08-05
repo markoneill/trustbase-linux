@@ -69,7 +69,7 @@ struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err);
 
 
 // Helpers
-static conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
+static conn_state_t* start_conn_state(pid_t pid, pid_t parent_pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
 static int stop_conn_state(conn_state_t* conn_state);
 
 // Global ops registration
@@ -200,11 +200,11 @@ int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6
  * @param sock A pointer to the struct for the socket.
  * @return The pointer to a new connection state
  */
-conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock) {
+conn_state_t* start_conn_state(pid_t pid, pid_t parent_pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock) {
 	conn_state_t* ret;
 	ret = conn_state_create(pid, sock);
 	if (ret != NULL) {
-		ret->state = ops->state_init(ret->pid, sock, uaddr, is_ipv6, addr_len);
+		ret->state = ops->state_init(ret->pid, parent_pid, sock, uaddr, is_ipv6, addr_len);
 		if (ret->state == NULL) {
 			stop_conn_state(ret);
 			return NULL;
@@ -241,9 +241,14 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
+	if (uaddr->sa_family == AF_INET) {
+		//print_call_info("Calling connect (v4) to addres %pI4:%d", 
+		//	&((struct sockaddr_in*)uaddr)->sin_addr,
+		//	ntohs(((struct sockaddr_in*)uaddr)->sin_port));
+	}
 	//printk(KERN_INFO "TCP over IPv4 connection detected");
 	//print_call_info("TCP IPv4 connect");
-	start_conn_state(current->pid, uaddr, 0, addr_len, sock);
+	start_conn_state(current->pid, current->real_parent->pid, uaddr, 0, addr_len, sock);
 	return ret;
 }
 
@@ -261,7 +266,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv6 connection detected");
 	//print_call_info(sock, "TCP IPv6 connect");
-	if (start_conn_state(current->pid, uaddr, 1, addr_len, sock)) {
+	if (start_conn_state(current->pid, current->real_parent->pid, uaddr, 1, addr_len, sock)) {
 	}
 	return ret;
 }
@@ -601,6 +606,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX how do we fail here?
 		}
 
+		// XXX Enum this	
+		if (ops->get_state(conn_state->state) == 2) {
+			//printk(KERN_ALERT "Gotta proxeh");
+			return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		}
+
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
@@ -732,7 +743,7 @@ int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		if (tmp->src_port == src_port) {
-			printk(KERN_INFO "Found data in list");
+			//printk(KERN_INFO "Found data in list");
 			if (tmp->addr.sa_family == AF_INET) {
 				*len = sizeof(struct sockaddr_in);
 				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in));

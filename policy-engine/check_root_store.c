@@ -70,6 +70,20 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	int valid;
 	int allpassed = PLUGIN_RESPONSE_VALID;
 
+	// XXX TEST ONLY
+	/*static int times_done = 0;
+	if (times_done > 0) {
+		return PLUGIN_RESPONSE_VALID;
+	}
+	if (strcmp(hostname, "www.google.com") == 0) {
+		//times_done++;
+		return PLUGIN_RESPONSE_INVALID;
+	}
+	else {
+		return PLUGIN_RESPONSE_VALID;
+	}*/
+	// XXX END TEST ONLY
+
 	/* Check the hostname against the leaf certificate */
 	
 	if (CRS_DEBUG >= 1) {	
