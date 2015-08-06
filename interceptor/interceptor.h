@@ -38,8 +38,8 @@ int proxy_register(proxy_handler_ops_t* ops);
 int proxy_unregister(void);
 
 /* These two functions are for assisting in the NAT engine functionality of the TLS proxy */
-int accept_modifier_register(pid_t pid);
-int accept_modifier_unregister(void);
+int nat_ops_register(void);
+int nat_ops_unregister(void);
 int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6);
 
 // These are exposed so we can make a passthrough if a handler wants to make its own

@@ -56,11 +56,11 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 
 
 // Main proxy functionality
-void* th_state_init(pid_t pid, pid_t parent_pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
+void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	if (parent_pid == mitm_proxy_task->pid || parent_pid == 2166) {
+	if (tgid == mitm_proxy_task->pid || tgid == 3015) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
@@ -68,7 +68,7 @@ void* th_state_init(pid_t pid, pid_t parent_pid, struct socket* sock, struct soc
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
 		state->pid = pid;
-		state->parent_pid = parent_pid;
+		state->tgid = tgid;
 		state->interest = INTERESTED;
 		/* For security, default to invalid */
 		state->policy_response = POLICY_RESPONSE_INVALID;

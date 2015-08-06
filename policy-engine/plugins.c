@@ -63,7 +63,7 @@ int query_async_plugin(plugin_t* plugin, int id, query_t* query) {
 		case PLUGIN_HANDLER_TYPE_OPENSSL:
 			return plugin->query_async_openssl(query->id, query->hostname, query->chain);
 		case PLUGIN_HANDLER_TYPE_ADDON:
-			return plugin->query_async_by_addon(query->id, id, query->hostname, query->raw_chain, query->raw_chain_len);
+			return plugin->query_async_by_addon(id, query->id, query->hostname, query->raw_chain, query->raw_chain_len);
 	}
 	return PLUGIN_RESPONSE_ABSTAIN;
 }
