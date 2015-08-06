@@ -47,6 +47,10 @@ int finalize(void) {
 	return 0;
 }
 
+/** puts a reference to the plugin's query function in pluginfunctions
+ * @param id The plugin id, and it's query function's index in pluginfunctions
+ * @param file_name The path to the file, must have at least one / and end in .py
+ */
 int load_plugin(int id, char* file_name) {
 	PyObject* pName;
 	PyObject* pModule;
@@ -125,6 +129,12 @@ int load_plugin(int id, char* file_name) {
 	return 0;
 }
 
+/** Sets up the function call to the python plugin
+ * @param id The plugin id
+ * @param host The hostname associated with the leaf certificate
+ * @param cert_chain A character representation of the certificate chain
+ * @param length The length of cert_chain
+ */
 int query_plugin(int id, char *host, const unsigned char *cert_chain, size_t length) {
 	int result;
 	int set_arg;

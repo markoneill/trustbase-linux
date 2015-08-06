@@ -11,7 +11,7 @@
 #define PLUGIN_RESPONSE_INVALID	0
 #define PLUGIN_RESPONSE_VALID	1
 #define PLUGIN_RESPONSE_ABSTAIN	2
-#define CRS_DEBUG 0
+#define CRS_DEBUG 1
 
 static int verify_hostname(const char* hostname, X509* cert);
 static void print_certificate(X509* cert);
@@ -80,6 +80,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	}
 	
 	if (verify_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
+		printf("The hostname was found invalid");
 		return PLUGIN_RESPONSE_INVALID;
 	}
 	
