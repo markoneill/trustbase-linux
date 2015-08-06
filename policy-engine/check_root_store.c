@@ -188,6 +188,7 @@ static int verify_alternate_hostname(const char* hostname, X509* cert) {
 			}
 		}
 	}
+	sk_GENERAL_NAME_pop_free(alt_names, GENERAL_NAME_free);
 	return result;
 }
 
