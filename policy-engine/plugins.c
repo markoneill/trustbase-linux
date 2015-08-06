@@ -4,6 +4,7 @@
 #include <string.h>
 #include "query_queue.h"
 #include "plugins.h"
+#include "plugin_response.h"
 #include "addons.h"
 
 void print_plugins(plugin_t* plugins, size_t plugin_count) {
@@ -12,13 +13,28 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 	for (i = 0; i < plugin_count; i++) {
 		printf("\t[%02d] Plugin Name: %s\n", i, plugins[i].name);
 		printf("\t\tDescription: %s\n", plugins[i].desc);
+		if (plugins[i].aggregation == AGGREGATION_NONE) {
+			printf("\t\tAggregation Group: None\n");
+		}
+		else if (plugins[i].aggregation == AGGREGATION_CONGRESS) {
+			printf("\t\tAggregation Group: Congress\n");
+		}
+		else if (plugins[i].aggregation == AGGREGATION_NECESSARY) {
+			printf("\t\tAggregation Group: Necessary\n");
+		}
+		else {
+			printf("\t\tAggregation Group: Unknown\n");
+		}
 		printf("\t\tVersion: %s\n", plugins[i].ver);
 		printf("\t\tPath: %s\n", plugins[i].path);
 		if (plugins[i].type == PLUGIN_TYPE_ASYNCHRONOUS) {
 			printf("\t\tType: Asynchronous\n");
 		}
-		else {
+		else if (plugins[i].type == PLUGIN_TYPE_SYNCHRONOUS) {
 			printf("\t\tType: Synchronous\n");
+		}
+		else {
+			printf("\t\tType: Unknown\n");
 		}
 
 		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_RAW) {
@@ -43,11 +59,11 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 int query_async_plugin(plugin_t* plugin, int id, query_t* query) {
 	switch (plugin->handler_type) {
 		case PLUGIN_HANDLER_TYPE_RAW:
-			return plugin->query_async_raw(query, query->hostname, query->raw_chain, query->raw_chain_len);
+			return plugin->query_async_raw(query->id, query->hostname, query->raw_chain, query->raw_chain_len);
 		case PLUGIN_HANDLER_TYPE_OPENSSL:
-			return plugin->query_async_openssl(query, query->hostname, query->chain);
+			return plugin->query_async_openssl(query->id, query->hostname, query->chain);
 		case PLUGIN_HANDLER_TYPE_ADDON:
-			return plugin->query_async_by_addon(query, id, query->hostname, query->raw_chain, query->raw_chain_len);
+			return plugin->query_async_by_addon(query->id, id, query->hostname, query->raw_chain, query->raw_chain_len);
 	}
 	return PLUGIN_RESPONSE_ABSTAIN;
 }

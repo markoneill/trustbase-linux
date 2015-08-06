@@ -7,7 +7,7 @@
 #include <openssl/x509v3.h>
 
 typedef struct query_t {
-	unsigned int id;
+	int id;
 	pthread_mutex_t mutex;
 	pthread_cond_t threshold_met;
 	uint64_t state_pointer;
@@ -20,6 +20,6 @@ typedef struct query_t {
 	int* responses;
 } query_t;
 
-query_t* create_query(int num_plugins, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len);
+query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len);
 void free_query(query_t* query);
 #endif

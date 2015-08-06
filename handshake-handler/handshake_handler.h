@@ -40,10 +40,11 @@ typedef struct handler_state_t {
 	struct semaphore sem;
 	interest_state_t interest;
 	pid_t pid;
+	pid_t parent_pid;
 	char* hostname;
 	buf_state_t recv_state;
 	buf_state_t send_state;
-	int is_attack;
+	int policy_response;
 	struct socket* orig_sock;
 	struct socket* mitm_sock;
 	int is_ipv6;
@@ -58,7 +59,7 @@ typedef struct handler_state_t {
 	unsigned int orig_leaf_cert_len;
 } handler_state_t;
 
-void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
+void* th_state_init(pid_t pid, pid_t parent_pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 void th_state_free(void* buf_state);
 int th_get_state(void* state);
 int th_give_to_handler_send(void* state, void* src_buf, size_t length);

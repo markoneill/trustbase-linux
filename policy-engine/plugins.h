@@ -7,11 +7,6 @@
 #include "query.h"
 #include "addons.h"
 
-#define PLUGIN_RESPONSE_ERROR	-1
-#define PLUGIN_RESPONSE_VALID	1
-#define PLUGIN_RESPONSE_INVALID	0
-#define PLUGIN_RESPONSE_ABSTAIN	2
-
 enum {
 	PLUGIN_HANDLER_TYPE_UNKNOWN,
 	PLUGIN_HANDLER_TYPE_OPENSSL,
@@ -22,6 +17,12 @@ enum {
 enum {
 	PLUGIN_TYPE_SYNCHRONOUS,
 	PLUGIN_TYPE_ASYNCHRONOUS,
+};
+
+enum {
+	AGGREGATION_NONE,
+	AGGREGATION_CONGRESS,
+	AGGREGATION_NECESSARY,
 };
 
 typedef int (*query_func_raw)(const char*, const unsigned char*, size_t);
@@ -60,6 +61,8 @@ typedef struct plugin_t {
 	/* used for plugins that want a finalize stage (optional) */
 	int (*finalize)(void);
 	char* path; // null-terminated path to plugin file
+	/* Aggregation group this plugin belongs to */
+	int aggregation;
 } plugin_t;
 
 void print_plugins(plugin_t* plugins, size_t plugin_count);

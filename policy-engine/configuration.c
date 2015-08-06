@@ -11,6 +11,8 @@
 
 static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin);
 static int parse_addon(config_setting_t* plugin_data, addon_t* addon);
+static int parse_aggregation(config_setting_t* aggregation_data, double* congress_threshold, plugin_t* plugins, int plugin_count);
+static int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin_name);
 static char* copy_string(const char* original);
 
 int load_config(policy_context_t* policy_context) {
@@ -67,6 +69,15 @@ int load_config(policy_context_t* policy_context) {
 		parse_plugin(cfg_data, &plugins[i]);
 	}
 
+	// Aggregation parsing
+	setting = config_lookup(&cfg, "aggregation");
+	if (setting == NULL) {
+		fprintf(stderr, "aggregation setting not found\n");
+		config_destroy(&cfg);
+		return 1;
+	}
+	parse_aggregation(setting, &policy_context->congress_threshold, plugins, plugin_count);
+
 	// Free up config data
 	config_destroy(&cfg);
 
@@ -77,6 +88,70 @@ int load_config(policy_context_t* policy_context) {
 	policy_context->addon_count = addon_count;
 
 	return 0;
+}
+
+int parse_aggregation(config_setting_t* aggregation_data, double* congress_threshold, plugin_t* plugins, int plugin_count) {
+	config_setting_t* sufficient_groups;
+	config_setting_t* group;
+	const char* plugin_name;
+	int plugin_id;
+	int i;
+	int group_count;
+	if (!(config_setting_lookup_float(aggregation_data, "congress_threshold", congress_threshold))) {
+		fprintf(stderr, "Syntax error in configuration file: section aggregation\n");
+		return 1;
+	}
+	sufficient_groups = config_setting_get_member(aggregation_data, "sufficient");
+	if (sufficient_groups == NULL) {
+		fprintf(stderr, "aggregation->sufficient setting not found\n");
+		return 1;
+	}
+	
+	group = config_setting_get_member(sufficient_groups, "congress_group");
+	if (group == NULL) {
+		fprintf(stderr, "aggregation->sufficient->congress_group setting not found\n");
+		return 1;
+	}
+	group_count = config_setting_length(group);
+	for (i = 0; i < group_count; i++) {
+		plugin_name = config_setting_get_string_elem(group, i);
+		plugin_id = get_plugin_id(plugins, plugin_count, plugin_name);
+		if (plugin_id >= 0) {
+			plugins[plugin_id].aggregation = AGGREGATION_CONGRESS;
+		}
+		else {
+			fprintf(stderr, "Plugin %s in congress list does not exist\n", plugin_name);
+		}
+	}
+
+	group = config_setting_get_member(sufficient_groups, "necessary_group");
+	if (group == NULL) {
+		fprintf(stderr, "aggregation->sufficient->necessary_group setting not found\n");
+		return 1;
+	}
+	group_count = config_setting_length(group);
+	for (i = 0; i < group_count; i++) {
+		plugin_name = config_setting_get_string_elem(group, i);
+		plugin_id = get_plugin_id(plugins, plugin_count, plugin_name);
+		if (plugin_id >= 0) {
+			plugins[plugin_id].aggregation = AGGREGATION_NECESSARY;
+		}
+		else {
+			fprintf(stderr, "Plugin %s in necessary list does not exist\n", plugin_name);
+		}
+	}
+	return 0;
+}
+
+int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin_name) {
+	int i;
+	for (i = 0; i < plugin_count; i++) {
+		if (strcmp(plugins[i].name, plugin_name) == 0) {
+			return i;
+		}
+	}
+	/* -1 indicates plugin name is not found in list */
+	return -1;
 }
 
 int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
@@ -123,6 +198,7 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin) {
 		return 1;
 	}
 
+	plugin->aggregation = AGGREGATION_NONE;
 	plugin->name = copy_string(name);
 	plugin->desc = copy_string(desc);
 	plugin->ver = copy_string(version);

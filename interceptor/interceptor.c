@@ -15,10 +15,30 @@
 #include <linux/slab.h> // For memory allocation
 #include <linux/tcp.h> // For TCP structures
 #include <net/ip.h>
+#include <linux/netfilter_ipv4.h> // For nat_ops registration	
 
 #include "../util/utils.h"
 #include "interceptor.h"
 #include "connection_state.h" // For accessing handler functions
+
+#define NAT_SOCKOPT_BASE	85
+#define NAT_SOCKOPT_SET		(NAT_SOCKOPT_BASE)
+#define NAT_SOCKOPT_GET		(NAT_SOCKOPT_BASE)
+#define NAT_SOCKOPT_MAX	(NAT_SOCKOPT_BASE + 1)
+
+// NAT functionality for sslsplit
+static int set_orig_dst(struct sock *sk, int cmd, void __user *user, unsigned int len);
+static int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len);
+static struct nf_sockopt_ops nat_ops = {
+	.pf = PF_INET,
+	.set_optmin = NAT_SOCKOPT_SET,
+	.set_optmax = NAT_SOCKOPT_MAX,
+	.set = set_orig_dst,
+	.get_optmin = NAT_SOCKOPT_GET,
+	.get_optmax = NAT_SOCKOPT_MAX,
+	.get = get_orig_dst,
+	.owner = THIS_MODULE,
+};
 
 // TCP IPv6-specific reference functions
 int (*ref_tcp_v4_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len);
@@ -49,7 +69,7 @@ struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err);
 
 
 // Helpers
-static conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
+static conn_state_t* start_conn_state(pid_t pid, pid_t parent_pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock);
 static int stop_conn_state(conn_state_t* conn_state);
 
 // Global ops registration
@@ -131,7 +151,12 @@ int proxy_unregister(void) {
 }
 
 int accept_modifier_register(pid_t pid) {
+	int err;
 	INIT_LIST_HEAD(&proxy_accept_list.list);
+	err = nf_register_sockopt(&nat_ops);
+	if (err != 0) {
+		printk(KERN_ALERT "Failed to register new sock opts with kernel");
+	}
 	local_nat_pid = pid;
 	return 0;
 }
@@ -140,6 +165,7 @@ int accept_modifier_unregister(void) {
 	struct list_head* cur;
 	struct list_head* q;
 	proxy_accept_list_t* tmp;
+	nf_unregister_sockopt(&nat_ops);
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		list_del(cur);
@@ -174,11 +200,11 @@ int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6
  * @param sock A pointer to the struct for the socket.
  * @return The pointer to a new connection state
  */
-conn_state_t* start_conn_state(pid_t pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock) {
+conn_state_t* start_conn_state(pid_t pid, pid_t parent_pid, struct sockaddr *uaddr, int is_ipv6, int addr_len, struct socket* sock) {
 	conn_state_t* ret;
 	ret = conn_state_create(pid, sock);
 	if (ret != NULL) {
-		ret->state = ops->state_init(ret->pid, sock, uaddr, is_ipv6, addr_len);
+		ret->state = ops->state_init(ret->pid, parent_pid, sock, uaddr, is_ipv6, addr_len);
 		if (ret->state == NULL) {
 			stop_conn_state(ret);
 			return NULL;
@@ -215,9 +241,14 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
+	if (uaddr->sa_family == AF_INET) {
+		//print_call_info("Calling connect (v4) to addres %pI4:%d", 
+		//	&((struct sockaddr_in*)uaddr)->sin_addr,
+		//	ntohs(((struct sockaddr_in*)uaddr)->sin_port));
+	}
 	//printk(KERN_INFO "TCP over IPv4 connection detected");
 	//print_call_info("TCP IPv4 connect");
-	start_conn_state(current->pid, uaddr, 0, addr_len, sock);
+	start_conn_state(current->pid, current->real_parent->pid, uaddr, 0, addr_len, sock);
 	return ret;
 }
 
@@ -235,7 +266,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
 	//printk(KERN_INFO "TCP over IPv6 connection detected");
 	//print_call_info(sock, "TCP IPv6 connect");
-	if (start_conn_state(current->pid, uaddr, 1, addr_len, sock)) {
+	if (start_conn_state(current->pid, current->real_parent->pid, uaddr, 1, addr_len, sock)) {
 	}
 	return ret;
 }
@@ -293,15 +324,6 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 	}
 
-	// XXX Enum this later
-	if (ops->get_state(conn_state->state) == 2) {
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), msg, size);
-		set_fs(oldfs);
-		return real_ret;
-		//return ref_tcp_sendmsg(iocb, sk, msg, size);
-	}
 
 	// Copy attributes of existing message into our custom one
 	kmsg = *msg;
@@ -317,6 +339,17 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	new_data = msg->msg_iov->iov_base;
 	#endif
 
+	// XXX Enum this later
+	if (ops->get_state(conn_state->state) == 2) {
+		return ref_tcp_sendmsg(iocb, sk, msg, size);
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		iov.iov_len = size;
+		iov.iov_base = new_data;
+		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, size);
+		set_fs(oldfs);
+		return real_ret;
+	}
 
 	// 0) If last send attempt was an error, don't copy or update state
 	if (conn_state->queued_send_ret > 0) {
@@ -436,21 +469,42 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ret;
 	}
 
-	// XXX Enum this later
-	if (ops->get_state(conn_state->state) == 2) {
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), msg, len, nonblock, flags, addr_len);
-		set_fs(oldfs);
-		return ret;
-		//return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
-	}
-
 	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 	user_buffer = (void __user*)msg->msg_iter.iov->iov_base;
 	#else
 	user_buffer = (void __user *)msg->msg_iov->iov_base;
 	#endif
+
+	// XXX Enum this later
+	if (ops->get_state(conn_state->state) == 2) {
+		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		kmsg = *msg;
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+		kmsg.msg_iter.iov = &iov;
+		#else
+		kmsg.msg_iov = &iov;
+		#endif
+		b_to_read = ops->bytes_to_read_recv(conn_state->state);
+	        buffer = kmalloc(b_to_read, GFP_KERNEL);
+		iov.iov_len = b_to_read;
+		iov.iov_base = buffer;
+
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, iov.iov_len, nonblock, flags, addr_len);
+		if (ret == -EIOCBQUEUED) {
+			ret = wait_on_sync_kiocb(iocb);
+		}
+		set_fs(oldfs);
+		if (ret > 0) {
+			if (copy_to_user(user_buffer, buffer, ret) != 0) {
+				printk(KERN_ALERT "Copy to user failed in proxy");
+			}
+		}
+		kfree(buffer);
+		return ret;
+	}
+
 
 	bytes_sent = 0;
 	// 1) Place into user's buffer any data already marked for fowarding
@@ -552,6 +606,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX how do we fail here?
 		}
 
+		// XXX Enum this	
+		if (ops->get_state(conn_state->state) == 2) {
+			//printk(KERN_ALERT "Gotta proxeh");
+			return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		}
+
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
@@ -577,31 +637,125 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 }
 
-struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
-	struct sock* ret;
-	__be16 src_port;
+proxy_accept_list_t* get_proxy_addr_info(struct sock *sk) {
 	struct list_head* cur;
 	struct list_head* q;
 	proxy_accept_list_t* tmp;
+	__be16 src_port;
+	src_port = inet_sk(sk)->inet_dport;
+	list_for_each_safe(cur, q, &proxy_accept_list.list) {
+		tmp = list_entry(cur, proxy_accept_list_t, list);
+		if (tmp->src_port == src_port) {
+			list_del(cur);
+			return tmp;
+		}
+	}
+	return NULL;
+}
+
+int new_getname(struct socket *sock, struct sockaddr *uaddr, int *uaddr_len, int peer) {
+	proxy_accept_list_t* info;
+	struct sock *sk         = sock->sk;
+	struct inet_sock *inet  = inet_sk(sk);
+	DECLARE_SOCKADDR(struct sockaddr_in *, sin, uaddr);
+	sin->sin_family = AF_INET;
+	if (peer) {
+		if (!inet->inet_dport || (((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_SYN_SENT)) && peer == 1))
+				return -ENOTCONN;
+		sin->sin_port = inet->inet_dport;
+		sin->sin_addr.s_addr = inet->inet_daddr;
+	} else {
+		/* TrustHub Edit */
+		info = get_proxy_addr_info(sk);
+		if (info == NULL) {
+			__be32 addr = inet->inet_rcv_saddr;
+			if (!addr)
+				addr = inet->inet_saddr;
+			sin->sin_port = inet->inet_sport;
+			sin->sin_addr.s_addr = addr;
+		}
+		else {
+			sin->sin_port = info->addr_v4.sin_port;
+			sin->sin_addr.s_addr = info->addr_v4.sin_addr.s_addr;
+			kfree(info);
+		}
+		/* End TrustHub Edit */
+	}
+	memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+	*uaddr_len = sizeof(*sin);
+	return 0;
+}
+
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
+	struct sock* ret;
+	/*__be16 src_port;
+	struct list_head* cur;
+	struct list_head* q;
+	proxy_accept_list_t* tmp;
+	mm_segment_t oldfs;
+	int setsockoptret;*/
 	ret = ref_inet_csk_accept(sk, flags, err);
 	if (ret == NULL) {
 		return ret;
 	}
 	if (local_nat_pid && local_nat_pid == current->pid) {
-		src_port = inet_sk(ret)->inet_dport;
+		//ret->sk_socket->ops->getname = new_getname;
+		/*src_port = inet_sk(ret)->inet_dport;
 		printk(KERN_INFO "Accepted socket Source Port is %d", ntohs(src_port));
 		list_for_each_safe(cur, q, &proxy_accept_list.list) {
 			tmp = list_entry(cur, proxy_accept_list_t, list);
 			if (tmp->src_port == src_port) {
 				printk(KERN_INFO "Found data in list");
-				ip_setsockopt(ret, SOL_IP, IP_ORIGDSTADDR, 
-					sizeof(struct sockaddr), &tmp->addr);
+				oldfs = get_fs();
+				set_fs(KERNEL_DS);
+				setsockoptret = ip_setsockopt(ret, SOL_IP, 128,
+					(char*)&tmp->addr, sizeof(struct sockaddr_in));
+				printk(KERN_ALERT "setting sockopt with address %pI4:%d", &tmp->addr_v4.sin_addr, ntohs(tmp->addr_v4.sin_port));
+				if (setsockoptret != 0) {
+					printk(KERN_ALERT "setsockopt failed with %d", setsockoptret);
+				}
+				set_fs(oldfs);
 				list_del(cur);
 				kfree(tmp);
 			}
-		}
-		//sock_setsockopt();
+		}*/
 	}
 	return ret;
+}
+
+int set_orig_dst(struct sock *sk, int cmd, void __user *user, unsigned int len) {
+	return 0;
+}
+
+int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
+	int ret;
+	__be16 src_port;
+	struct list_head* cur;
+	struct list_head* q;
+	proxy_accept_list_t* tmp;
+
+	if (cmd != NAT_SOCKOPT_GET) {
+		return 0;
+	}
+
+	src_port = inet_sk(sk)->inet_dport;
+	//printk(KERN_INFO "Accepted socket Source Port is %d", ntohs(src_port));
+	list_for_each_safe(cur, q, &proxy_accept_list.list) {
+		tmp = list_entry(cur, proxy_accept_list_t, list);
+		if (tmp->src_port == src_port) {
+			//printk(KERN_INFO "Found data in list");
+			if (tmp->addr.sa_family == AF_INET) {
+				*len = sizeof(struct sockaddr_in);
+				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in));
+			}
+			else {
+				*len = sizeof(struct sockaddr_in6);
+				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in6));
+			}
+			list_del(cur);
+			kfree(tmp);
+		}
+	}
+	return 0;
 }
 

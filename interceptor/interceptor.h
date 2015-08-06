@@ -16,7 +16,7 @@ typedef struct proxy_accept_list_t {
 } proxy_accept_list_t;
 
 typedef struct proxy_handler_ops_t {
-	void* (*state_init)(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
+	void* (*state_init)(pid_t pid, pid_t parent_pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 	void (*state_free)(void* state);
 	int (*get_state)(void* state);
 	int (*give_to_handler_send)(void* state, void* src_buf, size_t length);

@@ -4,7 +4,7 @@
 #include <linux/socket.h>
 #include <net/sock.h>
 
-void* state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
+void* state_init(pid_t pid, pid_t parent_pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
 void state_free(void* buf_state);
 int get_state(void* state);
 int give_to_handler_send(void* state, void* src_buf, size_t length);

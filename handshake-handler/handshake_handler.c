@@ -15,6 +15,8 @@
 #include "../util/utils.h"
 #include "../interceptor/interceptor.h"
 #include "../loader.h"
+#include "../policy-engine/policy_response.h"
+
 #define CERTIFICATE_LENGTH_FIELD_SIZE	3
 
 // Handshake type identifiers
@@ -54,11 +56,11 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t 
 
 
 // Main proxy functionality
-void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
+void* th_state_init(pid_t pid, pid_t parent_pid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	if (pid == mitm_proxy_task->pid) {
+	if (parent_pid == mitm_proxy_task->pid || parent_pid == 2166) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
@@ -66,8 +68,10 @@ void* th_state_init(pid_t pid, struct socket* sock, struct sockaddr *uaddr, int 
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
 		state->pid = pid;
+		state->parent_pid = parent_pid;
 		state->interest = INTERESTED;
-		state->is_attack = 0;
+		/* For security, default to invalid */
+		state->policy_response = POLICY_RESPONSE_INVALID;
 		state->new_cert = NULL;
 		state->new_cert_length = 0;
 		state->hostname = NULL; // This is initialized only if we get a client hello
@@ -313,7 +317,7 @@ void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* buf_sta
 }
 
 void handle_state_server_hello_done_sent(handler_state_t* state, buf_state_t* buf_state) {
-	if (!state->is_attack) {
+	if (!state->policy_response != POLICY_RESPONSE_INVALID) {
 		buf_state->user_cur_max = buf_state->buf_length;
 	}
 	return;
@@ -359,15 +363,27 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
-			if (state->is_attack) {
+			if (state->policy_response == POLICY_RESPONSE_VALID_PROXY) {
 				state->interest = PROXIED;
 				setup_ssl_proxy(state);
 				buf_state->user_cur_max = 0; // don't forward jack squat if we need to mitm
 				buf_state->bytes_to_read = 0;
 				return; // break out early, we no longer care about anything here
 			}
-			else {
+			else if (state->policy_response == POLICY_RESPONSE_VALID) {
 				buf_state->user_cur_max = buf_state->buf_length;
+				buf_state->bytes_to_read = 0;
+				buf_state->state = IRRELEVANT;
+				state->interest = UNINTERESTED;
+			}
+			else { /* Invalid case */
+				// XXX scramble, disconnect
+				// For now just mess up cert
+				cs_buf[1] = 'd';
+				cs_buf[2] = '2';
+				buf_state->user_cur_max = buf_state->buf_length;
+				buf_state->state = IRRELEVANT;
+				state->interest = UNINTERESTED;
 			}
 			cs_buf += handshake_message_length;
 		}
@@ -433,31 +449,6 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	//printk(KERN_ALERT "Sending certificates to policy engine");
 	set_orig_leaf_cert(state, bufptr, certificates_length);
 	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
-	if (state->is_attack) {
-/*
-		// Override certificate data
-		memcpy(bufptr, state->new_cert, state->new_cert_length);
-
-		// Update length of all certificates
-		bufptr -= 3;
-		be_certificates_length = cpu_to_be24(state->new_cert_length);
-		//memcpy(bufptr, &be_certificates_length, 3);
-		bufptr[0] = ((unsigned char*)&be_certificates_length)[0];
-		bufptr[1] = ((unsigned char*)&be_certificates_length)[1];
-		bufptr[2] = ((unsigned char*)&be_certificates_length)[2];
-
-		// Update handshake message length
-		bufptr -= 3;
-		be_handshake_message_length = cpu_to_be24(state->new_cert_length + 3);
-		bufptr[0] = ((unsigned char*)&be_handshake_message_length)[0];
-		bufptr[1] = ((unsigned char*)&be_handshake_message_length)[1];
-		bufptr[2] = ((unsigned char*)&be_handshake_message_length)[2];
-		//memcpy(bufptr, &be_handshake_message_length, 3);
-		
-		printk(KERN_ALERT "attack! and certlength is %d", state->new_cert_length);
-		return state->new_cert_length + 6;
-*/
-	}
 	return 0;
 }
 
@@ -497,6 +488,7 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 	compression_methods_length = be16_to_cpu(*(__be16*)bufptr);
 	bufptr += 2; // advance past compression methods length field
 	bufptr += compression_methods_length; // advance past compression methods
+	// XXX client hellos don't necessarily have extensions or extension_length fields.  Rectify
 	extensions_length = be16_to_cpu(*(__be16*)bufptr);
 	bufptr += 2; // advance past extensions length
 	//printk(KERN_ALERT "extensions length is %u", extensions_length);
@@ -602,6 +594,49 @@ void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, 
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
 	__be16 src_port;
+	struct sockaddr_in proxy_addr = {
+		.sin_family = AF_INET,
+		.sin_port = htons(8888),
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
+	struct sockaddr_in source_addr = {
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+	};
+	
+	ref_tcp_disconnect(state->orig_sock->sk, 0);
+
+	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
+	//printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
+	source_addr.sin_port = src_port;
+	kernel_bind(state->orig_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
+	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
+	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
+	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
+	//printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
+
+	/*if (state->is_ipv6 == 1) {
+		//send_proxy_meta_data(&state->addr_v6, state->hostname);
+		send_proxy_meta_data(state->orig_sock,
+			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname,
+			state->orig_leaf_cert, state->orig_leaf_cert_len);
+	}
+	else {
+		send_proxy_meta_data(state->orig_sock,
+			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname,
+			state->orig_leaf_cert, state->orig_leaf_cert_len);
+	}*/
+	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
+	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
+
+	//printk(KERN_ALERT "%d", error);
+	return;
+}
+
+void setup_ssl_proxy2(handler_state_t* state) {
+	int error;
+	__be16 src_port;
 	int yes;
 	struct sockaddr_in proxy_addr = {
 		.sin_family = AF_INET,
@@ -617,24 +652,19 @@ void setup_ssl_proxy(handler_state_t* state) {
 	
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
-	//ref_tcp_close(state->orig_sock->sk, 0);
 	error = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP, &state->mitm_sock);
 	if (error < 0) {
 		printk(KERN_ALERT "Failed to create kernel socket");
 	}
-	//source_addr.sin_port = src_port;
 	kernel_bind(state->mitm_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
-	//kernel_setsockopt(state->orig_sock, SOL_SOCKET, SO_REUSEPORT, (char*)&yes, sizeof(yes));
 	src_port = inet_sk(state->mitm_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port during reconnect is %d", ntohs(src_port));
-	//ip_setsockopt(state->orig_sock->sk);
 	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
 	ref_tcp_v4_connect(state->mitm_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
 	src_port = inet_sk(state->mitm_sock->sk)->inet_sport;
 	printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
 	//printk(KERN_INFO "Sending proxy meta information");
-	//error = kernel_tcp_send_buffer(state->orig_sock, );
 	printk(KERN_INFO "Sending meta data");
 	if (state->is_ipv6 == 1) {
 		//send_proxy_meta_data(&state->addr_v6, state->hostname);
@@ -658,7 +688,7 @@ void setup_ssl_proxy(handler_state_t* state) {
 	return;
 }
 
-int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t length) {
+int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t length) {
 	struct msghdr	msg;
 	mm_segment_t	oldfs;
 	struct iovec	iov;
