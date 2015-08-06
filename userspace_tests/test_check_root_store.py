@@ -12,16 +12,37 @@ program = "check_root_store"
 temp_file = ".test_chain"
 erase_temp_file = True
 erase_shared_library = False
+hostname = ""
 
 def main():
-	if len(sys.argv) < 2 or sys.argv[1] in ['-h', '-?', '--help', 'help']:
-		print "USAGE : {0} some.webaddress.com [where_to_write_cert_file_if_you_wanna_keep_it]".format(sys.argv[0])
+	if len(sys.argv) < 2:
+		print "USAGE : {0} some.webaddress.com [-f write/certs/here.pem] [-n custom.hostname.com]".format(sys.argv[0])
 		sys.exit(1)
 	
-	if len(sys.argv) > 2:
-		global temp_file, erase_temp_file
-		temp_file = sys.argv[2]
-		erase_temp_file = False
+	hostname = sys.argv[1]
+	
+	expect = None
+	for arg in sys.argv[2:]:
+		if expect == None:
+			if arg in ['-h', '-?', '--help', 'help']:
+				print "USAGE : {0} some.webaddress.com [-f write/certs/here.pem] [-n custom.hostname.com]".format(sys.argv[0])
+				sys.exit(1)
+			if arg in ['-f', 'f', '--file', '-file']:
+				expect = 'file'
+			if arg in ['-n', 'n', '--host', '-host', '--hostname', '-hostname', '--name', '-name']:
+				expect = 'hostname'
+		elif expect == 'file':
+			global temp_file, erase_temp_file
+			temp_file = arg
+			erase_temp_file = False
+			print "Writing certificate chain to {0}".format(temp_file)
+			expect = None
+		elif expect == 'hostname':
+			hostname = arg
+			expect = None
+	
+	print "Using {0} as hostname".format(hostname)
+	
 	if not os.path.isfile(program + '.o'):
 		print "{0} needs to see the shared library {1} in the current working directory.".format(sys.argv[0], program = '.o')
 		print "Unable to find an executable '{0}'".format(program)
@@ -64,7 +85,7 @@ def main():
 	lib = cdll.LoadLibrary("./{0}.o".format(program))
 	root_store = lib.make_new_root_store()
 	stack = lib.pem_to_stack(temp_file)
-	rc = lib.query_store(sys.argv[1], stack, root_store)
+	rc = lib.query_store(hostname, stack, root_store)
 	
 	if rc == -1:
 		print "{0} returned an error".format(program)

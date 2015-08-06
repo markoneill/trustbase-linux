@@ -1,6 +1,7 @@
 #include "check_root_store.h"
 #include <stdio.h>
 #include <openssl/x509.h>
+#include <openssl/x509v3.h>
 #include <openssl/pem.h>
 #include <string.h>
 #include <fnmatch.h>
@@ -11,7 +12,9 @@
 
 #define CRS_DEBUG 0
 
+static int verify_alternate_hostname(const char* hostname, X509* cert);
 static int verify_hostname(const char* hostname, X509* cert);
+static int cmp_names(const char* hostname, char* cn);
 static void print_certificate(X509* cert);
 static void print_chain(STACK_OF(X509)*);
 static const char* get_validation_errstr(long e);
@@ -92,8 +95,12 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	}
 	
 	if (verify_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
-		printf("The hostname was found invalid");
-		return PLUGIN_RESPONSE_INVALID;
+		if (verify_alternate_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
+			if (CRS_DEBUG >= 1) {	
+				printf("The hostname was found invalid\n");
+			}
+			return PLUGIN_RESPONSE_INVALID;
+		}
 	}
 	
 	/* Verify the certificate chain */
@@ -142,6 +149,48 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	return allpassed;
 }
 
+/** This function checks the alternative hostnames in the certificate
+ *
+ */
+static int verify_alternate_hostname(const char* hostname, X509* cert) {
+	int result;
+	int i;
+	STACK_OF(GENERAL_NAME)* alt_names;
+	const GENERAL_NAME* current_alt_name;
+	char* cn;
+	
+	result = 0;
+
+	alt_names = X509_get_ext_d2i((X509 *) cert, NID_subject_alt_name, NULL, NULL);
+	if (alt_names == NULL) {
+		return 0;
+		if (CRS_DEBUG >= 1) {	
+			printf("No alternative hostnames found.\n");
+		}
+	}
+	
+	for (i=0; i<sk_GENERAL_NAME_num(alt_names); i++) {
+		current_alt_name = sk_GENERAL_NAME_value(alt_names, i);
+		
+		if (current_alt_name->type == GEN_DNS) {
+			cn = (char *) ASN1_STRING_data(current_alt_name->d.dNSName);
+			
+			/* check for null characters */
+			if (ASN1_STRING_length(current_alt_name->d.dNSName) != strlen(cn)) {
+				if (CRS_DEBUG >= 1) {
+					printf("Malformed Certificate\n");
+				}
+				continue;
+			}
+			
+			if (cmp_names(hostname, cn) > 0) {
+				result = 1;
+			}
+		}
+	}
+	return result;
+}
+
 /** This function tests a hostname against all CNs in the cert
  *
  */
@@ -152,10 +201,6 @@ static int verify_hostname(const char* hostname, X509* cert) {
 	ASN1_STRING* data;
 	char* cn;
 	int result;
-	int i;
-	int count;
-	int len;
-	char* tempstr;
 	
 	if (CRS_DEBUG >= 1) {
 		printf("Checking for hostname in leaf cert:");
@@ -168,7 +213,6 @@ static int verify_hostname(const char* hostname, X509* cert) {
 	
 	lastpos = -1;
 	for (;;) {
-		tempstr = NULL;
 		lastpos = X509_NAME_get_index_by_NID(subj, NID_commonName, lastpos);
 		if (lastpos == -1) {
 			break;
@@ -176,53 +220,81 @@ static int verify_hostname(const char* hostname, X509* cert) {
 		entry = X509_NAME_get_entry(subj, lastpos);
 		data = X509_NAME_ENTRY_get_data(entry);
 		cn = (char*)ASN1_STRING_data(data);
-		/* Note, if the hostname starts with a dot, it should be valid for any subdomain */
-		if (hostname[0] == '.') {
-			count = 0;
-			len = strlen(cn);
-			for (i=0; cn[i]; i++) {
-				if (cn[i] == '.') {
-					count++;
-				}
+		
+		/* check for null characters */
+		if (ASN1_STRING_length(data) != strlen(cn)) {
+			if (CRS_DEBUG >= 1) {
+				printf("Malformed Certificate\n");
 			}
-			if (count > 1) {
-				/* remove up to the first '.' */
-				for (i=0; cn[i]; i++) {
-					if (cn[i] == '.') {
-						count = i;
-						break;
-					}
-				}
-				tempstr = (char *) malloc(len - (count));
-				memcpy(tempstr, cn+count+1, len - (count));
-				if (CRS_DEBUG >= 1) {
-					printf("cn without subdomain = %s\n",tempstr);
-				}
-				cn = tempstr;
-			}
-			/* add *. to the front of the cn */
-			len = strlen(cn);
-			tempstr = (char *) malloc(len+3);
-			memcpy(tempstr, "*.", 2);
-			memcpy(tempstr+2, cn, len+1);
-			if (CRS_DEBUG>= 1) {
-				printf("modified cn = %s\n", tempstr);
-			}
-			free(cn);
-			cn = tempstr;
+			continue;
 		}
-		if (CRS_DEBUG >= 1) {
-			printf("Comparison of cn %s and host %s = %d\n", cn, hostname, fnmatch(cn, hostname, 0));
-		}
-		if (fnmatch(cn, hostname, 0) == 0) {
+
+		if (cmp_names(hostname, cn) > 0) {
 			result = 1;
-		}
-		if (tempstr != NULL) {
-			free(tempstr);
 		}
 	}
 	
 	
+	return result;
+}
+
+/** This does the actual string manipulation and comparison for hostnames
+ *
+ */
+static int cmp_names(const char* hostname, char* cn) {
+	int i;
+	int count;
+	int len;
+	char* tempstr;
+	int result;
+
+	result = 0;
+	tempstr = NULL;
+	
+	/* Note, if the hostname starts with a dot, it should be valid for any subdomain */
+	if (hostname[0] == '.') {
+		count = 0;
+		len = strlen(cn);
+		for (i=0; cn[i]; i++) {
+			if (cn[i] == '.') {
+				count++;
+			}
+		}
+		if (count > 1) {
+			/* remove up to the first '.' */
+			for (i=0; cn[i]; i++) {
+				if (cn[i] == '.') {
+					count = i;
+					break;
+				}
+			}
+			tempstr = (char *) malloc(len - (count));
+			memcpy(tempstr, cn+count+1, len - (count));
+			if (CRS_DEBUG >= 1) {
+				printf("cn without subdomain = %s\n",tempstr);
+			}
+			cn = tempstr;
+		}
+		/* add *. to the front of the cn */
+		len = strlen(cn);
+		tempstr = (char *) malloc(len+3);
+		memcpy(tempstr, "*.", 2);
+		memcpy(tempstr+2, cn, len+1);
+		if (CRS_DEBUG>= 1) {
+			printf("modified cn = %s\n", tempstr);
+		}
+		free(cn);
+		cn = tempstr;
+	}
+	if (CRS_DEBUG >= 1) {
+		printf("Comparison of cn %s and host %s = %d\n", cn, hostname, fnmatch(cn, hostname, 0));
+	}
+	if (fnmatch(cn, hostname, 0) == 0) {
+		result = 1;
+	}
+	if (tempstr != NULL) {
+		free(tempstr);
+	}
 	return result;
 }
 
