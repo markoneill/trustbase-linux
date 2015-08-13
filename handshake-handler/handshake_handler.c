@@ -1,4 +1,5 @@
 #include <linux/sched.h>
+#include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/in.h>
 #include <linux/in6.h>
@@ -60,7 +61,7 @@ void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr 
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	if (tgid == mitm_proxy_task->pid || tgid == 3015) {
+	if (tgid == mitm_proxy_task->pid) {
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
@@ -694,15 +695,21 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t
 	struct iovec	iov;
 	int 		len;
 	
+	iov.iov_base = (char*)buffer;
+	iov.iov_len = length;
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
+	msg.msg_iter.iov = &iov;
+	msg.msg_iter.nr_segs = 1;
+	#else
+	msg.msg_iov = &iov;
+	msg.msg_iovlen   = 1;
+	#endif
+
 	msg.msg_name     = 0;
 	msg.msg_namelen  = 0;
-	msg.msg_iov	 = &iov;
-	msg.msg_iovlen   = 1;
 	msg.msg_control  = NULL;
 	msg.msg_controllen = 0;
 	msg.msg_flags    = MSG_NOSIGNAL;
-	msg.msg_iov->iov_len = (__kernel_size_t)length;
-	msg.msg_iov->iov_base = (char*) buffer;
 	
 	oldfs = get_fs(); set_fs(KERNEL_DS);
 	len = sock_sendmsg(sock, &msg, length);

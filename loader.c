@@ -58,7 +58,7 @@ int __init loader_start(void) {
 		.get_mitm_sock = th_get_mitm_sock,
 	};
 	
-	start_mitm_proxy("/home/Phoenix_1/trusthub-linux/ssl_proxy");
+	start_mitm_proxy("/home/mark/sslsplit");
 	nat_ops_register();
 	proxy_register(&trusthub_ops);
 	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
@@ -95,17 +95,46 @@ void stop_task(struct task_struct* task) {
 /**
  * The following functions start up external daemons
  */
-
 int start_policy_engine(char* path) {
-	char* argv[] = {path, NULL};
-	alt_call_usermodehelper(path, argv, NULL, UMH_WAIT_EXEC, policy_engine_init);
-	return 0;
+        char prog_path[64];
+        char* envp[] = { "HOME=/",
+                "TERM=linux",
+                "PATH=/sbin:/usr/sbin:/bin:/usr/bin",
+                NULL
+        };
+        char* argv[2];
+        snprintf(prog_path, 64, "%s/policy_engine", path);
+        argv[0] = prog_path;
+        argv[1] = NULL;
+        alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, policy_engine_init);
+        return 0;
 }
 
 int start_mitm_proxy(char* path) {
-	char* argv[] = {path, NULL};
-	alt_call_usermodehelper(path, argv, NULL, UMH_WAIT_EXEC, mitm_proxy_init);
-	return 0;
+        char prog_path[64];
+        char cert_path[64];
+        char key_path[64];
+        char* envp[] = { "HOME=/",
+                "TERM=linux",
+                "PATH=/sbin:/usr/sbin:/bin:/usr/bin",
+                NULL
+        };
+        char* argv[10];
+        snprintf(prog_path, 64, "%s/sslsplit", path);
+        snprintf(cert_path, 64, "%s/ca.crt", path);
+        snprintf(key_path, 64, "%s/ca.key", path);
+        argv[0] = prog_path;
+        argv[1] = "-k";
+        argv[2] = key_path;
+        argv[3] = "-c";
+        argv[4] = cert_path;
+        argv[5] = "ssl";
+        argv[6] = "0.0.0.0";
+        argv[7] = "8888";
+        argv[8] = "trusthub";
+        argv[9] = NULL;
+        alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, mitm_proxy_init);
+        return 0;
 }
 
 int mitm_proxy_init(struct subprocess_info *info, struct cred *new) {
