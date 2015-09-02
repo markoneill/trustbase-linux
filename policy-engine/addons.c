@@ -8,6 +8,7 @@ int load_addon(const char* path, addon_t* addon) {
 	addon_finalize fin_func;
 	addon_load_plugin load_func;
 	addon_query_plugin query_func;
+	addon_async_query_plugin async_query_func;
 	void* handle;
 
 	// Load shared object
@@ -39,17 +40,23 @@ int load_addon(const char* path, addon_t* addon) {
 		fprintf(stderr, "Failed to load query_plugin function for addon '%s': %s\n", path, dlerror());
 		return 1;
 	}
+	async_query_func = dlsym(handle, "query_plugin_async");
+	if (query_func == NULL) {
+		fprintf(stderr, "Failed to load async_query_plugin function for addon '%s': %s\n", path, dlerror());
+		return 1;
+	}
 	addon->addon_initialize = init_func;
 	addon->addon_finalize = fin_func;
 	addon->addon_load_plugin = load_func;
 	addon->addon_query_plugin = query_func;
+	addon->addon_async_query_plugin = async_query_func;
 	return 0;
 }
 
-void init_addons(addon_t* addons, size_t addon_count, size_t plugin_count) {
+void init_addons(addon_t* addons, size_t addon_count, size_t plugin_count, int(*callback)(int, int, int)) {
 	int i;
 	for (i = 0; i < addon_count; i++) {
-		addons[i].addon_initialize(plugin_count, ".");
+		addons[i].addon_initialize(plugin_count, ".", callback, addons[i].so_path);
 	}
 	return;
 }

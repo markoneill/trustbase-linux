@@ -90,14 +90,13 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 			for (j = 0; j < addon_count; j++) {
 				if (strcmp(addons[j].type_handled, plugins[i].handler_str) == 0) {
 					plugins[i].handler_type = PLUGIN_HANDLER_TYPE_ADDON;
-					addons[j].addon_load_plugin(i, plugins[i].path);
 					if (plugins[i].type == PLUGIN_TYPE_SYNCHRONOUS) {
+						addons[j].addon_load_plugin(i, plugins[i].path, 0);
 						plugins[i].query_sync_by_addon = addons[j].addon_query_plugin;
 					}
 					else {
-						// XXX see below
-						fprintf(stderr, "Asynchronous addon-handled plugins are not current supported\n");
-						// plugins[i].query_async_by_addon = addons[j].addon_async_query_plugin;
+						addons[j].addon_load_plugin(i, plugins[i].path, 1);
+						plugins[i].query_async_by_addon = addons[j].addon_async_query_plugin;
 					}
 
 					break;

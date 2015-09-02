@@ -53,7 +53,7 @@ int main() {
 	thread_param_t* plugin_thread_params;
 
 	load_config(&context);
-	init_addons(context.addons, context.addon_count, context.plugin_count);
+	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
 	printf("Congress Threshold is %2.1lf\n", context.congress_threshold);
@@ -192,7 +192,7 @@ int async_callback(int plugin_id, int query_id, int result) {
 		pthread_cond_signal(&query->threshold_met);
 	}
 	pthread_mutex_unlock(&query->mutex);
-	//printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
+	printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
 	return 1; /* let plugin know the callback was successful */
 }
 
@@ -236,7 +236,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
 		printf("Policy Engine reporting good cert for %s but it needs to be proxied\n", query->hostname);
-		return POLICY_RESPONSE_VALID_PROXY;
+		return POLICY_RESPONSE_VALID;
 	}
 	printf("Policy Engine reporting good cert for %s\n", query->hostname);
 	return POLICY_RESPONSE_VALID;

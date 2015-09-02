@@ -172,6 +172,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
 	addon->desc = copy_string(desc);
 	addon->ver = copy_string(version);
 	addon->type_handled = copy_string(type_handled);
+	addon->so_path = copy_string(path);
 	if (load_addon(path, addon) != 0) {
 		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
