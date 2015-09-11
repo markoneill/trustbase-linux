@@ -15,7 +15,7 @@ obj-m += test_interceptor.o
 obj-m += trusthub_linux.o
 
 CC = gcc
-CCFLAGS = -Wall -O3 -fpic
+CCFLAGS = -Wall -O3 -fpic -g
 LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7 -levent -levent_openssl -lpthread
 INCLUDES = -I/usr/include/libnl3 -I/usr/include/python2.7
 

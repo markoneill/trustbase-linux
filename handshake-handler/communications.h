@@ -6,6 +6,7 @@ struct handler_state_t;
 int th_register_netlink(void);
 void th_unregister_netlink(void);
 int th_send_certificate_query(struct handler_state_t* state, char* hostname, char* certificate, size_t length);
+int th_send_shutdown(void);
 //int th_get_certificate_response(void);
 
 // Attributes
@@ -25,6 +26,7 @@ enum {
 	TRUSTHUB_C_UNSPEC,
 	TRUSTHUB_C_QUERY,
 	TRUSTHUB_C_RESPONSE,
+	TRUSTHUB_C_SHUTDOWN,
 	__TRUSTHUB_C_MAX,
 };
 

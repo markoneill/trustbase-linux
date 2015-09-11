@@ -71,6 +71,8 @@ int __init loader_start(void) {
  * @post TrustHub unregistered and stopped
  */
 void __exit loader_end(void) {
+	// Send shutdown message to policy-engine
+	th_send_shutdown();
 	proxy_unregister();
 	nat_ops_unregister();
 	// Unregister the IPC 

@@ -5,6 +5,7 @@
 #include <netlink/genl/ctrl.h>
 #include <pthread.h>
 #include <errno.h>
+#include <signal.h>
 
 #include "netlink.h"
 #include "configuration.h"
@@ -24,6 +25,7 @@ static void* plugin_thread_init(void* arg);
 static void* decider_thread_init(void* arg);
 static int async_callback(int plugin_id, int query_id, int result);
 static int aggregate_responses(query_t* query, int ca_system_response);
+static volatile int keep_running;
 
 typedef struct { unsigned char b[3]; } be24, le24;
 
@@ -51,7 +53,9 @@ int main() {
 	pthread_t* plugin_threads;
 	thread_param_t decider_thread_params;
 	thread_param_t* plugin_thread_params;
-
+	
+	keep_running = 1;
+	
 	load_config(&context);
 	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
@@ -78,9 +82,14 @@ int main() {
 	listen_for_queries();
 
 	// Cleanup
+	keep_running = 0;
 	for (i = 0; i < context.plugin_count; i++) {
-		free_queue(context.plugins[i].queue); // XXX relocate this
+		pthread_kill(plugin_threads[i], SIGTERM);
+	}
+	pthread_kill(decider_thread, SIGTERM);
+	for (i = 0; i < context.plugin_count; i++) {
 		pthread_join(plugin_threads[i], NULL);
+		free_queue(context.plugins[i].queue); // XXX relocate this
 	}
 	pthread_join(decider_thread, NULL);
 	free_queue(context.decider_queue);
@@ -113,7 +122,7 @@ void* plugin_thread_init(void* arg) {
 			plugin->init_async(plugin_id, async_callback);
 		}
 	}
-	while (1) {
+	while (keep_running == 1) {
 		//printf("Dequeuing query\n");
 		query = dequeue(queue);
 		//printf("Query dequeued\n");
@@ -147,7 +156,7 @@ void* decider_thread_init(void* arg) {
 	queue = context.decider_queue;
 	
 	root_store = make_new_root_store();
-	while (1) {
+	while (keep_running == 1) {
 		query = dequeue(queue);
 		ca_system_response =  query_store(query->hostname, query->chain, root_store);
 		//printf("CA System response is %d\n", ca_system_response);

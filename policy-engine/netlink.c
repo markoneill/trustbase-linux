@@ -1,5 +1,6 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
+#include <signal.h>
 #include "netlink.h"
 #include "policy_engine.h"
 
@@ -13,6 +14,9 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 static int family;
 struct nl_sock* netlink_sock;
 pthread_mutex_t nl_sock_mutex;
+static volatile int keep_running;
+
+void int_handler(int signal);
 
 int send_response(uint64_t stptr, int result) {
 	int rc;
@@ -74,6 +78,9 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			// XXX I *think* the message is freed by whatever function calls this one
 			// within libnl.  Verify this.
 			break;
+		case TRUSTHUB_C_SHUTDOWN:
+			/* Receiving this will exit the listen_for_queries loop, as long as keep_running is set to 0 first */
+			break;
 		default:
 			printf("Got something unusual...\n");
 			break;
@@ -117,13 +124,25 @@ int listen_for_queries(void) {
 		return -1;
 	}
 	
-	while (1) {
+	if (signal(SIGINT, int_handler) == SIG_ERR) {
+		fprintf(stderr, "Cannot listen for SIGINT\n");
+	}
+	keep_running = 1;
+	while (keep_running == 1) {
 		if (nl_recvmsgs_default(netlink_sock) < 0) {
 			printf("Failing out of main loop\n");
 			break;
 		}
 	}
+	fprintf(stderr, "Closing TrustBase\n");
 	nl_socket_free(netlink_sock);
 	return 0;
 }
 
+void int_handler(int signal) {
+	if (signal == SIGINT) {
+		fprintf(stderr, " Caught SIGINT\n");
+		keep_running = 0;
+		// Wait for our netlink_message to break the loop
+	}
+}

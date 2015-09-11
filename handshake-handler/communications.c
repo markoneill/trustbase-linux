@@ -142,3 +142,29 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, char* cert
 	return 0;
 }
 
+int th_send_shutdown() {
+	struct sk_buff* skb;
+	int rc;
+	void* msg_head;
+	
+	skb = genlmsg_new(0, GFP_ATOMIC);
+	if (skb == NULL) {
+		printk(KERN_ALERT "failed in genlmsg");
+		nlmsg_free(skb);
+		return -1;
+	}
+	msg_head = genlmsg_put(skb, 0, 0, &th_family, 0, TRUSTHUB_C_SHUTDOWN);
+	if (msg_head == NULL) {
+		printk(KERN_ALERT "failed in genlmsg_put");
+		nlmsg_free(skb);
+		return -1;
+	}
+	genlmsg_end(skb, msg_head);
+	// skbs are freed by genlmsg_multicast
+	rc = genlmsg_multicast(&th_family, skb, 0, TRUSTHUB_QUERY, GFP_ATOMIC);
+	if (rc != 0) {
+		printk(KERN_ALERT "failed in genlmsg_multicast %d", rc);
+		return -1;
+	}
+	return 0;
+}
