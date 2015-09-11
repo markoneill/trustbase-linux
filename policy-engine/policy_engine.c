@@ -245,7 +245,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
 		printf("Policy Engine reporting good cert for %s but it needs to be proxied\n", query->hostname);
-		return POLICY_RESPONSE_VALID;
+		return POLICY_RESPONSE_VALID_PROXY;
 	}
 	printf("Policy Engine reporting good cert for %s\n", query->hostname);
 	return POLICY_RESPONSE_VALID;
