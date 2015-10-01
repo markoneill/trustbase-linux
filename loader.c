@@ -5,6 +5,11 @@
 #include "handshake-handler/communications.h" // For registering/unregistering netlink family
 #include "handshake-handler/handshake_handler.h" // For referencing proxy functions
 
+// Kernel module parameters
+static char* th_path = "/usr/bin";
+module_param(th_path, charp, 0000);
+MODULE_PARM_DESC(th_path, "An absolute path to the TrustHub install location");
+
 // TrustHub interception operations
 proxy_handler_ops_t trusthub_ops;
 // Userspace daemon pointers
@@ -16,6 +21,7 @@ static void __exit loader_end(void);
 
 module_init(loader_start);
 module_exit(loader_end);
+MODULE_AUTHOR("Mark O'Neill");
 MODULE_LICENSE("GPL");
 
 int start_policy_engine(char* path);
@@ -58,7 +64,8 @@ int __init loader_start(void) {
 		.get_mitm_sock = th_get_mitm_sock,
 	};
 	
-	start_mitm_proxy("/home/mark/sslsplit");
+	printk(KERN_INFO "Looking for TrustHub binaries in %s", th_path);
+	start_mitm_proxy(th_path);
 	nat_ops_register();
 	proxy_register(&trusthub_ops);
 	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
@@ -106,6 +113,7 @@ int start_policy_engine(char* path) {
         };
         char* argv[2];
         snprintf(prog_path, 64, "%s/policy_engine", path);
+	printk(KERN_INFO "Starting policy engine at %s", prog_path);
         argv[0] = prog_path;
         argv[1] = NULL;
         alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, policy_engine_init);
@@ -122,9 +130,10 @@ int start_mitm_proxy(char* path) {
                 NULL
         };
         char* argv[10];
-        snprintf(prog_path, 64, "%s/sslsplit", path);
-        snprintf(cert_path, 64, "%s/ca.crt", path);
-        snprintf(key_path, 64, "%s/ca.key", path);
+        snprintf(prog_path, 64, "%s/sslsplit/sslsplit", path);
+	printk(KERN_INFO "Starting SSLSplit at %s", prog_path);
+        snprintf(cert_path, 64, "%s/certs/ca.crt", path);
+        snprintf(key_path, 64, "%s/certs/ca.key", path);
         argv[0] = prog_path;
         argv[1] = "-k";
         argv[2] = key_path;
@@ -150,7 +159,7 @@ int policy_engine_init(struct subprocess_info *info, struct cred *new) {
 }
 
 int alt_call_usermodehelper(char *path, char **argv, char **envp, int wait, 
-		int (*init)(struct subprocess_info *info, struct cred *new)) {
+	int (*init)(struct subprocess_info *info, struct cred *new)) {
 	struct subprocess_info *info;
 	gfp_t gfp_mask = (wait == UMH_NO_WAIT) ? GFP_ATOMIC : GFP_KERNEL;
         info = call_usermodehelper_setup(path, argv, envp, gfp_mask, init, NULL, NULL);

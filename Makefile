@@ -16,7 +16,7 @@ obj-m += trusthub_linux.o
 
 CC = gcc
 CCFLAGS = -Wall -O3 -fpic -g
-LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7 -levent -levent_openssl -lpthread
+LIBS = -lnl-3 -lnl-genl-3 -lcrypto -lssl -lconfig -ldl -lpython2.7 -lpthread
 INCLUDES = -I/usr/include/libnl3 -I/usr/include/python2.7
 
 POLICY_ENGINE_SRC = policy-engine/plugins.c \
@@ -30,10 +30,6 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/policy_engine.c
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
 POLICY_ENGINE_EXE = policy_engine
-
-PROXY_SRC = proxy/proxy.c
-PROXY_OBJ = $(PROXY_SRC:%.c=%.o)
-PROXY_EXE = ssl_proxy
 
 PYTHON_PLUGINS_ADDON_SRC = policy-engine/addons/python_plugins.c
 PYTHON_PLUGINS_ADDON_OBJ = $(PYTHON_PLUGINS_ADDON_SRC:%.c=%.o)
@@ -63,7 +59,7 @@ CERT_TEST_SRC = userspace_tests/cert_sandbox.c
 CERT_TEST_OBJ = $(CERT_TEST_SRC:%.c=%.o)
 CERT_TEST_EXE = cert_test
 
-all: $(POLICY_ENGINE_EXE) $(PROXY_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE)
+all: $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 $(POLICY_ENGINE_EXE) : $(POLICY_ENGINE_OBJ)
@@ -98,4 +94,4 @@ $(CERT_TEST_EXE) : $(CERT_TEST_OBJ)
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(PROXY_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE)
+	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE)

@@ -2,3 +2,6 @@
 *.so
 *.cmd
 *.d
+*.ko
+*.pyc
+Module.symvers
