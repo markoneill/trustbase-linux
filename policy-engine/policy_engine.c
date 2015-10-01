@@ -201,7 +201,7 @@ int async_callback(int plugin_id, int query_id, int result) {
 		pthread_cond_signal(&query->threshold_met);
 	}
 	pthread_mutex_unlock(&query->mutex);
-	printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
+	//printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
 	return 1; /* let plugin know the callback was successful */
 }
 
