@@ -502,7 +502,7 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 		extension_length = be16_to_cpu(*(__be16*)bufptr);
 		bufptr += 2; // advance past extension length field
 		if (extension_type == 0) {
-			//printk(KERN_ALERT "We found an SNI extension!");
+			printk(KERN_ALERT "We found an SNI extension!");
 			list_length = be16_to_cpu(*(__be16*)bufptr);
 			bufptr += 2; // advance past 
 			type = bufptr[0];
@@ -520,10 +520,11 @@ void set_state_hostname(handler_state_t* state, char* buf) {
 	// XXX change this so that hostname gets set by kernel on connect if we
 	// didn't find an SNI extension in the hello
 	if (state->hostname == NULL) {
+		printk(KERN_ALERT "Filling in unknown Hostname");
 		state->hostname = kmalloc(sizeof(uname), GFP_KERNEL);
 		memcpy(state->hostname, uname, sizeof(uname));
 	}
-	//printk(KERN_ALERT "Hostname is %s", state->hostname);
+	printk(KERN_ALERT "Hostname is %s", state->hostname);
 	return;
 }
 

@@ -47,6 +47,10 @@ ASYNC_TEST_PLUGIN_SRC = policy-engine/plugins/async_test.c
 ASYNC_TEST_PLUGIN_OBJ = $(ASYNC_TEST_PLUGIN_SRC:%.c=%.o)
 ASYNC_TEST_PLUGIN_SO = policy-engine/plugins/async_test.so
 
+WHITELIST_PLUGIN_SRC = policy-engine/plugins/whitelist_plugin/whitelist.c
+WHITELIST_PLUGIN_OBJ = $(WHITELIST_PLUGIN_SRC:%.c=%.o)
+WHITELIST_PLUGIN_SO = policy-engine/plugins/whitelist_plugin/whitelist.so
+
 SIMPLE_SERVER_SRC = userspace_tests/simple_server.c
 SIMPLE_SERVER_OBJ = $(SIMPLE_SERVER_SRC:%.c=%.o)
 SIMPLE_SERVER_EXE = simple_server
@@ -59,7 +63,7 @@ CERT_TEST_SRC = userspace_tests/cert_sandbox.c
 CERT_TEST_OBJ = $(CERT_TEST_SRC:%.c=%.o)
 CERT_TEST_EXE = cert_test
 
-all: $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE)
+all: $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(WHITELIST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 $(POLICY_ENGINE_EXE) : $(POLICY_ENGINE_OBJ)
@@ -78,6 +82,9 @@ $(ASYNC_TEST_PLUGIN_SO) : $(ASYNC_TEST_PLUGIN_OBJ)
 	$(CC) -shared $^ -o $@
 
 $(OPENSSL_TEST_PLUGIN_SO) : $(OPENSSL_TEST_PLUGIN_OBJ)
+	$(CC) -shared $^ -o $@
+
+$(WHITELIST_PLUGIN_SO) : $(WHITELIST_PLUGIN_OBJ)
 	$(CC) -shared $^ -o $@
 
 $(SIMPLE_SERVER_EXE) : $(SIMPLE_SERVER_OBJ)
