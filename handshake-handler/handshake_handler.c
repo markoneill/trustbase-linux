@@ -9,6 +9,9 @@
 #include <asm/byteorder.h>
 #include <asm/uaccess.h>
 #include <linux/net.h>
+// only for Bug 001 squashing
+#include <linux/tcp.h>
+// End only for Bug 001 squashing
 #include <net/inet_connection_sock.h>
 
 #include "handshake_handler.h"
@@ -592,6 +595,13 @@ void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, 
 	return;
 }
 
+void printTime(char* str) {
+	struct timespec ts;
+	getnstimeofday(&ts);
+	printk(KERN_ALERT "%s:%lld.%9ld", str, (long long)ts.tv_sec, ts.tv_nsec);
+	return;
+}
+
 void setup_ssl_proxy(handler_state_t* state) {
 	int error;
 	__be16 src_port;
@@ -603,17 +613,22 @@ void setup_ssl_proxy(handler_state_t* state) {
 	struct sockaddr_in source_addr = {
 		.sin_family = AF_INET,
 		.sin_port = 0,
-		.sin_addr.s_addr = htonl(INADDR_LOOPBACK), // 127.0.0.1
+		.sin_addr.s_addr = htonl(INADDR_ANY), // 127.0.0.1
 	};
 	
+	printTime("Before disconnect");
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
+	printTime("After disconnect");
 
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	//printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
 	source_addr.sin_port = src_port;
 	kernel_bind(state->orig_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
 	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
-	ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
+	printTime("Before reconnect");
+	error = ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
+	printk(KERN_ALERT "reconnect returned %d", error);
+	printTime("After reconnect");
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	//printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
@@ -629,7 +644,9 @@ void setup_ssl_proxy(handler_state_t* state) {
 			state->orig_leaf_cert, state->orig_leaf_cert_len);
 	}*/
 	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
+	printTime("Before client hello");
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
+	printTime("After client hello");
 
 	//printk(KERN_ALERT "%d", error);
 	return;
@@ -689,6 +706,31 @@ void setup_ssl_proxy2(handler_state_t* state) {
 	return;
 }
 
+int __our_sock_sendmsg_nosec(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size) {
+	int ret;
+	struct sock_iocb *si = kiocb_to_siocb(iocb);
+	si->sock = sock;
+	si->scm = NULL;
+	si->msg = msg;
+	si->size = size;
+	printTime("before ops->sendmsg");
+	ret = sock->ops->sendmsg(iocb, sock, msg, size);
+	printTime("after ops->sendmsg");
+	return ret;
+}
+
+int our_sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size) {
+	struct kiocb iocb;
+	struct sock_iocb siocb;
+	int ret;
+	init_sync_kiocb(&iocb, NULL);
+	iocb.private = &siocb;
+	ret = __our_sock_sendmsg_nosec(&iocb, sock, msg, size);
+	if (-EIOCBQUEUED == ret)
+		ret = wait_on_sync_kiocb(&iocb);
+	return ret;
+}
+
 int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t length) {
 	struct msghdr	msg;
 	mm_segment_t	oldfs;
@@ -709,11 +751,14 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t
 	msg.msg_namelen  = 0;
 	msg.msg_control  = NULL;
 	msg.msg_controllen = 0;
-	msg.msg_flags    = MSG_NOSIGNAL;
+	msg.msg_flags    = MSG_NOSIGNAL & MSG_FASTOPEN;
 	
 	oldfs = get_fs(); set_fs(KERNEL_DS);
-	len = sock_sendmsg(sock, &msg, length);
+	printTime("before sock_sendmsg");
+	len = our_sock_sendmsg(sock, &msg, length);
+	printTime("after sock_sendmsg");
 	set_fs(oldfs);
+	printk(KERN_ALERT "len is %d", len);
 	return len;
 }
 
