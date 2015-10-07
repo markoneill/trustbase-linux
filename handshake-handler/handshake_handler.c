@@ -35,6 +35,23 @@
 #define TYPE_CLIENT_KEY_EXCHANGE	16
 #define TYPE_FINISHED			20
 
+// Client Hello byte navigation
+#define SIZE_CLIENT_HELLO_LEN		3
+#define SIZE_TLS_VERSION_INFO		2
+#define SIZE_RANDOM_DATA		32
+#define SIZE_SESSION_ID_LEN		1
+#define	SIZE_CIPHER_SUITE_LEN		2
+#define SIZE_COMPRESSION_METHODS_LEN	2
+#define SIZE_EXTS_LEN			2
+#define SIZE_EXT_TYPE			2
+#define SIZE_EXT_LEN			2
+#define	EXT_TYPE_SNI			0
+#define SIZE_SNI_LIST_LEN		2
+#define SIZE_SNI_TYPE			1
+#define SIZE_SNI_NAME_LEN		2
+#define IPV4_STR_LEN			15
+#define IPV6_STR_LEN			39
+
 inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
 inline int th_buf_state_can_transition(buf_state_t* buf_state, int interest);
 static void* buf_state_init(buf_state_t* buf_state);
@@ -51,7 +68,7 @@ static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* 
 static void handle_state_server_hello_done_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
-static void set_state_hostname(handler_state_t* state, char* buf);
+static void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_length);
 
 // SSL Proxy Setup
 void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned int certificates_length);
@@ -345,7 +362,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			//print_call_info("Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
-			set_state_hostname(state, cs_buf+1); // Plus one to ignore protocol type
+			set_state_hostname(state, cs_buf+1, handshake_message_length); // Plus one to ignore protocol type
 			buf_state->user_cur_max = buf_state->bytes_read;
 			cs_buf += handshake_message_length;
 		}
@@ -456,73 +473,68 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	return 0;
 }
 
-void set_state_hostname(handler_state_t* state, char* buf) {
+void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_len) {
 	// XXX clean this function up.  It was made in haste just to get the hostname
 	char* bufptr;
 	unsigned int hello_length;
-	unsigned char major_version;
-	unsigned char minor_version;
 	unsigned char session_id_length;
 	unsigned short cipher_suite_length;
 	unsigned char compression_methods_length;
 	unsigned short extensions_length;
 	unsigned short extension_length;
 	unsigned short extension_type;
-	unsigned short list_length;
 	unsigned char type;
 	unsigned short name_length;
-	char uname[] = "Unknown";
 	bufptr = buf;
 	hello_length = be24_to_cpu(*(__be24*)bufptr);
-	//printk(KERN_ALERT "client hello length is %u", hello_length);
-	bufptr += 3; // advance past length info
-	major_version = bufptr[0];
-	minor_version = bufptr[1];
-	//printk(KERN_ALERT "tls version %u.%u", major_version, minor_version);
-	bufptr += 2; // advance past version info
-	bufptr += 32; // skip 32-byte random
+	bufptr += SIZE_CLIENT_HELLO_LEN; // advance past length info
+	bufptr += SIZE_TLS_VERSION_INFO; // advance past version info
+	bufptr += SIZE_RANDOM_DATA; // skip 32-byte random
 	session_id_length = bufptr[0];
-	//printk(KERN_ALERT "session id length %u", session_id_length);
-	bufptr += 1; // advance past session id length field
+	bufptr += SIZE_SESSION_ID_LEN; // advance past session id length field
 	bufptr += session_id_length; // advance past session ID
 	cipher_suite_length = be16_to_cpu(*(__be16*)bufptr);
-	bufptr += 2; // advance past cipher suite length field
-	//printk(KERN_ALERT "cipher suite length %u", cipher_suite_length);
+	bufptr += SIZE_CIPHER_SUITE_LEN; // advance past cipher suite length field
 	bufptr += cipher_suite_length; // advance past cipher suites;
 	compression_methods_length = be16_to_cpu(*(__be16*)bufptr);
-	bufptr += 2; // advance past compression methods length field
+	bufptr += SIZE_COMPRESSION_METHODS_LEN; // advance past compression methods length field
 	bufptr += compression_methods_length; // advance past compression methods
-	// XXX client hellos don't necessarily have extensions or extension_length fields.  Rectify
-	extensions_length = be16_to_cpu(*(__be16*)bufptr);
-	bufptr += 2; // advance past extensions length
-	//printk(KERN_ALERT "extensions length is %u", extensions_length);
-	while (extensions_length) {
-		extension_type = be16_to_cpu(*(__be16*)bufptr);
-		bufptr += 2; // advance past type field
-		extension_length = be16_to_cpu(*(__be16*)bufptr);
-		bufptr += 2; // advance past extension length field
-		if (extension_type == 0) {
-			printk(KERN_ALERT "We found an SNI extension!");
-			list_length = be16_to_cpu(*(__be16*)bufptr);
-			bufptr += 2; // advance past 
-			type = bufptr[0];
-			bufptr++; // advance past type field
-			name_length = be16_to_cpu(*(__be16*)bufptr);
-			bufptr += 2; // advance past name length field
-			state->hostname = kmalloc(name_length+1, GFP_KERNEL);
-			memcpy(state->hostname, bufptr, name_length);
-			state->hostname[name_length] = '\0'; // null terminate it
-			break;
+	/* If there are bytes left, there are extensions, and possibly a SNI */
+	if (message_len - (unsigned int)((bufptr + SIZE_CLIENT_HELLO_LEN) - buf) > 0) {
+		extensions_length = be16_to_cpu(*(__be16*)bufptr);
+		bufptr += SIZE_EXTS_LEN; // advance past extensions length
+		while (extensions_length) {
+			// Check how many bytes have been read vs how many are left
+			extension_type = be16_to_cpu(*(__be16*)bufptr);
+			bufptr += SIZE_EXT_TYPE; // advance past type field
+			extension_length = be16_to_cpu(*(__be16*)bufptr);
+			bufptr += SIZE_EXT_LEN; // advance past extension length field
+			if (extension_type == EXT_TYPE_SNI) {
+				//printk(KERN_ALERT "We found an SNI extension!");
+				bufptr += SIZE_SNI_LIST_LEN; // advance past the list length 
+				type = bufptr[0];
+				bufptr += SIZE_SNI_TYPE; // advance past type field
+				name_length = be16_to_cpu(*(__be16*)bufptr);
+				bufptr += SIZE_SNI_NAME_LEN; // advance past name length field
+				state->hostname = kmalloc(name_length+1, GFP_KERNEL);
+				memcpy(state->hostname, bufptr, name_length);
+				state->hostname[name_length] = '\0'; // null terminate it
+				break;
+			}
+			bufptr += extension_length; // advanced to the next extension
+			extensions_length -= extension_length + SIZE_EXT_TYPE + SIZE_EXT_LEN;
 		}
-		extensions_length -= extension_length;
 	}
 
-	// XXX change this so that hostname gets set by kernel on connect if we
-	// didn't find an SNI extension in the hello
 	if (state->hostname == NULL) {
-		printk(KERN_ALERT "Filling in unknown Hostname");
-		state->hostname = kmalloc(sizeof(uname), GFP_KERNEL);
-		memcpy(state->hostname, uname, sizeof(uname));
+		printk(KERN_ALERT "Filling in unknown Hostname with IP");
+		if (state->is_ipv6) {
+			state->hostname = kmalloc(IPV6_STR_LEN+1, GFP_KERNEL);
+			snprintf(state->hostname, IPV6_STR_LEN+1, "%pI6", &(state->addr_v6.sin6_addr));
+		} else {
+			state->hostname = kmalloc(IPV4_STR_LEN+1, GFP_KERNEL);
+			snprintf(state->hostname, IPV4_STR_LEN+1, "%pI4", &(state->addr_v4.sin_addr));
+		}
 	}
 	printk(KERN_ALERT "Hostname is %s", state->hostname);
 	return;
