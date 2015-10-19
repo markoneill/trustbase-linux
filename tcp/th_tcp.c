@@ -281,6 +281,11 @@
 #include <asm/ioctls.h>
 #include <net/busy_poll.h>
 
+#include <linux/kallsyms.h>
+#include "th_tcp.h"
+
+static void printTime(char* str);
+
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
 int sysctl_tcp_min_tso_segs __read_mostly = 2;
@@ -682,7 +687,9 @@ static void tcp_push(struct sock *sk, int flags, int mss_now,
 
 	if (flags & MSG_MORE)
 		nonagle = TCP_NAGLE_CORK;
-
+	
+	void (*__tcp_push_pending_frames)(struct sock*, unsigned int, int);	
+	__tcp_push_pending_frames = (void (*)(struct sock, unsigned int, int))kallsyms_lookup_name("__tcp_push_pending_frames");
 	__tcp_push_pending_frames(sk, mss_now, nonagle);
 }
 
@@ -882,7 +889,9 @@ static unsigned int tcp_xmit_size_goal(struct sock *sk, u32 mss_now,
 static int tcp_send_mss(struct sock *sk, int *size_goal, int flags)
 {
 	int mss_now;
-
+	
+	unsigned int (*tcp_current_mss)(struct sock *sk);
+	tcp_current_mss = (unsigned int (*)(struct sock *sk))kallsyms_lookup_name("tcp_current_mss");
 	mss_now = tcp_current_mss(sk);
 	*size_goal = tcp_xmit_size_goal(sk, mss_now, !(flags & MSG_OOB));
 
@@ -980,9 +989,14 @@ new_segment:
 
 		if (forced_push(tp)) {
 			tcp_mark_push(tp, skb);
+			void (*__tcp_push_pending_frames)(struct sock*, unsigned int, int);	
+			__tcp_push_pending_frames = (void (*)(struct sock, unsigned int, int))kallsyms_lookup_name("__tcp_push_pending_frames");
 			__tcp_push_pending_frames(sk, mss_now, TCP_NAGLE_PUSH);
-		} else if (skb == tcp_send_head(sk))
+		} else if (skb == tcp_send_head(sk)) {
+			void(*tcp_push_one)(struct sock*, unsigned int mss_now);
+			tcp_push_one = (void (*)(struct sock*, unsigned int))kallsyms_lookup_name("tcp_push_one");
 			tcp_push_one(sk, mss_now);
+		}
 		continue;
 
 wait_for_sndbuf:
@@ -1062,8 +1076,8 @@ static int tcp_sendmsg_fastopen(struct sock *sk, struct msghdr *msg,
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	int err, flags;
-
-	if (!(sysctl_tcp_fastopen & TFO_CLIENT_ENABLE))
+	int* sysctl_tcp_fastopen = (int*)kallsyms_lookup_name("sysctl_tcp_fastopen");
+	if (!(*sysctl_tcp_fastopen & TFO_CLIENT_ENABLE))
 		return -EOPNOTSUPP;
 	if (tp->fastopen_req != NULL)
 		return -EALREADY; /* Another Fast Open is in progress */
@@ -1107,7 +1121,7 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	}
 
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
-
+	printTime("before fastopen");
 	/* Wait for a connection to finish. One exception is TCP Fast Open
 	 * (passive side) where data is allowed to be sent before a connection
 	 * is fully established.
@@ -1117,9 +1131,11 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		if ((err = sk_stream_wait_connect(sk, &timeo)) != 0)
 			goto do_error;
 	}
-
+	printTime("after fastopen");
 	if (unlikely(tp->repair)) {
 		if (tp->repair_queue == TCP_RECV_QUEUE) {
+			int (*tcp_send_rcvq)(struct sock *sk, struct msghdr *msg, size_t size);
+			tcp_send_rcvq = kallsyms_lookup_name("tcp_send_rcvq");
 			copied = tcp_send_rcvq(sk, msg, size);
 			goto out_nopush;
 		}
@@ -1147,6 +1163,7 @@ int tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	sg = !!(sk->sk_route_caps & NETIF_F_SG);
 
+	printTime("before sending loop");
 	while (--iovlen >= 0) {
 		size_t seglen = iov->iov_len;
 		unsigned char __user *from = iov->iov_base;
@@ -1238,10 +1255,12 @@ new_segment:
 				if (!sk_wmem_schedule(sk, copy))
 					goto wait_for_memory;
 
+				printTime("before skb_copy_to_page_nocache");
 				err = skb_copy_to_page_nocache(sk, from, skb,
 							       pfrag->page,
 							       pfrag->offset,
 							       copy);
+				printTime("after skb_copy_to_page_nocache");
 				if (err)
 					goto do_error;
 
@@ -1272,33 +1291,55 @@ new_segment:
 
 			if (skb->len < max || (flags & MSG_OOB) || unlikely(tp->repair))
 				continue;
-
+			printTime("before pushing segment");
 			if (forced_push(tp)) {
 				tcp_mark_push(tp, skb);
+				void (*__tcp_push_pending_frames)(struct sock*, unsigned int, int);	
+				__tcp_push_pending_frames = (void (*)(struct sock, unsigned int, int))kallsyms_lookup_name("__tcp_push_pending_frames");
 				__tcp_push_pending_frames(sk, mss_now, TCP_NAGLE_PUSH);
-			} else if (skb == tcp_send_head(sk))
+			} else if (skb == tcp_send_head(sk)) {
+				void (*tcp_push_one)(struct sock*, unsigned int mss_now);
+				tcp_push_one = (void (*)(struct sock*, unsigned int mss_now))kallsyms_lookup_name("tcp_push_one");
+
 				tcp_push_one(sk, mss_now);
+			}
+			printTime("after pushing segment");
 			continue;
 
 wait_for_sndbuf:
+			printTime("before setting NOSPACE bit");
 			set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
+			printTime("after setting NOSPACE bit");
 wait_for_memory:
-			if (copied)
+			if (copied) {
+				printTime("before tcp_push");
 				tcp_push(sk, flags & ~MSG_MORE, mss_now,
 					 TCP_NAGLE_PUSH, size_goal);
+				printTime("after tcp_push");
+			}
 
+			printTime("before wait_for_memory");
 			if ((err = sk_stream_wait_memory(sk, &timeo)) != 0)
 				goto do_error;
+			printTime("after wait_for_memory");
 
+			printTime("before tcp_send_mss");
 			mss_now = tcp_send_mss(sk, &size_goal, flags);
+			printTime("after tcp_send_mss");
 		}
 	}
 
 out:
+	printTime("before last tcp_push");
 	if (copied)
 		tcp_push(sk, flags, mss_now, tp->nonagle, size_goal);
+	printTime("after last tcp_push");
 out_nopush:
+	printTime("before release_sock");
 	release_sock(sk);
+	printTime("after release_sock");
+
+	printTime("after sending loop");
 	return copied + copied_syn;
 
 do_fault:
@@ -1436,6 +1477,8 @@ void tcp_cleanup_rbuf(struct sock *sk, int copied)
 		__u32 rcv_window_now = tcp_receive_window(tp);
 
 		/* Optimize, __tcp_select_window() is not cheap. */
+		__u32 (*__tcp_select_window)(struct sock *sk);
+		__tcp_select_window = (__u32 (*)(struct sock *sk))kallsyms_lookup_name("__tcp_select_window");
 		if (2*rcv_window_now <= tp->window_clamp) {
 			__u32 new_window = __tcp_select_window(sk);
 
@@ -1448,8 +1491,11 @@ void tcp_cleanup_rbuf(struct sock *sk, int copied)
 				time_to_ack = true;
 		}
 	}
-	if (time_to_ack)
+	if (time_to_ack) {
+		void (*tcp_send_ack)(struct sock *sk);
+		tcp_send_ack = (void (*)(struct sock *sk))kallsyms_lookup_name("tcp_send_ack");
 		tcp_send_ack(sk);
+	}
 }
 
 static void tcp_prequeue_process(struct sock *sk)
@@ -3066,7 +3112,7 @@ extern struct tcp_md5sig_pool *tcp_get_md5sig_pool(void);
 EXPORT_SYMBOL(tcp_get_md5sig_pool);*/
 
 extern int tcp_md5_hash_header(struct tcp_md5sig_pool *hp,
-			const struct tcphdr *th)
+			const struct tcphdr *th);
 /*{
 	struct scatterlist sg;
 	struct tcphdr hdr;
@@ -3152,7 +3198,7 @@ extern void tcp_done(struct sock *sk);
 }
 EXPORT_SYMBOL_GPL(tcp_done);*/
 
-extern struct tcp_congestion_ops tcp_reno;
+//extern struct tcp_congestion_ops tcp_reno;
 
 static __initdata unsigned long thash_entries;
 static int __init set_thash_entries(char *str)
@@ -3200,6 +3246,26 @@ void __init tcp_init(void)
 	 *
 	 * The methodology is similar to that of the buffer cache.
 	 */
+	void* (*alloc_large_system_hash)(const char *tablename,
+					unsigned long bucketsize,
+					unsigned long numentries,
+					int scale,
+					int flags,
+					unsigned int *_hash_shift,
+					unsigned int *_hash_mask,
+					unsigned long low_limit,
+					unsigned long high_limit);
+	alloc_large_system_hash = (void (*)(const char*,
+					unsigned long,
+					unsigned long,
+					int,
+					int,
+					unsigned int*,
+					unsigned int*,
+					unsigned long,
+					unsigned long))kallsyms_lookup_name("alloc_large_system_hash");
+
+	
 	tcp_hashinfo.ehash =
 		alloc_large_system_hash("TCP established",
 					sizeof(struct inet_ehash_bucket),
@@ -3235,6 +3301,7 @@ void __init tcp_init(void)
 	cnt = tcp_hashinfo.ehash_mask + 1;
 
 	tcp_death_row.sysctl_max_tw_buckets = cnt / 2;
+	int sysctl_tcp_max_orphans;
 	sysctl_tcp_max_orphans = cnt / 2;
 	sysctl_max_syn_backlog = max(128, cnt / 256);
 
@@ -3255,9 +3322,22 @@ void __init tcp_init(void)
 	pr_info("Hash tables configured (established %u bind %u)\n",
 		tcp_hashinfo.ehash_mask + 1, tcp_hashinfo.bhash_size);
 
+	void (*tcp_metrics_init)(void);
+	tcp_metrics_init = (void (*)(void))kallsyms_lookup_name("tcp_metrics_init");
 	tcp_metrics_init();
-
-	tcp_register_congestion_control(&tcp_reno);
-
+	
+	struct tcp_congestion_ops* tcp_reno;
+	tcp_reno = (struct tcp_congestion_ops*)kallsyms_lookup_name("tcp_reno");
+	tcp_register_congestion_control(tcp_reno);
+	
+	void (*tcp_tasklet_init)(void);
+	tcp_tasklet_init = (void (*)(void))kallsyms_lookup_name("tcp_tasklet_init");
 	tcp_tasklet_init();
+}
+
+void printTime(char* str) {
+	struct timespec ts;
+	getnstimeofday(&ts);
+	printk(KERN_ALERT "%s:%lld.%9ld", str, (long long)ts.tv_sec, ts.tv_nsec);
+	return;
 }

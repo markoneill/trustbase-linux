@@ -3,7 +3,8 @@ trusthub_linux-objs := loader.o \
 		       interceptor/connection_state.o \
 		       handshake-handler/handshake_handler.o \
 		       handshake-handler/communications.o \
-		       util/utils.o
+		       util/utils.o \
+		       tcp/th_tcp.o
 
 test_interceptor-objs := interceptor/test/test_loader.o \
 		         interceptor/interceptor.o \
