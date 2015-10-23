@@ -6,13 +6,12 @@ import ssl
 import argparse
 
 def makeConnection(host, port, name):
-	t_start = time.clock()
+	t_start = time.time()
 	try:
 		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-		ctx = ssl.SSLContext(ssl.PROTOCOL_SSLv23)
-		s_wrapped = ctx.wrap_socket(s, server_hostname=name)
+		s_wrapped = ssl.wrap_socket(s, ssl_version=ssl.PROTOCOL_SSLv23)
 		s_wrapped.connect((host, int(port)))
-		t_end = time.clock()
+		t_end = time.time()
 		s_wrapped.shutdown(socket.SHUT_RDWR)
 		s_wrapped.close()
 		return t_end - t_start
