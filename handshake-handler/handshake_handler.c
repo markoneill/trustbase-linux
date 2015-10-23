@@ -528,7 +528,6 @@ void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_
 	}
 
 	if (state->hostname == NULL) {
-		printk(KERN_ALERT "Filling in unknown Hostname with IP");
 		if (state->is_ipv6) {
 			state->hostname = kmalloc(IPV6_STR_LEN+1, GFP_KERNEL);
 			snprintf(state->hostname, IPV6_STR_LEN+1, "%pI6", &(state->addr_v6.sin6_addr));
