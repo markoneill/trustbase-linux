@@ -16,6 +16,7 @@
 #include <linux/tcp.h> // For TCP structures
 #include <net/ip.h>
 #include <linux/netfilter_ipv4.h> // For nat_ops registration	
+#include <linux/delay.h>
 
 #include "../util/utils.h"
 #include "interceptor.h"

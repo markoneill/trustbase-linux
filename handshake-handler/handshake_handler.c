@@ -537,7 +537,7 @@ void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_
 			snprintf(state->hostname, IPV4_STR_LEN+1, "%pI4", &(state->addr_v4.sin_addr));
 		}
 	}
-	printk(KERN_ALERT "Hostname is %s", state->hostname);
+	//printk(KERN_ALERT "Hostname is %s", state->hostname);
 	return;
 }
 
@@ -609,14 +609,69 @@ void send_proxy_meta_data(struct socket* sock, struct sockaddr* addr, int ipv6, 
 	return;
 }
 
-void printTime(char* str) {
+void printTime2(char* str) {
 	struct timespec ts;
 	getnstimeofday(&ts);
 	printk(KERN_ALERT "%s:%lld.%9ld", str, (long long)ts.tv_sec, ts.tv_nsec);
 	return;
 }
+#define printStatus(x); //
+#define printTime(x); //
+
+void printStatus2(struct sock* sk) {
+	struct tcp_sock* tp = tcp_sk(sk);
+	switch (sk->sk_state) {
+		case TCP_ESTABLISHED:
+			printk(KERN_ALERT "State is TCP_ESTABLISHED");
+			break;
+		case TCP_SYN_SENT:
+			printk(KERN_ALERT "State is TCP_SYN_SENT");
+			break;
+		case TCP_SYN_RECV:
+			printk(KERN_ALERT "State is TCP_SYN_RECV");
+			break;
+		case TCP_FIN_WAIT1:
+			printk(KERN_ALERT "State is TCP_FIN_WAIT1");
+			break;
+		case TCP_FIN_WAIT2:
+			printk(KERN_ALERT "State is TCP_FIN_WAIT2");
+			break;
+		case TCP_TIME_WAIT:
+			printk(KERN_ALERT "State is TCP_TIME_WAIT");
+			break;
+		case TCP_CLOSE:
+			printk(KERN_ALERT "State is TCP_CLOSE");
+			break;
+		case TCP_CLOSE_WAIT:
+			printk(KERN_ALERT "State is TCP_CLOSE_WAIT");
+			break;
+		case TCP_LAST_ACK:
+			printk(KERN_ALERT "State is TCP_LAST_ACK");
+			break;
+		case TCP_LISTEN:
+			printk(KERN_ALERT "State is TCP_LISTEN");
+			break;
+		case TCP_CLOSING:
+			printk(KERN_ALERT "State is TCP_CLOSING");
+			break;
+		default:
+			printk(KERN_ALERT "Unrecognized TCP state!");
+			break;
+	}
+	printk(KERN_ALERT "snd_nxt: %u", tp->snd_nxt);
+	printk(KERN_ALERT "snd_una: %u", tp->snd_una);
+	printk(KERN_ALERT "snd_sml: %u", tp->snd_sml);
+	printk(KERN_ALERT "snd_wnd: %u", tp->snd_wnd);
+	printk(KERN_ALERT "rcv_nxt: %u", tp->rcv_nxt);
+	printk(KERN_ALERT "rcv_wup: %u", tp->rcv_wup);
+	printk(KERN_ALERT "retrans_stamp: %u", tp->retrans_stamp);
+	printk(KERN_ALERT "sock_owned_by_user: %u", sk->sk_lock.owned);
+	printk(KERN_ALERT "rx_opt.rcv_tsecr: %u", tp->rx_opt.rcv_tsecr);
+	return;
+}
 
 void setup_ssl_proxy(handler_state_t* state) {
+	struct tcp_sock* tp;
 	int error;
 	__be16 src_port;
 	struct sockaddr_in proxy_addr = {
@@ -630,19 +685,26 @@ void setup_ssl_proxy(handler_state_t* state) {
 		.sin_addr.s_addr = htonl(INADDR_ANY), // 127.0.0.1
 	};
 	
-	printTime("Before disconnect");
+	printTime("---Before disconnect");
+	printStatus(state->orig_sock->sk);
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
-	printTime("After disconnect");
+	printTime("---After disconnect");
+	printStatus(state->orig_sock->sk);
 
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	//printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
 	source_addr.sin_port = src_port;
 	kernel_bind(state->orig_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
 	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
-	printTime("Before reconnect");
+	tp = tcp_sk(state->orig_sock->sk);
+	printTime("---Before reconnect");
+	printStatus(state->orig_sock->sk);
+	lock_sock(state->orig_sock->sk);
 	error = ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
-	printk(KERN_ALERT "reconnect returned %d", error);
-	printTime("After reconnect");
+	release_sock(state->orig_sock->sk);
+	//printk(KERN_ALERT "reconnect returned %d", error);
+	printTime("---After reconnect");
+	printStatus(state->orig_sock->sk);
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	//printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
@@ -659,8 +721,10 @@ void setup_ssl_proxy(handler_state_t* state) {
 	}*/
 	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
 	printTime("Before client hello");
+	printStatus(state->orig_sock->sk);
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
 	printTime("After client hello");
+	printStatus(state->orig_sock->sk);
 
 	//printk(KERN_ALERT "%d", error);
 	return;
@@ -772,7 +836,7 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t
 	len = our_sock_sendmsg(sock, &msg, length);
 	printTime("after sock_sendmsg");
 	set_fs(oldfs);
-	printk(KERN_ALERT "len is %d", len);
+	//printk(KERN_ALERT "len is %d", len);
 	return len;
 }
 
