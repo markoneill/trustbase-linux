@@ -248,6 +248,6 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
 	printf("Policy Engine reporting good cert for %s\n", query->hostname);
-	return POLICY_RESPONSE_VALID_PROXY;
+	return POLICY_RESPONSE_VALID;
 }
 
