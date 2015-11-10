@@ -7,7 +7,7 @@ class testPlugin(TrustHubPlugin):
     
     def initialize(self):
         print "Python plugin initialized"
-        return 0
+        return INIT_SUCCESS
     
     def query(self, host, cert_chain):
         print "Python plugin queried"

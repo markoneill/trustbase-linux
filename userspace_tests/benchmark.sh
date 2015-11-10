@@ -6,14 +6,11 @@ if [ "$EUID" -ne 0 ]
 fi
 
 #Benchmark Variables
-HOST_GOOD="23.235.47.193"
-HOST_PROXY="45.56.43.213"
-HOST_GOOD_NAME="i.imgur.com"
-HOST_PROXY_NAME="pma.phoenixteam.org"
-HOST_GOOD_URI="/GVNm8JK.jpg"
-HOST_PROXY_URI="/GVNm8JK.jpg"
-PORT=443
-ITERATIONS=1024
+HOST=192.168.21.101
+GOOD_PORT=4440
+PROXY_PORT=4441
+ITERATIONS=1000
+RANGE_ITERATIONS=100
 
 PYTHON=python2.7.10
 
@@ -22,32 +19,30 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 TRUSTHUB_DIR="$(cd "$DIR/../" && pwd )"
 
 #run a base test to google
-echo -e "\nTESTING $HOST_GOOD_NAME WITHOUT TRUSTHUB:\n"
-$PYTHON $DIR/time_con.py -s $HOST_GOOD -p $PORT -i $ITERATIONS -n $HOST_GOOD_NAME -o nontrusthub_google -f $HOST_GOOD_URI
-
-#run a base test to pteam
-echo -e "\nTESTING $HOST_PROXY_NAME WITHOUT TRUSTHUB:\n"
-$PYTHON $DIR/time_con.py -s $HOST_PROXY -p $PORT -i $ITERATIONS -n $HOST_PROXY_NAME -o nontrusthub_phoenixteam -f $HOST_PROXY_URI
+echo -e "\nTESTING WITHOUT TRUSTHUB:\n"
+$PYTHON $DIR/time_con.py -s $HOST -p $GOOD_PORT -i $ITERATIONS -o linux-vanilla -d
+$PYTHON $DIR/time_con.py -s $HOST -p $PROXY_PORT -i $RANGE_ITERATIONS -o linux-vanilla-range -r
 
 #insert trusthub
-echo -e "\nINSERTING TRUSTHUB:\n"
+#read -p "PLEASE INSERT TRUSTHUB"
 cd $TRUSTHUB_DIR
 insmod $TRUSTHUB_DIR/trusthub_linux.ko th_path=\"$TRUSTHUB_DIR\"
 cd $OLD_DIR
-echo -e "Make sure sslsplit and the policy_engine are running:"
+echo -e "\nMake sure sslsplit and the policy_engine are running:"
 echo `ps aux | grep sslsplit`
 echo `ps aux | grep policy_engine`
 
-#run a test to google
-echo -e "\nTESTING $HOST_GOOD_NAME WITH:\n"
-$PYTHON $DIR/time_con.py -s $HOST_GOOD -p $PORT -i $ITERATIONS -n $HOST_GOOD_NAME -o trusthub_google -f $HOST_GOOD_URI
+#run a test to accepted cert
+echo -e "\nTESTING GOOD CERT WITH TRUSHUB:\n"
+$PYTHON $DIR/time_con.py -s $HOST -p $GOOD_PORT -i $ITERATIONS -o linux-trusthub-normal -d
 
-#run a test to pteam
-echo -e "\nTESTING $HOST_PROXY_NAME WITHOUT TRUSTHUB:\n"
-$PYTHON $DIR/time_con.py -s $HOST_PROXY -p $PORT -i $ITERATIONS -n $HOST_PROXY_NAME -o trusthub_phoenixteam -f $HOST_PROXY_URI
+#run a test to proxied cert
+echo -e "\nTESTING BAD CERT WITH TRUSTHUB:\n"
+$PYTHON $DIR/time_con.py -s $HOST -p $PROXY_PORT -i $ITERATIONS -o linux-trusthub-proxied -d
+$PYTHON $DIR/time_con.py -s $HOST -p $PROXY_PORT -i $RANGE_ITERATIONS -o linux-trusthub-proxied-range -r
 
 #remove trusthub
-echo -e "Make sure sslsplit and the policy_engine are still running:"
+echo -e "\nMake sure sslsplit and the policy_engine are still running:"
 echo `ps aux | grep sslsplit`
 echo `ps aux | grep policy_engine`
 

@@ -90,6 +90,7 @@ int query(const char* hostname, STACK_OF(X509)* certs) {
 			}
 			sk_X509_pop_free(whitelist, X509_free);
 			return PLUGIN_RESPONSE_VALID;
+		} else {
 		}
 	}
 		
