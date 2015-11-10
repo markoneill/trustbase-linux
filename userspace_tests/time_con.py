@@ -197,6 +197,7 @@ def main():
 		
 		#make the files
 		if args.file:
+			
 			with open(args.file[0] + "-data.csv", "w") as f:
 				#print header
 				f.write("Bytes")
