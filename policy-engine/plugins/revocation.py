@@ -17,32 +17,83 @@ def check_OCSP(host):
     if not uri:
         print "No OCSP"
         return
+    print uri
     server = uri.split("/")[2]
     # write cert to file
     cert_file = "/tmp/cert.pem"
     chain_file = "/tmp/chain.pem"
+    all_file = "/tmp/allcerts.pem"
     write_to_file(certp,cert_file)
     write_to_file(chainp,chain_file)
+    write_to_file(certp+chainp,all_file)
 
-    output = subprocess.check_output(["openssl","ocsp","-CAfile","/etc/ssl/certs/ca-bundle.crt","-issuer",chain_file,"-cert",cert_file,"-url",uri,"-header","HOST",server])
-    print output
     # first get signing cert
-    # sign_file = "/tmp/signcert.pem"
-    # with open(os.devnull, 'w') as devnull:
-    #     openssl = subprocess.Popen(("openssl","ocsp","-issuer",chain_file,"-cert",cert_file,"-url",uri,"-header","HOST",server,"-resp_text"), stdout=subprocess.PIPE,stderr=devnull)
-    #     sed = subprocess.check_output(("sed","-n","/-----BEGIN/,/-----END/p"),stdin=openssl.stdout)
-    #     openssl.wait()
-    #     write_to_file(sed,sign_file)
+    sign_file = "/tmp/signcert.pem"
+    signed = False
+    output = ""
+    with open("/tmp/error.txt", 'w') as f:
+        output = subprocess.check_output(["openssl","ocsp","-no_nonce","-CApath","/etc/ssl/certs","-CAfile","/etc/ssl/certs/ca-bundle.crt","-issuer",chain_file,"-cert",cert_file,"-VAfile",chain_file,"-url",uri,"-header","HOST",server,"-resp_text"],stderr=f)
+    # check for error
+    error = check_error()
+    cert = None
+    if error:
+        cert = find_cert(output)
+        if cert:
+            write_to_file(cert,sign_file)
+    tries = 5
+    while error and cert and tries > 0:
+        print "trying with signature..."
+        with open("/tmp/error.txt", 'w') as f:
+            output = subprocess.check_output(["openssl","ocsp","-CApath","/etc/ssl/certs","-CAfile","/etc/ssl/certs/ca-bundle.crt","-VAfile",sign_file,"-issuer",chain_file,"-cert",cert_file,"-url",uri,"-header","HOST",server,"-resp_text"],stderr=f)
+        error = check_error()
+        if error:
+            tries -= 1
+            cert = find_cert(output)
+            if cert:
+                append_to_file(cert,sign_file)
 
-    #     output = subprocess.check_output(["openssl","ocsp","-VAfile",sign_file,"-issuer",chain_file,"-cert",cert_file,"-url",uri,"-header","HOST",server])
-    lines = output.split("\n")
-    if lines[0].split()[1] == "good":
-        print "OK"
-    else:
+    if tries == 0:
         print "BAD"
+    else:
+        verify_output(output)
+
+def check_error():
+    error = False
+    with open("/tmp/error.txt",'r') as f:
+        if f.readline().strip() != "Response verify OK":
+            error = True
+    return error
+
+def find_cert(text):
+    capture = False
+    output = ""
+    for line in text.split("\n"):
+        if line == "-----BEGIN CERTIFICATE-----":
+            capture = True
+            output += line + "\n"
+        elif line == "-----END CERTIFICATE-----":
+            capture = False
+            output += line + "\n"
+        elif capture:
+            output += line + "\n"
+    return output
+
+def verify_output(text):
+    for line in text.split("\n"):
+        if line.startswith("/tmp/cert.pem:"):
+            fields = line.split(" ")
+            if fields[1] == "good":
+                print "OK"
+                return
+    print "BAD"
+
 
 def write_to_file(text,filename):
     with open(filename,"w") as f:
+        f.write(text)
+
+def append_to_file(text,filename):
+    with open(filename,"a") as f:
         f.write(text)
 
 def get_cert_chain(host):
@@ -76,7 +127,7 @@ host = 'wikipedia.org'
 print "Checking",host,"..."
 check_OCSP(host)
 
-host = 'www.google.com'
+host = 'google.com'
 print "Checking",host,"..."
 check_OCSP(host)
 
