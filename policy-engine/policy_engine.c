@@ -25,6 +25,7 @@ static void* plugin_thread_init(void* arg);
 static void* decider_thread_init(void* arg);
 static int async_callback(int plugin_id, int query_id, int result);
 static int aggregate_responses(query_t* query, int ca_system_response);
+
 static volatile int keep_running;
 
 typedef struct { unsigned char b[3]; } be24, le24;
@@ -47,7 +48,7 @@ int poll_schemes(uint64_t stptr, char* hostname, unsigned char* cert_data, size_
 }
 
 
-int main() {
+int main(int argc, char* argv[]) {
 	int i;
 	pthread_t decider_thread;
 	pthread_t* plugin_threads;
@@ -56,7 +57,7 @@ int main() {
 	
 	keep_running = 1;
 	
-	load_config(&context);
+	load_config(&context, argv[1]);
 	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
@@ -236,7 +237,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	/* At this point we know that all necessary plugins have indicate the certificates
  	 * found were valid, otherwise we'd have returned already.  Therefore the decision
  	 * is in the hands of the congress plugins */
-	if ((congress_approved_count / congress_total) < context.congress_threshold) {
+	if (congress_total && (congress_approved_count / congress_total) < context.congress_threshold) {
 		printf("Policy Engine reporting BAD cert for %s\n", query->hostname);
 		return POLICY_RESPONSE_INVALID;
 	}

@@ -8,7 +8,7 @@ import csv
 import sys
 import StringIO
 
-def getImage(s_wrapped, file_uri, name):
+def getImage(s_wrapped, file_uri, name, host):
 	if file_uri and s_wrapped:
 		# Send Get
 		if name:
@@ -27,12 +27,7 @@ def getImage(s_wrapped, file_uri, name):
 			if not chunk:
 				break
 			received.append(chunk)
-			#Check for end of jpg
-			if chunk.endswith("\xff\xd9"):
-				#this is the end of a jpg, probably.
-				if len(''.join(received)) < 4337587:
-					print "ERROR, MIGHT HAVE NOT GOTTEN ALL THE DATA"
-					#print "GOT", len(''.join(received))
+			if len(''.join(received)) >= 2000000:
 				break
 		return received
 
@@ -67,7 +62,7 @@ def makeConnection(host, port, name, file_uri=None, data=None):
 		s_wrapped.do_handshake()
 		t_ssl_handshake = time.time()
 		if file_uri:
-			getImage(s_wrapped, file_uri, name)
+			getImage(s_wrapped, file_uri, name, host)
 		elif data:
 			getData(s_wrapped, data)
 		s_wrapped.shutdown(socket.SHUT_RDWR)
@@ -130,9 +125,6 @@ def main():
 		else:
 			if args.data:
 				print "-d is incompatable with -f, ignoring..."
-			if not args.uri[0].endswith(".jpg") and not args.uri[0].endswith(".jpeg"):
-				print "Warning: This tool only works with getting .jpg images"
-				return
 	
 	if not args.data_range:
 		#do a non range test
@@ -141,12 +133,14 @@ def main():
 		data_times = []
 		for i in xrange(1,args.itrs[0]+1):
 			#make the connections
-			time = makeConnection(args.host[0], args.port[0], args.name[0] if args.name else None, args.uri[0] if args.uri else None, 2000000 if args.data else None)
-			tcp_times.append(time[0])
-			ssl_times.append(time[1])
-			data_times.append(time[2])
-			if None not in time:
-				print "Connection {0} : TCP Connect {1}s : TLS Connect {2}s{3}".format(i, time[0], time[1], " : +Data {0}s".format(time[2]))
+			ttime = makeConnection(args.host[0], args.port[0], args.name[0] if args.name else None, args.uri[0] if args.uri else None, 2000000 if args.data else None)
+			tcp_times.append(ttime[0])
+			ssl_times.append(ttime[1])
+			data_times.append(ttime[2])
+			if None not in ttime:
+				print "Connection {0} : TCP Connect {1}s : TLS Connect {2}s{3}".format(i, ttime[0], ttime[1], " : +Data {0}s".format(ttime[2]))
+			#wait a touch
+			time.sleep(0.1)
 		
 		#gather the data
 		tcp_line, tcp_data = getStats(tcp_times, "TCP Connect")
@@ -181,13 +175,13 @@ def main():
 		while 1:
 			round_times = []
 			for i in xrange(1,args.itrs[0]+1):
-				time = makeConnection(args.host[0], args.port[0], None, None, amount)	
-				round_times.append(time[2])
-				if None not in time:
-					print "Connection {0} : {1} bytes : {2}s".format(i, amount, time[2])
+				ttime = makeConnection(args.host[0], args.port[0], None, None, amount)	
+				round_times.append(ttime[2])
+				if None not in ttime:
+					print "Connection {0} : {1} bytes : {2}s".format(i, amount, ttime[2])
 			data_times[amount] = round_times
 			if amount < 1000000:
-				amount *= 10
+				amount *= 2
 			elif amount < 4000000:
 				amount = 4000000
 			else:
@@ -204,10 +198,10 @@ def main():
 				for i in xrange(1,args.itrs[0]+1):
 					f.write(",Trial {0}".format(i))
 				f.write("\r\n")
-			for key in data_times:
-				f.write(str(key))
-				for time in data_times[key]:
-					f.write(",{0}".format(time))
-				f.write("\r\n")
+				for key in data_times:
+					f.write(str(key))
+					for ttime in data_times[key]:
+						f.write(",{0}".format(ttime))
+					f.write("\r\n")
 if __name__ == "__main__":
 	main()

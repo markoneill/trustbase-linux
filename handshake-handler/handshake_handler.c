@@ -403,9 +403,11 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 				// For now just mess up cert
 				cs_buf[1] = 'd';
 				cs_buf[2] = '2';
+				buf_state->bytes_to_read = 0;
 				buf_state->user_cur_max = buf_state->buf_length;
 				buf_state->state = IRRELEVANT;
 				state->interest = UNINTERESTED;
+				return;
 			}
 			cs_buf += handshake_message_length;
 		}

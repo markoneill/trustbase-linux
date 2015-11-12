@@ -9,13 +9,14 @@
 
 #define CONFIG_FILE_NAME	"policy-engine/trusthub.cfg"
 
-static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin);
-static int parse_addon(config_setting_t* plugin_data, addon_t* addon);
+static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_path);
+static int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path);
 static int parse_aggregation(config_setting_t* aggregation_data, double* congress_threshold, plugin_t* plugins, int plugin_count);
 static int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin_name);
 static char* copy_string(const char* original);
+static char* cat_path(char* a, const char* b);
 
-int load_config(policy_context_t* policy_context) {
+int load_config(policy_context_t* policy_context, char* path) {
 	plugin_t* plugins;
 	addon_t* addons;
 	config_t cfg;
@@ -52,7 +53,7 @@ int load_config(policy_context_t* policy_context) {
 	addons = (addon_t*)calloc(addon_count, sizeof(addon_t));
 	for (i = 0; i < addon_count; i++) {
 		cfg_data = config_setting_get_elem(setting, i);
-		parse_addon(cfg_data, &addons[i]);
+		parse_addon(cfg_data, &addons[i], path);
 	}
 
 	// Plugin parsing
@@ -66,7 +67,7 @@ int load_config(policy_context_t* policy_context) {
 	plugins = (plugin_t*)calloc(plugin_count, sizeof(plugin_t));
 	for (i = 0; i < plugin_count; i++) {
 		cfg_data = config_setting_get_elem(setting, i);
-		parse_plugin(cfg_data, &plugins[i]);
+		parse_plugin(cfg_data, &plugins[i], path);
 	}
 
 	// Aggregation parsing
@@ -154,7 +155,7 @@ int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin_name) 
 	return -1;
 }
 
-int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
+int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) {
 	const char* name;
 	const char* desc;
 	const char* version;
@@ -172,7 +173,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
 	addon->desc = copy_string(desc);
 	addon->ver = copy_string(version);
 	addon->type_handled = copy_string(type_handled);
-	addon->so_path = copy_string(path);
+	addon->so_path = cat_path(root_path, path);
 	if (load_addon(path, addon) != 0) {
 		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
@@ -180,7 +181,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon) {
 	return 0;
 }
 
-int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin) {
+int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_path) {
 	const char* name;
 	const char* desc;
 	const char* version;
@@ -204,7 +205,7 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin) {
 	plugin->desc = copy_string(desc);
 	plugin->ver = copy_string(version);
 	plugin->handler_str = copy_string(handler);
-	plugin->path = copy_string(path);
+	plugin->path = cat_path(root_path, path);
 
 	if (strncmp(type, "synchronous", sizeof("synchronous")) == 0) {
 		plugin->type = PLUGIN_TYPE_SYNCHRONOUS;
@@ -234,13 +235,32 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin) {
 char* copy_string(const char* original) {
 	char* copy;
 	int len;
-	len = strlen(original)+1; /* +1 for null terminator */
-	copy = (char*)malloc(len);
+	len = strlen(original);
+	copy = (char*)malloc(len+1); /* +1 for null terminator */
 	if (copy == NULL) {
 		fprintf(stderr, "Unable to allocate space for a string during configuration loading\n");
 		return NULL;
 	}
-	memcpy(copy, original, len);
+	memcpy(copy, original, len+1);
 	return copy;
+}
+
+char* cat_path(char* a, const char* b) {
+        char* concated;
+        int len_a;
+        int len_b;
+                
+        len_a = strlen(a);
+        len_b = strlen(b);
+        concated = (char*)malloc(len_a + 1 + len_b + 1); 
+        if (concated == NULL) {
+                fprintf(stderr, "Unable to allocate space for a string during configuration loading\n");
+                return NULL;
+        }
+        memcpy(concated, a, len_a);
+	concated[len_a] = '/';
+        memcpy(concated + len_a + 1, b, len_b);
+        concated[len_a + 1 + len_b] = 0;
+        return concated;
 }
 

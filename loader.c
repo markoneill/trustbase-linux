@@ -68,7 +68,7 @@ int __init loader_start(void) {
 	start_mitm_proxy(th_path);
 	nat_ops_register();
 	proxy_register(&trusthub_ops);
-	start_policy_engine(th_path);
+	//DEBUG start_policy_engine(th_path);
 	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
 
 	return 0;
@@ -86,7 +86,7 @@ void __exit loader_end(void) {
 
 	// Kill policy engine before killing IPC because
 	// the IPC is needed for shutdown message
-	stop_task(policy_engine_task);
+	//DEBUG stop_task(policy_engine_task);
 
 	// Unregister the IPC
 	th_unregister_netlink();
@@ -117,11 +117,12 @@ int start_policy_engine(char* path) {
                 "PATH=/sbin:/usr/sbin:/bin:/usr/bin",
                 NULL
         };
-        char* argv[2];
+        char* argv[3];
         snprintf(prog_path, 64, "%s/policy_engine", path);
 	printk(KERN_INFO "Starting policy engine at %s", prog_path);
         argv[0] = prog_path;
-        argv[1] = NULL;
+        argv[1] = path;
+	argv[2] = NULL;
         alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, policy_engine_init);
         return 0;
 }
