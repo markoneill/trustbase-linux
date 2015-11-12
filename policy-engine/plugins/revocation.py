@@ -1,6 +1,7 @@
-import os
-import subprocess
-import socket
+#!/usr/bin/python
+
+from trusthub_python import *
+
 from OpenSSL import SSL,crypto
 
 from cryptography import x509
@@ -8,149 +9,154 @@ from cryptography.hazmat.backends.openssl import backend
 from cryptography.x509.oid import AuthorityInformationAccessOID as authorityOID
 from cryptography.x509.oid import ExtensionOID as extensionOID
 
-# this method uses the pyOpenSSL and cryptography libraries to check the OCSP status of a host
-def check_OCSP(host):
-    certs = get_cert_chain(host)
-    certp,chainp = dump_cert_chain(certs)
-    cert = x509.load_pem_x509_certificate(certp, backend)
-    uri = check_for_OCSP(cert)
-    if not uri:
-        print "No OCSP"
-        return
-    print uri
-    server = uri.split("/")[2]
-    # write cert to file
-    cert_file = "/tmp/cert.pem"
-    chain_file = "/tmp/chain.pem"
-    all_file = "/tmp/allcerts.pem"
-    write_to_file(certp,cert_file)
-    write_to_file(chainp,chain_file)
-    write_to_file(certp+chainp,all_file)
+import subprocess
 
-    # first get signing cert
-    sign_file = "/tmp/signcert.pem"
-    signed = False
-    output = ""
-    with open("/tmp/error.txt", 'w') as f:
-        output = subprocess.check_output(["openssl","ocsp","-no_nonce","-CApath","/etc/ssl/certs","-CAfile","/etc/ssl/certs/ca-bundle.crt","-issuer",chain_file,"-cert",cert_file,"-VAfile",chain_file,"-url",uri,"-header","HOST",server,"-resp_text"],stderr=f)
-    # check for error
-    error = check_error()
-    cert = None
-    if error:
-        cert = find_cert(output)
-        if cert:
-            write_to_file(cert,sign_file)
-    tries = 5
-    while error and cert and tries > 0:
-        print "trying with signature..."
+class testPlugin(TrustHubPlugin):
+    def _init_(self):
+        pass
+    
+    def initialize(self):
+        print "Revocation plugin initialized"
+        return INIT_SUCCESS
+    
+    def query(self, host, cert_chain):
+        print "Revocation plugin queried"
+        self.write_to_file(cert_chain,'/tmp/certchain')
+        certs = self.convert_tls_certificates_to_x509_list(cert_chain)
+        self.write_to_files(certs)
+        uri = self.check_for_OCSP(certs[0])
+        print uri
+        if not uri:
+            print "No OCSP"
+            return RESPONSE_ABSTAIN
+        self.validate_certs(uri)
+        return RESPONSE_VALID
+
+    def validate_certs(self,uri):
+        cert_file = "/tmp/cert.pem"
+        chain_file = "/tmp/chain.pem"
+        sign_file = "/tmp/signcert.pem"
+        server = uri.split("/")[2]
+        output = ""
         with open("/tmp/error.txt", 'w') as f:
-            output = subprocess.check_output(["openssl","ocsp","-CApath","/etc/ssl/certs","-CAfile","/etc/ssl/certs/ca-bundle.crt","-VAfile",sign_file,"-issuer",chain_file,"-cert",cert_file,"-url",uri,"-header","HOST",server,"-resp_text"],stderr=f)
-        error = check_error()
+            output = subprocess.check_output(["openssl","ocsp","-no_nonce","-CApath","/etc/ssl/certs","-CAfile","/etc/ssl/certs/ca-bundle.crt","-issuer",chain_file,"-cert",cert_file,"-VAfile",chain_file,"-url",uri,"-header","HOST",server,"-resp_text"],stderr=f)
+        # check for error
+        error = self.check_error()
+        cert = None
         if error:
-            tries -= 1
-            cert = find_cert(output)
+            cert = self.find_cert(output)
             if cert:
-                append_to_file(cert,sign_file)
+                self.write_to_file(cert,sign_file)
+        tries = 5
+        while error and cert and tries > 0:
+            print "trying with signature..."
+            with open("/tmp/error.txt", 'w') as f:
+                output = subprocess.check_output(["openssl","ocsp","-CApath","/etc/ssl/certs","-CAfile","/etc/ssl/certs/ca-bundle.crt","-VAfile",sign_file,"-issuer",chain_file,"-cert",cert_file,"-url",uri,"-header","HOST",server,"-resp_text"],stderr=f)
+            error = self.check_error()
+            if error:
+                tries -= 1
+                cert = self.find_cert(output)
+                if cert:
+                    self.append_to_file(cert,sign_file)
 
-    if tries == 0:
+        if tries == 0:
+            print "BAD"
+        else:
+            self.verify_output(output)
+
+    def check_for_OCSP(self,cert):
+        certp = crypto.dump_certificate(crypto.FILETYPE_PEM,cert)
+        cert = x509.load_pem_x509_certificate(certp, backend)
+        ext = cert.extensions.get_extension_for_oid(extensionOID.AUTHORITY_INFORMATION_ACCESS)
+        for access in ext.value:
+            if access.access_method == authorityOID.OCSP:
+                return access.access_location.value
+        return ''
+
+    def check_error(self):
+        error = False
+        with open("/tmp/error.txt",'r') as f:
+            if f.readline().strip() != "Response verify OK":
+                error = True
+        return error
+
+    def find_cert(self,text):
+        capture = False
+        output = ""
+        for line in text.split("\n"):
+            if line == "-----BEGIN CERTIFICATE-----":
+                capture = True
+                output += line + "\n"
+            elif line == "-----END CERTIFICATE-----":
+                capture = False
+                output += line + "\n"
+            elif capture:
+                output += line + "\n"
+
+    def verify_output(self,text):
+        for line in text.split("\n"):
+            if line.startswith("/tmp/cert.pem:"):
+                fields = line.split(" ")
+                if fields[1] == "good":
+                    print "OK"
+                    return RESPONSE_VALID;
         print "BAD"
-    else:
-        verify_output(output)
-
-def check_error():
-    error = False
-    with open("/tmp/error.txt",'r') as f:
-        if f.readline().strip() != "Response verify OK":
-            error = True
-    return error
-
-def find_cert(text):
-    capture = False
-    output = ""
-    for line in text.split("\n"):
-        if line == "-----BEGIN CERTIFICATE-----":
-            capture = True
-            output += line + "\n"
-        elif line == "-----END CERTIFICATE-----":
-            capture = False
-            output += line + "\n"
-        elif capture:
-            output += line + "\n"
-    return output
-
-def verify_output(text):
-    for line in text.split("\n"):
-        if line.startswith("/tmp/cert.pem:"):
-            fields = line.split(" ")
-            if fields[1] == "good":
-                print "OK"
-                return
-    print "BAD"
+        return RESPONSE_INVALID;
 
 
-def write_to_file(text,filename):
-    with open(filename,"w") as f:
-        f.write(text)
+    def convert_tls_certificates_to_x509_list(self,cert_chain):
+        length_field_size = 3
+        certs = []
+        chain_length = len(cert_chain)
+        while chain_length:
+            # get the length of next cert and decrement chain_length accordingly
+            cert_len = self.get_cert_length_from_bytes(cert_chain)
+            cert_chain = cert_chain[length_field_size:]
+            chain_length -= length_field_size
 
-def append_to_file(text,filename):
-    with open(filename,"a") as f:
-        f.write(text)
+            # read certificate from byte array and decrement chain_length accordingly
+            cert = crypto.load_certificate(crypto.FILETYPE_ASN1, str(cert_chain[0:cert_len]))
+            cert_chain = cert_chain[cert_len:]
+            chain_length -= cert_len
 
-def get_cert_chain(host):
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((host,443))
-    client_ssl = SSL.Connection(SSL.Context(SSL.TLSv1_METHOD), client)
-    client_ssl.set_connect_state()
-    client_ssl.set_tlsext_host_name(host)
-    client_ssl.do_handshake()
-    chain = client_ssl.get_peer_cert_chain()
-    client_ssl.close()
-    return chain
+            # add certificate to list
+            certs.append(cert)
+        return certs
 
-def dump_cert_chain(certs):
-    # convert to cryptography library x509 objects, since their implementation is more complete
-    certp = crypto.dump_certificate(crypto.FILETYPE_PEM,certs[0])
-    chainp = ''
-    for cert in certs[1:]:
-        chainp += crypto.dump_certificate(crypto.FILETYPE_PEM,cert)
-    return certp,chainp
+    def get_cert_length_from_bytes(self,bytes):
+        index = 0
+        x = 0
+        for count in range(3):
+            x <<= 8
+            x |= bytes[index]
+            index += 1
+        return x
 
-def check_for_OCSP(cert):
-    ext = cert.extensions.get_extension_for_oid(extensionOID.AUTHORITY_INFORMATION_ACCESS)
-    # print ext
-    for access in ext.value:
-        if access.access_method == authorityOID.OCSP:
-            return access.access_location.value
-    return ''
+    def write_to_files(self,certs):
+        root = crypto.dump_certificate(crypto.FILETYPE_PEM, certs[0])
+        self.write_to_file(root,'/tmp/cert.pem')
+        certp = ''
+        for cert in certs[1:]:
+            certp += crypto.dump_certificate(crypto.FILETYPE_PEM,cert)
+        self.write_to_file(certp,'/tmp/chain.pem')
 
-host = 'wikipedia.org'
-print "Checking",host,"..."
-check_OCSP(host)
+    
+    def write_to_file(self,text,filename):
+        with open(filename,"wb") as f:
+            f.write(text)
 
-host = 'google.com'
-print "Checking",host,"..."
-check_OCSP(host)
+    def append_to_file(self,text,filename):
+        with open(filename,"a") as f:
+            f.write(text)
+
+    def finalize():
+        print "Python plugin finalized"
+        return
+
+myPlugin = testPlugin()
+setPlugin(myPlugin)
 
 
-# Note: this gives errors. The response indicates the cert is good (and not revoked), but we can't validate the
-# signature on the response.
+# vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4
 
-# On Wikipedia:
-
-# Response Verify Failure
-# 140109156325240:error:27069065:OCSP routines:OCSP_basic_verify:certificate verify error:ocsp_vfy.c:126:Verify error:unable to get local issuer certificate
-
-# On Google:
-
-# WARNING: no nonce in response
-# Response Verify Failure
-# 140050032367480:error:27069076:OCSP routines:OCSP_basic_verify:signer certificate not found:ocsp_vfy.c:85:
-
-# See this discussion
-# http://serverfault.com/questions/686301/ocsp-responder-not-present
-
-# I think they are doing it wrong -- this just fetches the cert and then tells OpenSSL to trust it. Won't work
-# if there is a MiTM!
-
-# I think the right way is to use the CAfile, but I'm not sure we have it set right
 
