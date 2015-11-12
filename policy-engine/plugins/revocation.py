@@ -29,8 +29,7 @@ class testPlugin(TrustHubPlugin):
         if not uri:
             print "No OCSP"
             return RESPONSE_ABSTAIN
-        self.validate_certs(uri)
-        return RESPONSE_VALID
+        return self.validate_certs(uri)
 
     def validate_certs(self,uri):
         cert_file = "/tmp/cert.pem"
@@ -61,8 +60,9 @@ class testPlugin(TrustHubPlugin):
 
         if tries == 0:
             print "BAD"
+            return RESPONSE_INVALID
         else:
-            self.verify_output(output)
+            return self.verify_output(output)
 
     def check_for_OCSP(self,cert):
         certp = crypto.dump_certificate(crypto.FILETYPE_PEM,cert)
