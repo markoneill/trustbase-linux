@@ -25,5 +25,5 @@ int query(const char* hostname, STACK_OF(X509)* certs) {
 		cert = sk_X509_value(certs, i);
 		print_certificate(cert);
 	}*/
-	return PLUGIN_RESPONSE_VALID;
+	return PLUGIN_RESPONSE_ABSTAIN;
 }
