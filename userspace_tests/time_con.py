@@ -27,7 +27,7 @@ def getImage(s_wrapped, file_uri, name, host):
 			if not chunk:
 				break
 			received.append(chunk)
-			if len(''.join(received)) >= 2000000:
+			if len(''.join(received)) >= 50000000:
 				break
 		return received
 

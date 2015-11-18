@@ -33,7 +33,7 @@ int load_config(policy_context_t* policy_context, char* path) {
 	
 	// Read config file and store data
 	config_init(&cfg);
-	if (config_read_file(&cfg, CONFIG_FILE_NAME) == 0) {
+	if (config_read_file(&cfg, cat_path(path,CONFIG_FILE_NAME)) == 0) {
 		fprintf(stderr, "%s:%d - %s\n", 
 			config_error_file(&cfg),
 			config_error_line(&cfg),
@@ -174,7 +174,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) 
 	addon->ver = copy_string(version);
 	addon->type_handled = copy_string(type_handled);
 	addon->so_path = cat_path(root_path, path);
-	if (load_addon(path, addon) != 0) {
+	if (load_addon(cat_path(root_path, path), addon) != 0) {
 		fprintf(stderr, "Syntax error in configuration file: section addons\n");
 		return 1;
 	}

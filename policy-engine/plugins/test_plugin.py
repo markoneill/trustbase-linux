@@ -11,7 +11,7 @@ class testPlugin(TrustHubPlugin):
     
     def query(self, host, cert_chain):
         print "Python plugin queried"
-        return RESPONSE_INVALID
+        return RESPONSE_VALID
     
     def finalize():
         print "Python plugin finalized"

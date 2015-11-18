@@ -210,6 +210,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	int i;
 	double congress_approved_count;
 	double congress_total;
+
 	congress_approved_count = 0;
 	congress_total = 0;
 	for (i = 0; i < context.plugin_count; i++) {
@@ -251,4 +252,3 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	printf("Policy Engine reporting good cert for %s\n", query->hostname);
 	return POLICY_RESPONSE_VALID;
 }
-
