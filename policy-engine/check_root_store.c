@@ -25,9 +25,11 @@ static const char* get_validation_errstr(long e);
  * @return a X509_STORE pointer containing the root CA system store.
  */
 X509_STORE* make_new_root_store() {
-	size_t len;
+	size_t ca_path_len;
 	const char* store_path;
-	char* path;
+	char* full_path;
+	char ca_filename[] = "ca_bundle.crt";
+	size_t ca_filename_len;
 	X509_STORE* store;
 	
 	/* create a new store */
@@ -41,20 +43,20 @@ X509_STORE* make_new_root_store() {
 	
 	/* build the root store path */
 	store_path = X509_get_default_cert_dir();
-	len = strlen(store_path);
-	path = (char *) malloc(len + 15);
-	memcpy(path, store_path, len);
-	memcpy(path+len, "/ca-bundle.crt\0", 15);
+	ca_path_len = strlen(store_path);
+	ca_filename_len = strlen(ca_filename);
+	full_path = (char *)malloc(ca_path_len + ca_filename_len + 2);
+	sprintf(full_path, "%s/%s", store_path, ca_filename);
 	
 	/* load the store */
-	if (X509_STORE_load_locations(store, path, NULL) < 1) {
+	if (X509_STORE_load_locations(store, full_path, NULL) < 1) {
 		if (CRS_DEBUG) {
-			printf("Unable to read the certificate store at %s\n", path);
+			printf("Unable to read the certificate store at %s\n", full_path);
 		}
 		X509_STORE_free(store);
 		return NULL;
 	}
-	free(path);
+	free(full_path);
 	return store;
 }
 
@@ -134,7 +136,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 				printf("The certificate:\n");
 				print_certificate(cert);
 				printf("Did not pass and gave error : ");
-				printf(get_validation_errstr(X509_STORE_CTX_get_error(ctx)));	
+				printf("%s\n", get_validation_errstr(X509_STORE_CTX_get_error(ctx)));	
 			}
 			allpassed = PLUGIN_RESPONSE_INVALID;
 		} else {
