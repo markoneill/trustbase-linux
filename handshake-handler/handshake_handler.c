@@ -276,15 +276,19 @@ void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
 			handle_state_unknown(state, buf_state);
+			printk(KERN_ALERT "state unknown");
 			break;
 		case RECORD_LAYER:
+			printk(KERN_ALERT "record layer");
 			handle_state_record_layer(state, buf_state);
 			break;
 		case HANDSHAKE_LAYER:
 			handle_state_handshake_layer(state, buf_state);
+			printk(KERN_ALERT "handshake layer");
 			break;
 		case SERVER_HELLO_DONE_SENT:
 			handle_state_server_hello_done_sent(state, buf_state);
+			printk(KERN_ALERT "hello done sent");
 			break;
 		case IRRELEVANT:
 			// Should never get here
@@ -462,6 +466,7 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	bufptr = buf;
 	//int i = 0;
 	handshake_message_length = be24_to_cpu(*(__be24*)bufptr);
+	printk(KERN_ALERT "handshake message length is %d", handshake_message_length);
 
 	//th_send_certificate_query(
 	bufptr += 3; // handshake identifier + 24bit length of protocol message

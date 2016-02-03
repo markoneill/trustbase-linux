@@ -10,7 +10,7 @@
 
 #define MAX_LENGTH 1024
 
-#define CRS_DEBUG 0
+#define CRS_DEBUG 1
 
 static int verify_alternate_hostname(const char* hostname, X509* cert);
 static int verify_hostname(const char* hostname, X509* cert);
@@ -28,7 +28,7 @@ X509_STORE* make_new_root_store() {
 	size_t ca_path_len;
 	const char* store_path;
 	char* full_path;
-	char ca_filename[] = "ca_bundle.crt";
+	char ca_filename[] = "ca-bundle.crt";
 	size_t ca_filename_len;
 	X509_STORE* store;
 	
@@ -47,6 +47,9 @@ X509_STORE* make_new_root_store() {
 	ca_filename_len = strlen(ca_filename);
 	full_path = (char *)malloc(ca_path_len + ca_filename_len + 2);
 	sprintf(full_path, "%s/%s", store_path, ca_filename);
+	if (CRS_DEBUG) {
+		printf("Reading root store from %s\n", full_path);
+	}
 	
 	/* load the store */
 	if (X509_STORE_load_locations(store, full_path, NULL) < 1) {
@@ -91,7 +94,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 
 	/* Check the hostname against the leaf certificate */
 	
-	if (CRS_DEBUG >= 1) {	
+	if (CRS_DEBUG >= 1) {
 		printf("Full Chain to Verify:\n");
 		print_chain(certs);
 	}

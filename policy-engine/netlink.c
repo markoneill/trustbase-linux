@@ -52,6 +52,15 @@ int send_response(uint64_t stptr, int result) {
 	return 0;	
 }
 
+void print_bytes(unsigned char* seq, int num) {
+	int i;
+	for (i = 0; i < num; i++) {
+		printf("%02x", seq[i]);
+	}
+	printf("\n");
+	return;
+}
+
 int recv_query(struct nl_msg *msg, void *arg) {
 	struct nlmsghdr* nlh;
 	struct genlmsghdr* gnlh;
@@ -72,6 +81,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
+
+			print_bytes(cert_chain, chain_length);
 
 			/* Query registered schemes */
 			poll_schemes(stptr, hostname, cert_chain, chain_length);

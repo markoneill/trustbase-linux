@@ -339,6 +339,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	kmsg.msg_iter.iov = &iov;
 	// Pointer to data being sent by user.
 	new_data = msg->msg_iter.iov->iov_base;
+	BUG_ON(msg->msg_iter.nr_segs > 1);
 	#else
 	kmsg.msg_iov = &iov;
 	// Pointer to data being sent by user.
@@ -567,6 +568,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		kmsg = *msg;
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 		kmsg.msg_iter.iov = &iov;
+		BUG_ON(kmsg.msg_iter.nr_segs > 1);
 		#else
 		kmsg.msg_iov = &iov;
 		#endif
