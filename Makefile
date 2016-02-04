@@ -74,7 +74,7 @@ $(PROXY_EXE) : $(PROXY_OBJ)
 	$(CC) $(CCFLAGS) $^ -o $@ $(LIBS)
 
 $(PYTHON_PLUGINS_ADDON_SO) : $(PYTHON_PLUGINS_ADDON_OBJ)
-	$(CC) -shared $^ -o $@
+	$(CC) -shared $^ -o $@ -I/usr/include/python2.7 -lpython2.7
 
 $(RAW_TEST_PLUGIN_SO) : $(RAW_TEST_PLUGIN_OBJ)
 	$(CC) -shared $^ -o $@
