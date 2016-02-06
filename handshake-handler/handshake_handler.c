@@ -386,6 +386,8 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		}
 		else if (cs_buf[0] == TYPE_CERTIFICATE) { 
 			// XXX check to see if additional certificates are contained within this record
+			printk(KERN_ALERT "addr: %pISpc", &state->addr_v4);
+			printk(KERN_ALERT "port gonna be this %hu", &state->addr_v4.sin_port);
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
