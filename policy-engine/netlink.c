@@ -86,7 +86,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
 			print_bytes(cert_chain, chain_length);
 
-			printf("port number is %hu\n", &port);
+			printf("port number is %hu\n", port);
 
 			/* Query registered schemes */
 			poll_schemes(stptr, hostname, cert_chain, chain_length);

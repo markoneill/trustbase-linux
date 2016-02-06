@@ -24,7 +24,7 @@ static int verify_hostname(const char* hostname, X509* cert);
 static int cmp_names(const char* hostname, char* cn);
 
 static int pem_append(char* filename, STACK_OF(X509)* chain);
-static void print_certificate(X509* cert);
+//static void print_certificate(X509* cert);
 
 int query(const char* hostname, STACK_OF(X509)* certs) {
 	X509* cert;
@@ -54,7 +54,7 @@ int query(const char* hostname, STACK_OF(X509)* certs) {
 
 	//OpenSSL_add_all_algorithms(); // Need this?
 	
-	digest = EVP_sha1();
+	digest = (EVP_MD*)EVP_sha1();
 	fingerprint_len = sizeof(fingerprint);
 	if (!get_cert_fingerprint(cert, digest, fingerprint, &fingerprint_len)) {
 		if (CRS_DEBUG >= 1) {	
@@ -302,11 +302,11 @@ static int pem_append(char* filename, STACK_OF(X509)* chain) {
 	return 1;
 }
 
-static void print_certificate(X509* cert) {
+/*static void print_certificate(X509* cert) {
         char subj[MAX_LENGTH+1];
         char issuer[MAX_LENGTH+1];
         X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
         X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
         printf("subject: %s\n", subj);
         printf("issuer : %s\n", issuer);
-}
+}*/

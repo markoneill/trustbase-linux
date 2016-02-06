@@ -114,12 +114,11 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, char* cert
 		return -1;
 	}
 	if (state->is_ipv6) {
-		port = (uint16_t)state->addr_v4.sin_port;
+		port = ntohs((uint16_t)state->addr_v4.sin_port);
 	}
 	else {
-		port = (uint16_t)state->addr_v6.sin6_port;
+		port = ntohs((uint16_t)state->addr_v6.sin6_port);
 	}
-	printk(KERN_ALERT "port embedded %hu\n", port);
 	rc = nla_put_u16(skb, TRUSTHUB_A_PORTNUMBER, port);
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put (port number)");
