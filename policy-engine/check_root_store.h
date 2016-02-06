@@ -9,4 +9,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 
 STACK_OF(X509)* pem_to_stack(char*);
 
+int verify_alternate_hostname(const char* hostname, X509* cert);
+int verify_hostname(const char* hostname, X509* cert);
+
 #endif //CHECK_ROOT_STORE_H

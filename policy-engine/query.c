@@ -54,6 +54,8 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	
 	/* Parse chain to X509 structures */
 	query->chain = parse_chain(cert_data, len);
+	
+	/* resolve the hostname */
 
 	hostname_len = strlen(hostname)+1;
 	query->hostname = (char*)malloc(sizeof(char) * hostname_len);

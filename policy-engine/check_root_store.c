@@ -10,10 +10,8 @@
 
 #define MAX_LENGTH 1024
 
-#define CRS_DEBUG 1
+#define CRS_DEBUG 0
 
-static int verify_alternate_hostname(const char* hostname, X509* cert);
-static int verify_hostname(const char* hostname, X509* cert);
 static int cmp_names(const char* hostname, char* cn);
 static void print_certificate(X509* cert);
 static void print_chain(STACK_OF(X509)*);
@@ -28,7 +26,7 @@ X509_STORE* make_new_root_store() {
 	size_t ca_path_len;
 	const char* store_path;
 	char* full_path;
-	char ca_filename[] = "ca-certificates.crt";
+	char ca_filename[] = "ca_bundle.crt";
 	size_t ca_filename_len;
 	X509_STORE* store;
 	
@@ -47,9 +45,6 @@ X509_STORE* make_new_root_store() {
 	ca_filename_len = strlen(ca_filename);
 	full_path = (char *)malloc(ca_path_len + ca_filename_len + 2);
 	sprintf(full_path, "%s/%s", store_path, ca_filename);
-	if (CRS_DEBUG) {
-		printf("Reading root store from %s\n", full_path);
-	}
 	
 	/* load the store */
 	if (X509_STORE_load_locations(store, full_path, NULL) < 1) {
@@ -78,23 +73,9 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	int valid;
 	int allpassed = PLUGIN_RESPONSE_VALID;
 
-	// XXX TEST ONLY
-	/*static int times_done = 0;
-	if (times_done > 0) {
-		return PLUGIN_RESPONSE_VALID;
-	}
-	if (strcmp(hostname, "www.google.com") == 0) {
-		//times_done++;
-		return PLUGIN_RESPONSE_INVALID;
-	}
-	else {
-		return PLUGIN_RESPONSE_VALID;
-	}*/
-	// XXX END TEST ONLY
-
 	/* Check the hostname against the leaf certificate */
 	
-	if (CRS_DEBUG >= 1) {
+	if (CRS_DEBUG >= 1) {	
 		printf("Full Chain to Verify:\n");
 		print_chain(certs);
 	}
@@ -157,7 +138,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 /** This function checks the alternative hostnames in the certificate
  *
  */
-static int verify_alternate_hostname(const char* hostname, X509* cert) {
+int verify_alternate_hostname(const char* hostname, X509* cert) {
 	int result;
 	int i;
 	STACK_OF(GENERAL_NAME)* alt_names;
@@ -200,7 +181,7 @@ static int verify_alternate_hostname(const char* hostname, X509* cert) {
 /** This function tests a hostname against all CNs in the cert
  *
  */
-static int verify_hostname(const char* hostname, X509* cert) {
+int verify_hostname(const char* hostname, X509* cert) {
 	X509_NAME *subj;
 	int lastpos;
 	X509_NAME_ENTRY* entry;
