@@ -7,7 +7,8 @@
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
-        [TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
+        [TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
+	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
         [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
@@ -69,6 +70,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	unsigned char* cert_chain;
 	int chain_length;
 	uint64_t stptr;
+	uint16_t port;
 
 	// Get Message
 	nlh = nlmsg_hdr(msg);
@@ -79,10 +81,12 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			/* Get message fields */
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
+			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
-
 			print_bytes(cert_chain, chain_length);
+
+			printf("port number is %hu\n", &port);
 
 			/* Query registered schemes */
 			poll_schemes(stptr, hostname, cert_chain, chain_length);

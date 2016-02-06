@@ -26,7 +26,7 @@ X509_STORE* make_new_root_store() {
 	size_t ca_path_len;
 	const char* store_path;
 	char* full_path;
-	char ca_filename[] = "ca_bundle.crt";
+	char ca_filename[] = "ca-bundle.crt";
 	size_t ca_filename_len;
 	X509_STORE* store;
 	

@@ -10,6 +10,7 @@ int th_query(struct sk_buff* skb, struct genl_info* info);
 static const struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 	[TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_NUL_STRING },
+	[TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
 	[TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
 };
@@ -93,6 +94,7 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, char* cert
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
+	uint16_t port;
 	skb = genlmsg_new(length, GFP_ATOMIC);
 	if (skb == NULL) {
 		printk(KERN_ALERT "failed in genlmsg");
@@ -108,6 +110,19 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, char* cert
 	rc = nla_put_string(skb, TRUSTHUB_A_HOSTNAME, hostname);
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put_string");
+		nlmsg_free(skb);
+		return -1;
+	}
+	if (state->is_ipv6) {
+		port = (uint16_t)state->addr_v4.sin_port;
+	}
+	else {
+		port = (uint16_t)state->addr_v6.sin6_port;
+	}
+	printk(KERN_ALERT "port embedded %hu\n", port);
+	rc = nla_put_u16(skb, TRUSTHUB_A_PORTNUMBER, port);
+	if (rc != 0) {
+		printk(KERN_ALERT "failed in nla_put (port number)");
 		nlmsg_free(skb);
 		return -1;
 	}
