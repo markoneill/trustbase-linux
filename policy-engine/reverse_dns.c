@@ -3,6 +3,7 @@
 #include <netdb.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -17,9 +18,9 @@ typedef struct sockaddrunion_t{
 	struct sockaddr_in* sa4;
 }sockaddrunion_t;
 
-static int forward_lookup(char* hostname, struct sockaddr* sa);
+static int forward_lookup(char* hostname, uint16_t port, struct sockaddr* sa);
 static int comp_sockaddr(struct sockaddr* sa_1, struct sockaddr* sa_2);
-static int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname);
+static int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname, uint16_t port);
 static int ip_to_hostname(struct sockaddr* sa, char** found_hostname);
 //static void print_ip(struct sockaddr* sa_in);
 
@@ -129,7 +130,7 @@ int is_ip(const char* hostname) {
 // It will then do a forward DNS look up on the cert names
 // if that fails to, it will try a ip_to_hostname
 // The caller must make sure to free hostname_found[0] after they are done with it.
-int reverse_lookup(const char* hostname, X509* cert, char** hostname_found) {
+int reverse_lookup(const char* hostname, uint16_t port, X509* cert, char** hostname_found) {
 	sockaddrunion_t sa;
 	struct sockaddr* sap;
 	int result;
@@ -153,8 +154,10 @@ int reverse_lookup(const char* hostname, X509* cert, char** hostname_found) {
 		result = inet_pton(AF_INET6, hostname, &(sa.sa6->sin6_addr));
 		if (result != 1) {
 			// this is not an ip address
-			hostname_found[0] = NULL;
-			result = LOOKUP_ERR;
+			// We will just copy the hostname given over
+			hostname_found[0] = (char*)malloc(strlen(hostname)+1);
+			strncpy(hostname_found[0], hostname, strlen(hostname)+1);
+			result = LOOKUP_VALID;
 			goto EXIT;
 		}
 		sa.sa6->sin6_family = AF_INET6;
@@ -165,22 +168,19 @@ int reverse_lookup(const char* hostname, X509* cert, char** hostname_found) {
 	}
 	// sap is our sockaddr now
 	// loop through names in cert
-	result = lookup_cert_names(sap, cert, hostname_found);
+	result = lookup_cert_names(sap, cert, hostname_found, port);
 	if (result == LOOKUP_VALID) {
 		goto EXIT;
 	}	
-	// first do a reverse look up
+	// lastly try a reverse look up
 	result = ip_to_hostname(sap, hostname_found);
-	if (result == LOOKUP_VALID) {
-		goto EXIT;
-	}
 EXIT:
 	free(sa.sa4);
 	free(sa.sa6);
 	return result;
 }
 
-int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname) {
+int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname, uint16_t port) {
 	X509_NAME *subj;
 	int i;
 	X509_NAME_ENTRY* entry;
@@ -217,7 +217,7 @@ int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname) {
 		}
 		
 		//printf("Trying cert name %s\n", cn);
-		if (forward_lookup(cn, sa) == LOOKUP_VALID) {
+		if (forward_lookup(cn, port, sa) == LOOKUP_VALID) {
 			//printf("\t%s works!\n", cn);
 			found_hostname[0] = (char*)malloc(strlen(cn)+1);
 			strncpy(found_hostname[0],cn,strlen(cn)+1);
@@ -251,7 +251,7 @@ int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname) {
 			}
 			
 			//printf("Trying cert name %s\n", cn);
-			if (forward_lookup(cn, sa) == LOOKUP_VALID) {
+			if (forward_lookup(cn, port, sa) == LOOKUP_VALID) {
 				//printf("\t%s works!\n", cn);
 				found_hostname[0] = (char*)malloc(strlen(cn)+1);
 				strncpy(found_hostname[0],cn,strlen(cn)+1);
@@ -264,15 +264,18 @@ int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname) {
 	return result;
 }
 
-int forward_lookup(char* hostname, struct sockaddr* sa) {
+int forward_lookup(char* hostname, uint16_t port, struct sockaddr* sa) {
 	struct addrinfo hints, *servinfo, *p;
 	int result;
+	char port_string[6];
 	
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC; // IPv4 or IPv6
 	hints.ai_socktype = SOCK_STREAM; //TCP stuff
+
+	sprintf(port_string, "%hu", port);
 	
-	if ((result = getaddrinfo(hostname, "80", &hints, &servinfo)) != 0) {
+	if ((result = getaddrinfo(hostname, port_string, &hints, &servinfo)) != 0) {
 		// we had a problem, and getaddrinfo didn't go well
 		//printf("getaddrinfo errored: %s\n", gai_strerror(result));
 		return LOOKUP_ERR; // error

@@ -4,6 +4,7 @@
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include "plugin_response.h"
+#include "reverse_dns.h"
 #include "query.h"
 
 #define MAX_LENGTH	1024
@@ -14,7 +15,8 @@ static int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
 void print_certificate(X509* cert);
 
-query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len) {
+query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
+	char* hostname_resolved[1];
 	int hostname_len;
 	int i;
 	query_t* query;
@@ -56,8 +58,19 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	query->chain = parse_chain(cert_data, len);
 	
 	/* resolve the hostname */
+	printf("Name before revDNS = %s\n", hostname);
+	if (reverse_lookup(hostname, port, sk_X509_value(query->chain, 0), hostname_resolved) != LOOKUP_VALID) {
+		fprintf(stderr, "Failed to do a reverse DNS lookup\n");
+		pthread_mutex_destroy(&query->mutex);
+		pthread_cond_destroy(&query->threshold_met);
+		free(query->responses);
+		free(query);
+		free(hostname_resolved[0]);
+		return NULL;
+	}	
+	printf("Name after revDNS = %s\n", hostname_resolved[0]);
 
-	hostname_len = strlen(hostname)+1;
+	hostname_len = strlen(hostname_resolved[0])+1;
 	query->hostname = (char*)malloc(sizeof(char) * hostname_len);
 	if (query->hostname == NULL) {
 		fprintf(stderr, "Failed to allocate hostname for query\n");
@@ -65,6 +78,7 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
 		free(query);
+		free(hostname_resolved[0]);
 		return NULL;
 	}
 	query->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
@@ -75,13 +89,16 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		free(query->responses);
 		free(query->hostname);
 		free(query);
+		free(hostname_resolved[0]);
 		return NULL;
 	}
 	query->raw_chain_len = len;
-	memcpy(query->hostname, hostname, hostname_len);
+	memcpy(query->hostname, hostname_resolved[0], hostname_len);
 	memcpy(query->raw_chain, cert_data, len);
 	query->state_pointer = stptr;
 	query->id = id;
+	
+	free(hostname_resolved[0]);
 	return query;
 }
 

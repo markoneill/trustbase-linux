@@ -20,6 +20,6 @@ typedef struct query_t {
 	int* responses;
 } query_t;
 
-query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, unsigned char* cert_data, size_t len);
+query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len);
 void free_query(query_t* query);
 #endif
