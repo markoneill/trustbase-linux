@@ -58,6 +58,9 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	query->chain = parse_chain(cert_data, len);
 	
 	/* resolve the hostname */
+	// This code below will do a Reverse DNS lookup
+	// It could be insecure though, because a MitM attack can spoof the DNS lookup
+	/*
 	printf("Name before revDNS = %s\n", hostname);
 	if (reverse_lookup(hostname, port, sk_X509_value(query->chain, 0), hostname_resolved) != LOOKUP_VALID) {
 		fprintf(stderr, "Failed to do a reverse DNS lookup\n");
@@ -69,6 +72,8 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		return NULL;
 	}	
 	printf("Name after revDNS = %s\n", hostname_resolved[0]);
+	*/
+	hostname_resolved[0] = hostname;
 
 	hostname_len = strlen(hostname_resolved[0])+1;
 	query->hostname = (char*)malloc(sizeof(char) * hostname_len);
@@ -78,7 +83,7 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
 		free(query);
-		free(hostname_resolved[0]);
+		//free(hostname_resolved[0]);
 		return NULL;
 	}
 	query->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
@@ -89,7 +94,7 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		free(query->responses);
 		free(query->hostname);
 		free(query);
-		free(hostname_resolved[0]);
+		//free(hostname_resolved[0]);
 		return NULL;
 	}
 	query->raw_chain_len = len;
@@ -98,7 +103,7 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	query->state_pointer = stptr;
 	query->id = id;
 	
-	free(hostname_resolved[0]);
+	//free(hostname_resolved[0]);
 	return query;
 }
 
