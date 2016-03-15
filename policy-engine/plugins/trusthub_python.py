@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import ctypes
+from OpenSSL import SSL,crypto
 
 RESPONSE_ERROR = int(-1)
 RESPONSE_INVALID = int(0)
@@ -43,7 +44,8 @@ class TrustHubPlugin(object):
         return self.initialize()
     
     def _query(self, host, cert_chain, query_id):
-        return_value = self.query(host, cert_chain)
+        certs = convert_tls_certificates_to_x509_list(cert_chain)
+        return_value = self.query(host, certs)
         if self.async:
             self.cb_func(return_value, self.plugin_ID, query_id)
             return 0
@@ -53,6 +55,35 @@ class TrustHubPlugin(object):
     def _finalize(self):
         return self.finalize()
     
+
+
+def convert_tls_certificates_to_x509_list(cert_chain):
+    length_field_size = 3
+    certs = []
+    chain_length = len(cert_chain)
+    while chain_length:
+        # get the length of next cert and decrement chain_length accordingly
+        cert_len = get_cert_length_from_bytes(cert_chain)
+        cert_chain = cert_chain[length_field_size:]
+        chain_length -= length_field_size
+
+        # read certificate from byte array and decrement chain_length accordingly
+        cert = crypto.load_certificate(crypto.FILETYPE_ASN1, str(cert_chain[0:cert_len]))
+        cert_chain = cert_chain[cert_len:]
+        chain_length -= cert_len
+
+        # add certificate to list
+        certs.append(cert)
+    return certs
+
+def get_cert_length_from_bytes(in_bytes):
+    index = 0
+    x = 0
+    for count in range(3):
+        x <<= 8
+        x |= in_bytes[index]
+        index += 1
+    return x
     
 
 ## The following functions should be imported directly

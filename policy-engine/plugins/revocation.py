@@ -19,10 +19,11 @@ class testPlugin(TrustHubPlugin):
         print "Revocation plugin initialized"
         return INIT_SUCCESS
     
-    def query(self, host, cert_chain):
+    def query(self, host, certs):
         print "Revocation plugin queried"
-        self.write_to_file(cert_chain,'/tmp/certchain')
-        certs = self.convert_tls_certificates_to_x509_list(cert_chain)
+        # I implemented this code in the Trusthub_python addon
+        #self.write_to_file(cert_chain,'/tmp/certchain')
+        #certs = self.convert_tls_certificates_to_x509_list(cert_chain)
         self.write_to_files(certs)
         uri = self.check_for_OCSP(certs[0])
         print uri
