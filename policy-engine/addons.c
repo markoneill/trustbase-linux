@@ -1,6 +1,7 @@
 #include "addons.h"
 
 #include <stdio.h>
+#include <stdint.h>
 #include <dlfcn.h>
 
 int load_addon(const char* path, addon_t* addon) {

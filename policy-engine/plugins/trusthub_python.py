@@ -20,7 +20,7 @@ class TrustHubPlugin(object):
     def initialize(self):
         pass
     
-    def query(self, host, cert_chain):
+    def query(self, host, port, raw_certs):
         pass
     
     def finalize(self):
@@ -43,9 +43,9 @@ class TrustHubPlugin(object):
         
         return self.initialize()
     
-    def _query(self, host, cert_chain, query_id):
-        certs = convert_tls_certificates_to_x509_list(cert_chain)
-        return_value = self.query(host, certs)
+    def _query(self, host, port, cert_chain, query_id):
+        print "Python plugin id", self.plugin_ID, "\nQuery id", query_id
+        return_value = self.query(host, port, cert_chain)
         if self.async:
             self.cb_func(return_value, self.plugin_ID, query_id)
             return 0
@@ -89,6 +89,7 @@ def get_cert_length_from_bytes(in_bytes):
 ## The following functions should be imported directly
 # (for example with from <this file> import *)
 # That way they can be run directly from the plugin script
+# NOTE, consider putting this in a Trusthub.start() function, to get rid of import *
 _plugin = TrustHubPlugin()
 def setPlugin(pluginobject):
     global _plugin
@@ -98,8 +99,8 @@ def initialize(plugin_id=None, lib_file=None, callback=None):
     #print "::Got lib_file ", lib_file
     #print "::Got plugin_id ", plugin_id
     return _plugin._initialize(plugin_id, lib_file, callback)
-def query(host, cert_chain, query_id=None):
-    return _plugin._query(host, cert_chain, query_id)
+def query(host, port, cert_chain, query_id=None):
+    return _plugin._query(host, port, cert_chain, query_id)
 def finalize():
     _plugin._finalize()
 

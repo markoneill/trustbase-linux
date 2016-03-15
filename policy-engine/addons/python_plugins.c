@@ -103,6 +103,7 @@ int load_plugin(int id, char* file_name, int is_async) {
 	char* dot_ptr;
 	char* slash_ptr;
 
+	printf("Calling load_plugin for %s\n", file_name);
 	// Cut off extension .py
 	module_name = path;
 	snprintf(path, 128, "%s", file_name);
@@ -300,109 +301,7 @@ static int init_plugin(PyObject* pFunc, int id, int is_async) {
  * @param cert_chain A character representation of the certificate chain
  * @param length The length of cert_chain
  */
-int query_plugin(int id, char *host, const unsigned char *cert_chain, size_t length) {
-	int result;
-	int set_arg;
-	PyObject* pFunc;
-	PyObject* pArgs;
-	PyObject* pValue;
-	if (id < 0) {
-		fprintf(stderr, "Invalid id\n");
-		return -1;
-	}
-
-	if (host == NULL) {
-		fprintf(stderr, "host cannot be NULL\n");
-		return -1;
-	}
-
-	if (cert_chain == NULL) {
-		fprintf(stderr, "cert_chain cannot be NULL\n");
-		return -1;
-	}
-
-	result = 0;
-	pFunc = plugin_functions[id];
-	pArgs = PyTuple_New(2);
-	if (pArgs == NULL) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to create new python tuple\n");
-		return -1;
-	}
-	// set host argument
-	pValue = PyString_FromString(host);
-	if(pValue == NULL) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to parse host argument\n");
-		Py_DECREF(pArgs);
-		return -1;
-	}
-
-	set_arg = PyTuple_SetItem(pArgs, 0, pValue);
-	if (set_arg != 0) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to set host argument in tuple\n");
-		Py_DECREF(pArgs);
-		return -1;
-	}
-
-	// set cert chain argument
-	pValue = PyByteArray_FromStringAndSize((const char*)cert_chain, length);
-	if (pValue == NULL) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to parse cert_chain argument\n");
-		Py_DECREF(pArgs);
-		return -1;
-	}
-
-	set_arg = PyTuple_SetItem(pArgs, 1, pValue);
-	if (set_arg != 0) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to set cert_chain argument in tuple\n");
-		Py_DECREF(pArgs);
-		return -1;
-	}
-
-	pValue = PyObject_CallObject(pFunc, pArgs);
-	Py_DECREF(pArgs);
-
-	if (pValue == NULL) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to call plugin function\n");
-		return -1;
-	}
-	result = (int)PyInt_AsLong(pValue);
-	Py_DECREF(pValue);
-	if (result == -1) {
-		if (PyErr_Occurred()) {
-			PyErr_Print();
-		}
-		fprintf(stderr, "Failed to parse return value\n");
-		return -1;
-	}
-
-	return result;
-}
-
-/** Sets up the function call to the python plugin
- * @param id The plugin id
- * @param host The hostname associated with the leaf certificate
- * @param cert_chain A character representation of the certificate chain
- * @param length The length of cert_chain
- */
-int query_plugin_async(int id, int query_id, char *host, const unsigned char *cert_chain, size_t length) {
+int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_chain, size_t length) {
 	int result;
 	int set_arg;
 	PyObject* pFunc;
@@ -454,6 +353,27 @@ int query_plugin_async(int id, int query_id, char *host, const unsigned char *ce
 		return -1;
 	}
 
+	// set port argument
+	pValue = PyInt_FromLong((long) port);
+	if (pValue == NULL) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to parse port argument\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
+	set_arg = PyTuple_SetItem(pArgs, 1, pValue);
+	if (set_arg != 0) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to set port argument in tuple\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
 	// set cert chain argument
 	pValue = PyByteArray_FromStringAndSize((const char*)cert_chain, length);
 	if (pValue == NULL) {
@@ -465,7 +385,130 @@ int query_plugin_async(int id, int query_id, char *host, const unsigned char *ce
 		return -1;
 	}
 
+	set_arg = PyTuple_SetItem(pArgs, 2, pValue);
+	if (set_arg != 0) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to set cert_chain argument in tuple\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
+	pValue = PyObject_CallObject(pFunc, pArgs);
+	Py_DECREF(pArgs);
+
+	if (pValue == NULL) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to call plugin function\n");
+		return -1;
+	}
+	result = (int)PyInt_AsLong(pValue);
+	Py_DECREF(pValue);
+	if (result == -1) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to parse return value\n");
+		return -1;
+	}
+
+	return result;
+}
+
+/** Sets up the function call to the python plugin
+ * @param id The plugin id
+ * @param host The hostname associated with the leaf certificate
+ * @param cert_chain A character representation of the certificate chain
+ * @param length The length of cert_chain
+ */
+int query_plugin_async(int id, int query_id, char *host, uint16_t port, const unsigned char *cert_chain, size_t length) {
+	int result;
+	int set_arg;
+	PyObject* pFunc;
+	PyObject* pArgs;
+	PyObject* pValue;
+	if (id < 0) {
+		fprintf(stderr, "Invalid id\n");
+		return -1;
+	}
+
+	if (host == NULL) {
+		fprintf(stderr, "host cannot be NULL\n");
+		return -1;
+	}
+
+	if (cert_chain == NULL) {
+		fprintf(stderr, "cert_chain cannot be NULL\n");
+		return -1;
+	}
+
+	result = 0;
+	pFunc = plugin_functions[id];
+	pArgs = PyTuple_New(4);
+	if (pArgs == NULL) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to create new python tuple\n");
+		return -1;
+	}
+	// set host argument
+	pValue = PyString_FromString(host);
+	if(pValue == NULL) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to parse host argument\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
+	set_arg = PyTuple_SetItem(pArgs, 0, pValue);
+	if (set_arg != 0) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to set host argument in tuple\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
+	// set port argument
+	pValue = PyInt_FromLong((long) port);
+	if (pValue == NULL) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to parse port argument\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
 	set_arg = PyTuple_SetItem(pArgs, 1, pValue);
+	if (set_arg != 0) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to set port argument in tuple\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
+	// set cert chain argument
+	pValue = PyByteArray_FromStringAndSize((const char*)cert_chain, length);
+	if (pValue == NULL) {
+		if (PyErr_Occurred()) {
+			PyErr_Print();
+		}
+		fprintf(stderr, "Failed to parse cert_chain argument\n");
+		Py_DECREF(pArgs);
+		return -1;
+	}
+
+	set_arg = PyTuple_SetItem(pArgs, 2, pValue);
 	if (set_arg != 0) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
@@ -485,7 +528,7 @@ int query_plugin_async(int id, int query_id, char *host, const unsigned char *ce
 		Py_DECREF(pArgs);
 		return 1;
 	}
-	set_arg = PyTuple_SetItem(pArgs, 2, pValue);
+	set_arg = PyTuple_SetItem(pArgs, 3, pValue);
 	if (set_arg != 0) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();

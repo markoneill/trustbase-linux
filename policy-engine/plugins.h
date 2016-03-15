@@ -25,8 +25,8 @@ enum {
 	AGGREGATION_NECESSARY,
 };
 
-typedef int (*query_func_raw)(const char*, const unsigned char*, size_t);
-typedef int (*query_func_openssl)(const char*, STACK_OF(X509)*);
+//typedef int (*query_func_raw)(const char*, const unsigned char*, size_t);
+//typedef int (*query_func_openssl)(const char*, STACK_OF(X509)*);
 
 typedef struct plugin_t {
 	int type;
@@ -41,14 +41,14 @@ typedef struct plugin_t {
 		/* used as a generic identifier for all these union members */
 		int (*generic_query_func)(void);
 		/* used for native plugins using OpenSSL */
-		int (*query_sync_openssl)(const char*, STACK_OF(X509)*);
-		int (*query_async_openssl)(int, const char*, STACK_OF(X509)*);
+		int (*query_sync_openssl)(const char*, uint16_t, STACK_OF(X509)*);
+		int (*query_async_openssl)(int, const char*, uint16_t, STACK_OF(X509)*);
 		/* used for native plugins needing raw DER certificates */
-		int (*query_sync_raw)(const char*, const unsigned char*, size_t);
-		int (*query_async_raw)(int, const char*, const unsigned char*, size_t);
+		int (*query_sync_raw)(const char*, uint16_t, const unsigned char*, size_t);
+		int (*query_async_raw)(int, const char*, uint16_t, const unsigned char*, size_t);
 		/* used by plugins handled by addons */
-		int (*query_sync_by_addon)(int, const char*, const unsigned char*, size_t);
-		int (*query_async_by_addon)(int, int, const char*, const unsigned char*, size_t);
+		int (*query_sync_by_addon)(int, const char*, uint16_t, const unsigned char*, size_t);
+		int (*query_async_by_addon)(int, int, const char*, uint16_t, const unsigned char*, size_t);
 	};
 	union {
 		/* used as a generic identifier for all these union members */

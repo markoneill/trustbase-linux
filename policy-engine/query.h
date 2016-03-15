@@ -14,6 +14,7 @@ typedef struct query_t {
 	int num_plugins;
 	STACK_OF(X509)* chain;
 	char* hostname;
+	uint16_t port;
 	unsigned char* raw_chain;
 	size_t raw_chain_len;
 	int num_responses;

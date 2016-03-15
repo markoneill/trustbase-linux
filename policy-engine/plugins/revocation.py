@@ -19,11 +19,10 @@ class testPlugin(TrustHubPlugin):
         print "Revocation plugin initialized"
         return INIT_SUCCESS
     
-    def query(self, host, certs):
+    def query(self, host, port, cert_chain):
         print "Revocation plugin queried"
-        # I implemented this code in the Trusthub_python addon
-        #self.write_to_file(cert_chain,'/tmp/certchain')
-        #certs = self.convert_tls_certificates_to_x509_list(cert_chain)
+        self.write_to_file(cert_chain,'/tmp/certchain')
+        certs = self.convert_tls_certificates_to_x509_list(cert_chain)
         self.write_to_files(certs)
         uri = self.check_for_OCSP(certs[0])
         print uri
@@ -103,35 +102,6 @@ class testPlugin(TrustHubPlugin):
                     return RESPONSE_VALID;
         print "BAD"
         return RESPONSE_INVALID;
-
-
-    def convert_tls_certificates_to_x509_list(self,cert_chain):
-        length_field_size = 3
-        certs = []
-        chain_length = len(cert_chain)
-        while chain_length:
-            # get the length of next cert and decrement chain_length accordingly
-            cert_len = self.get_cert_length_from_bytes(cert_chain)
-            cert_chain = cert_chain[length_field_size:]
-            chain_length -= length_field_size
-
-            # read certificate from byte array and decrement chain_length accordingly
-            cert = crypto.load_certificate(crypto.FILETYPE_ASN1, str(cert_chain[0:cert_len]))
-            cert_chain = cert_chain[cert_len:]
-            chain_length -= cert_len
-
-            # add certificate to list
-            certs.append(cert)
-        return certs
-
-    def get_cert_length_from_bytes(self,bytes):
-        index = 0
-        x = 0
-        for count in range(3):
-            x <<= 8
-            x |= bytes[index]
-            index += 1
-        return x
 
     def write_to_files(self,certs):
         root = crypto.dump_certificate(crypto.FILETYPE_PEM, certs[0])

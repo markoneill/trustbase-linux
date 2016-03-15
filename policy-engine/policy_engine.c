@@ -193,7 +193,6 @@ int async_callback(int plugin_id, int query_id, int result) {
 		fprintf(stderr, "Plugin %d timed out on query %d but sent data anyway\n", plugin_id, query_id);
 		return 0; /* let plugin know this result timed out */
 	}
-
 	query->responses[plugin_id] = result;
 	pthread_mutex_lock(&query->mutex);
 	query->num_responses++;

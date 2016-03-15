@@ -2,12 +2,13 @@
 #define ADDONS_H_
 
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*);
 typedef int (*addon_finalize)(void);
 typedef int (*addon_load_plugin)(int, char*, int);
-typedef int (*addon_query_plugin)(int, const char*, const unsigned char*, size_t);
-typedef int (*addon_async_query_plugin)(int, int, const char*, const unsigned char*, size_t);
+typedef int (*addon_query_plugin)(int, const char*, uint16_t port, const unsigned char*, size_t);
+typedef int (*addon_async_query_plugin)(int, int, const char*, uint16_t port, const unsigned char*, size_t);
 
 typedef struct addon_t {
 	char* name;
@@ -17,8 +18,8 @@ typedef struct addon_t {
 	int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*);
 	int (*addon_finalize)(void);
 	int (*addon_load_plugin)(int, char*, int);
-	int (*addon_query_plugin)(int, const char*, const unsigned char*, size_t);
-	int (*addon_async_query_plugin)(int, int, const char*, const unsigned char*, size_t);
+	int (*addon_query_plugin)(int, const char*, uint16_t port, const unsigned char*, size_t);
+	int (*addon_async_query_plugin)(int, int, const char*, uint16_t port, const unsigned char*, size_t);
 	void* so_handle;
 	char* so_path;
 } addon_t;

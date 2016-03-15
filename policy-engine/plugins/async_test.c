@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +22,7 @@ typedef struct query_t {
 /* Plugin functions */
 int initialize(int id, int(*callback)(int, int, int));
 int finalize(void);
-int query(int query_id, const char* hostname, STACK_OF(X509)* certs);
+int query(int query_id, const char* hostname, uint16_t port, STACK_OF(X509)* certs);
 void* worker(void* arg);
 void print_certificate(X509* cert);
 
@@ -91,7 +92,7 @@ void* worker(void* arg) {
  * all plugins have reported or there is a timeout. In a real plugin you
  * should copy the source data to avoid bad dereferences in the case of a
  * timeout. */
-int query(int query_id, const char* hostname, STACK_OF(X509)* certs) {
+int query(int query_id, const char* hostname, uint16_t port, STACK_OF(X509)* certs) {
 	query_t* query;
 	query = (query_t*)malloc(sizeof(query_t));
 	query->id = query_id;

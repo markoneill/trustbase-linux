@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
@@ -14,7 +15,7 @@
 
 #define CRS_DEBUG	1
 
-int query(const char* hostname, STACK_OF(X509)* certs);
+int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs);
 static unsigned int get_cert_fingerprint(X509* cert, EVP_MD* digest, unsigned char* fingerprint, unsigned int* fingerprint_len);
 static int compare_fingerprint(unsigned char *fp1, int fp1len, unsigned char *fp2, int fp2len);
 static STACK_OF(X509)* get_whitelist();
@@ -26,7 +27,7 @@ static int cmp_names(const char* hostname, char* cn);
 static int pem_append(char* filename, STACK_OF(X509)* chain);
 //static void print_certificate(X509* cert);
 
-int query(const char* hostname, STACK_OF(X509)* certs) {
+int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs) {
 	X509* cert;
 	STACK_OF(X509)* whitelist;
 	EVP_MD* digest;

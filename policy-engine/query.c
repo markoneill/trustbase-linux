@@ -86,6 +86,8 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		//free(hostname_resolved[0]);
 		return NULL;
 	}
+	query->port = port;
+
 	query->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
 	if (query->hostname == NULL) {
 		fprintf(stderr, "Failed to allocate cert chain for query\n");

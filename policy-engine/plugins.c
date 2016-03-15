@@ -59,22 +59,28 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 int query_async_plugin(plugin_t* plugin, int id, query_t* query) {
 	switch (plugin->handler_type) {
 		case PLUGIN_HANDLER_TYPE_RAW:
-			return plugin->query_async_raw(query->id, query->hostname, query->raw_chain, query->raw_chain_len);
+			return plugin->query_async_raw(query->id, query->hostname, query->port, query->raw_chain, query->raw_chain_len);
 		case PLUGIN_HANDLER_TYPE_OPENSSL:
-			return plugin->query_async_openssl(query->id, query->hostname, query->chain);
+			return plugin->query_async_openssl(query->id, query->hostname, query->port, query->chain);
 		case PLUGIN_HANDLER_TYPE_ADDON:
-			return plugin->query_async_by_addon(id, query->id, query->hostname, query->raw_chain, query->raw_chain_len);
+			if (plugin->query_async_by_addon == NULL) {
+				return PLUGIN_RESPONSE_ERROR;
+			}
+			return plugin->query_async_by_addon(id, query->id, query->hostname, query->port, query->raw_chain, query->raw_chain_len);
 	}
 	return PLUGIN_RESPONSE_ABSTAIN;
 }
 int query_sync_plugin(plugin_t* plugin, int id, query_t* query) {
 	switch (plugin->handler_type) {
 		case PLUGIN_HANDLER_TYPE_RAW:
-			return plugin->query_sync_raw(query->hostname, query->raw_chain, query->raw_chain_len);
+			return plugin->query_sync_raw(query->hostname, query->port, query->raw_chain, query->raw_chain_len);
 		case PLUGIN_HANDLER_TYPE_OPENSSL:
-			return plugin->query_sync_openssl(query->hostname, query->chain);
+			return plugin->query_sync_openssl(query->hostname, query->port, query->chain);
 		case PLUGIN_HANDLER_TYPE_ADDON:
-			return plugin->query_sync_by_addon(id, query->hostname, query->raw_chain, query->raw_chain_len);
+			if (plugin->query_sync_by_addon == NULL) {
+				return PLUGIN_RESPONSE_ERROR;
+			}
+			return plugin->query_sync_by_addon(id, query->hostname, query->port, query->raw_chain, query->raw_chain_len);
 	}
 	return PLUGIN_RESPONSE_ABSTAIN;
 }
@@ -91,12 +97,20 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 				if (strcmp(addons[j].type_handled, plugins[i].handler_str) == 0) {
 					plugins[i].handler_type = PLUGIN_HANDLER_TYPE_ADDON;
 					if (plugins[i].type == PLUGIN_TYPE_SYNCHRONOUS) {
-						addons[j].addon_load_plugin(i, plugins[i].path, 0);
-						plugins[i].query_sync_by_addon = addons[j].addon_query_plugin;
+						if (addons[j].addon_load_plugin(i, plugins[i].path, 0) == 0) {
+							plugins[i].query_sync_by_addon = addons[j].addon_query_plugin;
+						} else {
+							plugins[i].query_sync_by_addon = NULL;
+							fprintf(stderr, "Could not load plugin %s\n", plugins[i].name);
+						}
 					}
 					else {
-						addons[j].addon_load_plugin(i, plugins[i].path, 1);
-						plugins[i].query_async_by_addon = addons[j].addon_async_query_plugin;
+						if (addons[j].addon_load_plugin(i, plugins[i].path, 1) == 0) {
+							plugins[i].query_async_by_addon = addons[j].addon_async_query_plugin;
+						} else {
+							plugins[i].query_async_by_addon = NULL;
+							fprintf(stderr, "Could not load plugin %s\n", plugins[i].name);
+						}
 					}
 
 					break;

@@ -59,7 +59,7 @@ int load_plugin(int id, char *file_name, int is_async);
 *	cert_chain: the cert chain to test for validity
 *	length: the length of cert_chain
 */
-int query_plugin(int id, char *host, const unsigned char *cert_chain, size_t length);
+int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_chain, size_t length);
 
 /*
 *	id: a non-negative integer that is used as an index in an array
@@ -71,7 +71,7 @@ int query_plugin(int id, char *host, const unsigned char *cert_chain, size_t len
 *	length: the length of cert_chain
 *	query_id: the async query
 */
-int query_plugin_async(int id, int query_id, char *host, const unsigned char *cert_chain, size_t length);
+int query_plugin_async(int id, int query_id, char *host, uint16_t port, const unsigned char *cert_chain, size_t length);
 
 /**	The callback function for asynchronous python plugins
  *

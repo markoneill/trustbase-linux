@@ -9,10 +9,12 @@ class testPlugin(TrustHubPlugin):
         print "Python plugin initialized"
         return INIT_SUCCESS
     
-    def query(self, host, cert_chain):
+    def query(self, host, port, raw_certs):
         print "Python plugin queried"
-        print "Host ", host
-        print "Cert\n", cert_chain
+        print "Host", host
+        print "Port", port
+        cert_chain = convert_tls_certificates_to_x509_list(raw_certs)
+        print "Cert", cert_chain
         return RESPONSE_VALID
     
     def finalize():
