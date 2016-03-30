@@ -28,8 +28,9 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/linked_list.c \
 		    policy-engine/check_root_store.c \
 		    policy-engine/reverse_dns.c \
-		    policy-engine/debug_log.c \
+		    policy-engine/th_logging.c \
 		    policy-engine/policy_engine.c
+
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
 POLICY_ENGINE_EXE = policy_engine
 

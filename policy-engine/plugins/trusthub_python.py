@@ -64,6 +64,7 @@ def convert_tls_certificates_to_x509_list(cert_chain):
     while chain_length:
         # get the length of next cert and decrement chain_length accordingly
         cert_len = get_cert_length_from_bytes(cert_chain)
+        print "Cert len is", cert_len
         cert_chain = cert_chain[length_field_size:]
         chain_length -= length_field_size
 

@@ -86,6 +86,11 @@ void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr 
 		//printk(KERN_INFO "Detected a connection from the tls proxy");
 		return NULL;
 	}
+	
+	if (policy_engine_task != NULL && tgid == policy_engine_task->pid) {
+		//printk(KERN_INFO "Detected a connection from a plugin");
+		return NULL;
+	}
 
 	state = kmalloc(sizeof(handler_state_t), GFP_KERNEL);
 	if (state != NULL) {
@@ -111,7 +116,7 @@ void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr 
 		buf_state_init(&state->recv_state);
 	}
 	//setup_ssl_proxy(state); // XXX test
-	return state;
+	return state;;
 }
 
 void* buf_state_init(buf_state_t* buf_state) {
