@@ -742,7 +742,7 @@ void setup_ssl_proxy(handler_state_t* state) {
 	return;
 }
 
-void setup_ssl_proxy2(handler_state_t* state) {
+/*void setup_ssl_proxy2(handler_state_t* state) {
 	int error;
 	__be16 src_port;
 	int yes;
@@ -796,20 +796,31 @@ void setup_ssl_proxy2(handler_state_t* state) {
 	return;
 }
 
+*/
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+int __our_sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg, size_t size) {
+#else
 int __our_sock_sendmsg_nosec(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size) {
+#endif
 	int ret;
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 	struct sock_iocb *si = kiocb_to_siocb(iocb);
 	si->sock = sock;
 	si->scm = NULL;
 	si->msg = msg;
 	si->size = size;
-	printTime("before ops->sendmsg");
+	#endif
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+	ret = sock->ops->sendmsg(sock, msg, size);
+	#else
 	ret = sock->ops->sendmsg(iocb, sock, msg, size);
-	printTime("after ops->sendmsg");
+	#endif
 	return ret;
 }
 
 int our_sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size) {
+	#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 	struct kiocb iocb;
 	struct sock_iocb siocb;
 	int ret;
@@ -819,6 +830,9 @@ int our_sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size) {
 	if (-EIOCBQUEUED == ret)
 		ret = wait_on_sync_kiocb(&iocb);
 	return ret;
+	#else
+	return  __our_sock_sendmsg_nosec(sock, msg, size);
+	#endif
 }
 
 int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t length) {
