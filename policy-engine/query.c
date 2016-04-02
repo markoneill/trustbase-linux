@@ -11,7 +11,7 @@
 #define CERT_LENGTH_FIELD_SIZE	3
 
 static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
-static int ntoh24(const unsigned char* data);
+static unsigned int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
 void print_certificate(X509* cert);
 
@@ -135,16 +135,22 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	unsigned char* current_pos;
 	const unsigned char* cert_ptr;
 	X509* cert;
-	int cert_len;
+	unsigned int cert_len;
 	start_pos = data;
 	current_pos = data;
 	STACK_OF(X509)* chain;
 
+
+	printf("1st char of chain is %02x\n", data[0] & 0xff);
+	printf("2nd char of chain is %02x\n", data[1] & 0xff);
+	printf("3rd char of chain is %02x\n", data[2] & 0xff);
+
 	chain = sk_X509_new_null();
 	while ((current_pos - start_pos) < len) {
+		printf("%02x%02x%02x", current_pos[0], current_pos[1], current_pos[2]);
 		cert_len = ntoh24(current_pos);
 		current_pos += CERT_LENGTH_FIELD_SIZE;
-		//printf("The next cert to parse is %d bytes\n", cert_len);
+		printf("The next cert to parse is %d bytes\n", cert_len);
 		cert_ptr = current_pos;
 		cert = d2i_X509(NULL, &cert_ptr, cert_len);
 		if (!cert) {
@@ -161,8 +167,8 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	return chain;
 }
 
-int ntoh24(const unsigned char* data) {
-	int ret = (data[0] << 16) | (data[1] << 8) | data[2];
+unsigned int ntoh24(const unsigned char* data) {
+	unsigned int ret = (data[0] << 16) | (data[1] << 8) | data[2];
 	return ret;
 }
 
