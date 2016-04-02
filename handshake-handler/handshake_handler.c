@@ -280,19 +280,19 @@ void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
 			handle_state_unknown(state, buf_state);
-			printk(KERN_ALERT "state unknown");
+			//printk(KERN_ALERT "state unknown");
 			break;
 		case RECORD_LAYER:
-			printk(KERN_ALERT "record layer");
+			//printk(KERN_ALERT "record layer");
 			handle_state_record_layer(state, buf_state);
 			break;
 		case HANDSHAKE_LAYER:
 			handle_state_handshake_layer(state, buf_state);
-			printk(KERN_ALERT "handshake layer");
+			//printk(KERN_ALERT "handshake layer");
 			break;
 		case SERVER_HELLO_DONE_SENT:
 			handle_state_server_hello_done_sent(state, buf_state);
-			printk(KERN_ALERT "hello done sent");
+			//printk(KERN_ALERT "hello done sent");
 			break;
 		case IRRELEVANT:
 			// Should never get here
@@ -333,7 +333,7 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	tls_major_version = cs_buf[1];
 	tls_minor_version = cs_buf[2];
 	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
-	print_call_info("SSL version %u.%u Record size: %u", tls_major_version, tls_minor_version, tls_record_length);
+	//print_call_info("SSL version %u.%u Record size: %u", tls_major_version, tls_minor_version, tls_record_length);
 	// XXX To continue verifying that this is indeed a real SSL/TLS connection we should fail out here if its not a valid SSL/TLS version number. (it's possible that they're just happening to send the right bytes to appear like a TLS connection)
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
@@ -368,7 +368,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		//printk(KERN_ALERT "Message length is %u", handshake_message_length);
 		tls_record_bytes -= handshake_message_length;
 		if (cs_buf[0] == TYPE_CLIENT_HELLO) {
-			print_call_info("Sent a Client Hello");
+			//print_call_info("Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
 			set_state_hostname(state, cs_buf+1, handshake_message_length); // Plus one to ignore protocol type
@@ -383,7 +383,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			//BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
-			print_call_info("Received a Server Hello");
+			//print_call_info("Received a Server Hello");
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			cs_buf += handshake_message_length;
@@ -391,7 +391,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		else if (cs_buf[0] == TYPE_CERTIFICATE) { 
 			// XXX check to see if additional certificates are contained within this record
 			//printk(KERN_ALERT "addr: %pISpc", &state->addr_v4);
-			print_call_info("Received a Certificate");
+			//print_call_info("Received a Certificate");
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
@@ -425,7 +425,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			buf_state->user_cur_max = buf_state->buf_length;
-			print_call_info("Server Key Exchange Received");
+			//print_call_info("Server Key Exchange Received");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO_DONE) {	
@@ -472,19 +472,19 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	bufptr = buf;
 	//int i = 0;
 	handshake_message_length = be24_to_cpu(*(__be24*)bufptr);
-	printk(KERN_ALERT "handshake message length is %d", handshake_message_length);
+	//printk(KERN_ALERT "handshake message length is %d", handshake_message_length);
 
 	//th_send_certificate_query(
 	bufptr += 3; // handshake identifier + 24bit length of protocol message
 	//certificates_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);
 	certificates_length = be24_to_cpu(*(__be24*)bufptr);
 	bufptr += 3; // 24-bit length of certificates
-	printk(KERN_ALERT "1st char of chain is %02x", bufptr[0] & 0xff);
+	/*printk(KERN_ALERT "1st char of chain is %02x", bufptr[0] & 0xff);
 	printk(KERN_ALERT "2nd char of chain is %02x", bufptr[1] & 0xff);
 	printk(KERN_ALERT "3rd char of chain is %02x", bufptr[2] & 0xff);
 	print_call_info("length of msg is %u", handshake_message_length);
 	print_call_info("length of certs is %u", certificates_length);
-	print_call_info("Sending certificates to policy engine");
+	print_call_info("Sending certificates to policy engine");*/
 	set_orig_leaf_cert(state, bufptr, certificates_length);
 	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
 	return 0;
@@ -583,7 +583,7 @@ int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 	memcpy(bs->buf + bs->buf_length, src_buf, length);
 	bs->buf_length += length;
 	bs->last_payload_length = length;
-	printk(KERN_ALERT "buf now has");
+	//printk(KERN_ALERT "buf now has");
 	//printbuf(bs->buf, bs->buf_length);
 	return 0;
 }
@@ -593,7 +593,7 @@ void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned 
 	unsigned int cert_len;
 	unsigned char* cert_start;
 	cert_len = be24_to_cpu(*(__be24*)bufptr);
-	printk(KERN_ALERT "orig leaf cert len %u", cert_len);
+	//printk(KERN_ALERT "orig leaf cert len %u", cert_len);
 	cert_start = bufptr + 3;
 	state->orig_leaf_cert = cert_start;
 	state->orig_leaf_cert_len = cert_len;
