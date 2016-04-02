@@ -120,12 +120,12 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, unsigned c
 		port = ntohs((uint16_t)state->addr_v6.sin6_port);
 	}
 	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
-	printk(KERN_ALERT "-3rd char of chain is %02x", certificate[-3] & 0xff);
+	/*printk(KERN_ALERT "-3rd char of chain is %02x", certificate[-3] & 0xff);
 	printk(KERN_ALERT "-2nd char of chain is %02x", certificate[-2] & 0xff);
 	printk(KERN_ALERT "-1st char of chain is %02x", certificate[-1] & 0xff);
 	printk(KERN_ALERT "1st char of chain is %02x", certificate[0] & 0xff);
 	printk(KERN_ALERT "2nd char of chain is %02x", certificate[1] & 0xff);
-	printk(KERN_ALERT "3rd char of chain is %02x", certificate[2] & 0xff);
+	printk(KERN_ALERT "3rd char of chain is %02x", certificate[2] & 0xff);*/
 	if (rc != 0) {
 		printk(KERN_ALERT "failed in nla_put (chain)");
 		nlmsg_free(skb);

@@ -496,8 +496,8 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 #endif
 	int ret;
 	mm_segment_t oldfs;
-	struct iovec iov;
-	struct msghdr kmsg;
+	struct kvec iov;
+	struct msghdr kmsg = {};
 	void* buffer;
 	struct socket* sock;
 	conn_state_t* conn_state;
@@ -620,11 +620,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	// 3) Attempt to get more data from external sources
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-		kmsg = *msg;
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
-		kmsg.msg_iter.iov = &iov;
-		BUG_ON(kmsg.msg_iter.nr_segs > 1);
+		//kmsg.msg_iter.iov = &iov;
+		//BUG_ON(kmsg.msg_iter.nr_segs > 1);
 		#else
+		kmsg = *msg;
 		kmsg.msg_iov = &iov;
 		#endif
 		b_to_read = ops->bytes_to_read_recv(conn_state->state);
@@ -640,6 +640,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			ret = wait_on_sync_kiocb(iocb);
 		}
 		#else
+		iov_iter_kvec(&kmsg.msg_iter, READ | ITER_KVEC, &iov, 1, iov.iov_len);
 		ret = ref_tcp_recvmsg(sk, &kmsg, iov.iov_len, nonblock, flags, addr_len);
 		#endif
 		set_fs(oldfs);

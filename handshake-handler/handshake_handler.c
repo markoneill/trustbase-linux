@@ -584,7 +584,7 @@ int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 	bs->buf_length += length;
 	bs->last_payload_length = length;
 	printk(KERN_ALERT "buf now has");
-	printbuf(bs->buf, bs->buf_length);
+	//printbuf(bs->buf, bs->buf_length);
 	return 0;
 }
 
