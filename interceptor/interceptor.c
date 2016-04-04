@@ -48,8 +48,13 @@ int (*ref_tcp_v6_connect)(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 // TCP General reference functions
 int (*ref_tcp_disconnect)(struct sock *sk, int flags);
 void (*ref_tcp_close)(struct sock *sk, long timeout);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+int (*ref_tcp_sendmsg)(struct sock *sk, struct msghdr *msg, size_t size);
+int (*ref_tcp_recvmsg)(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+#else
 int (*ref_tcp_sendmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
 int (*ref_tcp_recvmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+#endif
 
 // Reference function for tcp v4 and v6 accept() calls
 struct sock *(*ref_inet_csk_accept)(struct sock *sk, int flags, int *err);
@@ -61,9 +66,13 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
 // TCP General wrapper functions
 int new_tcp_disconnect(struct sock *sk, int flags);
 void new_tcp_close(struct sock *sk, long timeout);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+int new_tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size);
+int new_tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
+#else
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size);
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
-
+#endif
 // New function for tcp v4 and v6 accept() calls
 struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err);
 
@@ -314,7 +323,11 @@ void new_tcp_close(struct sock *sk, long timeout) {
  * @see handshaker-handler/handshake_handler.c:th_fill_send_buffer 
  * @return the amount of bytes the user wanted to send, or an error code
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+int new_tcp_sendmsg(struct sock *sk, struct msghdr *msg, size_t size) {
+#else
 int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t size) {
+#endif
 	conn_state_t* conn_state;
 	struct socket* sock;
 	int real_ret;
@@ -327,7 +340,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// Adopt default kernel behavior if we're not monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+		return ref_tcp_sendmsg(sk, msg, size);
+		#else
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
+		#endif
 	}
 
 
@@ -348,14 +365,18 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+		return ref_tcp_sendmsg(sk, msg, size);
+		#else
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
-		oldfs = get_fs();
+		#endif
+		/*oldfs = get_fs();
 		set_fs(KERNEL_DS);
 		iov.iov_len = size;
 		iov.iov_base = new_data;
 		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, size);
 		set_fs(oldfs);
-		return real_ret;
+		return real_ret;*/ // Old stuff... remove?
 	}
 
 	// 0) If last send attempt was an error, don't copy or update state
@@ -366,7 +387,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
+			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+			return ref_tcp_sendmsg(sk, msg, size);
+			#else
 			return ref_tcp_sendmsg(iocb, sk, msg, size);
+			#endif
 		}
 		// 2) Update handler's state now that it has new data
 		if (ops->update_send_state(conn_state->state) != 0) {
@@ -374,7 +399,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
+			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+			return ref_tcp_sendmsg(sk, msg, size);
+			#else
 			return ref_tcp_sendmsg(iocb, sk, msg, size);
+			#endif
 		}
 	}
 	else {
@@ -410,7 +439,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// but do it via the persona of the kernel
 	oldfs = get_fs();
 	set_fs(KERNEL_DS);
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+	real_ret = ref_tcp_sendmsg(sk, &kmsg, iov.iov_len);
+	#else
 	real_ret = ref_tcp_sendmsg(iocb, sk, &kmsg, iov.iov_len);
+	#endif
 	set_fs(oldfs);
 	// Record result
 	conn_state->queued_send_ret = real_ret;
@@ -431,7 +464,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 				// Ask handler to update our pointer and length again
 				ops->fill_send_buffer(conn_state->state, &iov.iov_base, &iov.iov_len);
 				// Attempt send again
+				#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+				real_ret = ref_tcp_sendmsg(sk, &kmsg, iov.iov_len);
+				#else
 				real_ret = ref_tcp_sendmsg(iocb, sk, &kmsg, iov.iov_len);
+				#endif
 				// Record bytes sent
 				ops->inc_send_bytes_forwarded(conn_state->state, real_ret);
 			}
@@ -452,11 +489,15 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
  * @see handshaker-handler/handshake_handler.c:th_copy_to_user_buffer
  * @return the amount of bytes the user wanted to send, or an error code
  */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+int new_tcp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len) {
+#else
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len) {
+#endif
 	int ret;
 	mm_segment_t oldfs;
-	struct iovec iov;
-	struct msghdr kmsg;
+	struct kvec iov;
+	struct msghdr kmsg = {};
 	void* buffer;
 	struct socket* sock;
 	conn_state_t* conn_state;
@@ -470,7 +511,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+		ret = ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
+		#else
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+		#endif
 		//printk(KERN_INFO " A connection was found to not be tracked, and was ignored");
 		//print_call_info("this stuff");
 		return ret;
@@ -484,8 +529,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+		return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
+		#else
 		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
-		kmsg = *msg;
+		#endif
+		/*kmsg = *msg;
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
 		kmsg.msg_iter.iov = &iov;
 		#else
@@ -499,9 +548,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		oldfs = get_fs();
 		set_fs(KERNEL_DS);
 		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, iov.iov_len, nonblock, flags, addr_len);
+		#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 		if (ret == -EIOCBQUEUED) {
 			ret = wait_on_sync_kiocb(iocb);
 		}
+		#endif
 		set_fs(oldfs);
 		if (ret > 0) {
 			if (copy_to_user(user_buffer, buffer, ret) != 0) {
@@ -509,7 +560,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			}
 		}
 		kfree(buffer);
-		return ret;
+		return ret;*/ // Old, remove?
 	}
 
 
@@ -553,7 +604,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		}
 		else {
 			stop_conn_state(conn_state);
+			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+			return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
+			#else
 			return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+			#endif
 		}
 	}
 
@@ -565,11 +620,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	// 3) Attempt to get more data from external sources
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-		kmsg = *msg;
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
-		kmsg.msg_iter.iov = &iov;
-		BUG_ON(kmsg.msg_iter.nr_segs > 1);
+		//kmsg.msg_iter.iov = &iov;
+		//BUG_ON(kmsg.msg_iter.nr_segs > 1);
 		#else
+		kmsg = *msg;
 		kmsg.msg_iov = &iov;
 		#endif
 		b_to_read = ops->bytes_to_read_recv(conn_state->state);
@@ -579,11 +634,15 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 		oldfs = get_fs();
 		set_fs(KERNEL_DS);
+		#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 		ret = ref_tcp_recvmsg(iocb, sk, &kmsg, iov.iov_len, nonblock, flags, addr_len);
-		//printk(KERN_ALERT "real ret is %d", ret);
 		if (ret == -EIOCBQUEUED) {
 			ret = wait_on_sync_kiocb(iocb);
 		}
+		#else
+		iov_iter_kvec(&kmsg.msg_iter, READ | ITER_KVEC, &iov, 1, iov.iov_len);
+		ret = ref_tcp_recvmsg(sk, &kmsg, iov.iov_len, nonblock, flags, addr_len);
+		#endif
 		set_fs(oldfs);
 		
 		// 4) if operation failed then just return what we've sent so far
@@ -616,7 +675,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// XXX Enum this	
 		if (ops->get_state(conn_state->state) == 2) {
 			//printk(KERN_ALERT "Gotta proxeh");
+			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
+			return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
+			#else
 			return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
+			#endif
 		}
 
 		// 6) If this was a nonblocking call and we still don't have any

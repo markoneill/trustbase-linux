@@ -90,7 +90,7 @@ void th_unregister_netlink() {
 	genl_unregister_family(&th_family);
 }
 
-int th_send_certificate_query(handler_state_t* state, char* hostname, char* certificate, size_t length) {
+int th_send_certificate_query(handler_state_t* state, char* hostname, unsigned char* certificate, size_t length) {
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
@@ -119,15 +119,21 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, char* cert
 	else {
 		port = ntohs((uint16_t)state->addr_v6.sin6_port);
 	}
-	rc = nla_put_u16(skb, TRUSTHUB_A_PORTNUMBER, port);
+	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
+	/*printk(KERN_ALERT "-3rd char of chain is %02x", certificate[-3] & 0xff);
+	printk(KERN_ALERT "-2nd char of chain is %02x", certificate[-2] & 0xff);
+	printk(KERN_ALERT "-1st char of chain is %02x", certificate[-1] & 0xff);
+	printk(KERN_ALERT "1st char of chain is %02x", certificate[0] & 0xff);
+	printk(KERN_ALERT "2nd char of chain is %02x", certificate[1] & 0xff);
+	printk(KERN_ALERT "3rd char of chain is %02x", certificate[2] & 0xff);*/
 	if (rc != 0) {
-		printk(KERN_ALERT "failed in nla_put (port number)");
+		printk(KERN_ALERT "failed in nla_put (chain)");
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
+	rc = nla_put_u16(skb, TRUSTHUB_A_PORTNUMBER, port);
 	if (rc != 0) {
-		printk(KERN_ALERT "failed in nla_put (chain)");
+		printk(KERN_ALERT "failed in nla_put (port number)");
 		nlmsg_free(skb);
 		return -1;
 	}
