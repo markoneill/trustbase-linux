@@ -4,6 +4,7 @@
 #include "interceptor/interceptor.h" // For registering/unregistering proxy functions
 #include "handshake-handler/communications.h" // For registering/unregistering netlink family
 #include "handshake-handler/handshake_handler.h" // For referencing proxy functions
+#include "util/kth_logging.h" // For logging
 
 // Kernel module parameters
 static char* th_path = "/usr/bin";
@@ -39,6 +40,11 @@ void stop_task(struct task_struct* task);
  * @return an error code
  */
 int __init loader_start(void) {
+	// Register the proc file
+	if (kthlog_init() != 0) {
+		printk(KERN_ALERT "Unable to allocate memory for the proc file");
+	}
+
 	// Set up IPC module-policyengine interaction
 	if (th_register_netlink() != 0) {
 		printk(KERN_ALERT "unable to register netlink family and ops");
@@ -93,6 +99,9 @@ void __exit loader_end(void) {
 	th_unregister_netlink();
 
 	stop_task(mitm_proxy_task);
+
+	// Remove the Proc File
+	kthlog_exit();
 	return;
 }
 

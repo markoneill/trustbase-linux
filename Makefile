@@ -4,6 +4,7 @@ trusthub_linux-objs := loader.o \
 		       handshake-handler/handshake_handler.o \
 		       handshake-handler/communications.o \
 		       util/utils.o \
+		       util/kth_logging.o
 
 test_interceptor-objs := interceptor/test/test_loader.o \
 		         interceptor/interceptor.o \
