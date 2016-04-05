@@ -497,7 +497,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 #endif
 	int ret;
 	mm_segment_t oldfs;
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 	struct kvec iov;
+	#else
+	struct iovec iov;
+	#endif
 	struct msghdr kmsg = {};
 	void* buffer;
 	struct socket* sock;
@@ -621,12 +625,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	// 3) Attempt to get more data from external sources
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
-		//kmsg.msg_iter.iov = &iov;
+		kmsg = *msg;
+		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
+		kmsg.msg_iov = &iov;
 		//BUG_ON(kmsg.msg_iter.nr_segs > 1);
 		#else
-		kmsg = *msg;
-		kmsg.msg_iov = &iov;
+		kmsg.msg_iter.iov = &iov;
 		#endif
 		b_to_read = ops->bytes_to_read_recv(conn_state->state);
 	        buffer = kmalloc(b_to_read, GFP_KERNEL);
