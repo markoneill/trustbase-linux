@@ -67,6 +67,7 @@ class danePlugin(TrustHubPlugin):
             return RESPONSE_INVALID
         if PKIX:
             #check PKIX validation
+            pass
         return RESPONSE_VALID
     
     def checkAnchor(self, chain, record):
