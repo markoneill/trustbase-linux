@@ -176,7 +176,7 @@ void* decider_thread_init(void* arg) {
 		while (query->num_responses < context.plugin_count) {
 			err = pthread_cond_timedwait(&query->threshold_met, &query->mutex, &time_to_wait);
 			if (err == ETIMEDOUT) {
-				fprintf(stderr, "A plugin timed out!\n");
+				thlog(LOG_DEBUG, "A plugin timed out!\n");
 				break;
 			}
 		}

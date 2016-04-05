@@ -3,6 +3,7 @@
 #include <signal.h>
 #include "netlink.h"
 #include "policy_engine.h"
+#include "th_logging.h"
 
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
@@ -25,29 +26,29 @@ int send_response(uint64_t stptr, int result) {
 	void* msg_head;
 	msg = nlmsg_alloc();
 	if (msg == NULL) {
-		printf("failed to allocate message buffer\n");
+		thlog(LOG_WARNING, "failed to allocate message buffer\n");
 		return -1;
 	}
 	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_RESPONSE, 1);
 	if (msg_head == NULL) {
-		printf("failed in genlmsg_put\n");
+		thlog(LOG_WARNING, "failed in genlmsg_put\n");
 		return -1;
 	}
 	rc = nla_put_u64(msg, TRUSTHUB_A_STATE_PTR, stptr);
 	if (rc != 0) {
-		printf("failed to insert state pointer\n");
+		thlog(LOG_WARNING, "failed to insert state pointer\n");
 		return -1;
 	}
 	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, result);
 	if (rc != 0) {
-		printf("failed to insert result\n");
+		thlog(LOG_WARNING, "failed to insert result\n");
 		return -1;
 	}
 	pthread_mutex_lock(&nl_sock_mutex);
 	rc = nl_send_auto(netlink_sock, msg);
 	pthread_mutex_unlock(&nl_sock_mutex);
 	if (rc < 0) {
-		printf("failed in nl send with error code %d\n", rc);
+		thlog(LOG_WARNING, "failed in nl send with error code %d\n", rc);
 		return -1;
 	}
 	return 0;	
@@ -78,6 +79,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
 		case TRUSTHUB_C_QUERY:
+			thlog(LOG_DEBUG, "Received a query from the Kernel");
 			/* Get message fields */
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
@@ -85,9 +87,6 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
 			//print_bytes(cert_chain, chain_length);
-
-			printf("first char of chain is %02x", cert_chain[0] & 0xff);
-			printf("port number is %hu and chain lenght is %d\n", port, chain_length);
 
 			/* Query registered schemes */
 			poll_schemes(stptr, hostname, port, cert_chain, chain_length);
@@ -98,7 +97,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			/* Receiving this will exit the listen_for_queries loop, as long as keep_running is set to 0 first */
 			break;
 		default:
-			printf("Got something unusual...\n");
+			thlog(LOG_DEBUG, "Got something unusual...\n");
 			break;
 	}
 	return 0;
@@ -121,27 +120,27 @@ int listen_for_queries(void) {
  	 (specifically Generic Netlink)
  	 */
 	if (genl_connect(netlink_sock) != 0) {
-		fprintf(stderr, "Failed to connect to Generic Netlink control\n");
+		thlog(LOG_ERROR, "Failed to connect to Generic Netlink control\n");
 		return -1;
 	}
 	
 	if ((family = genl_ctrl_resolve(netlink_sock, "TRUSTHUB")) < 0) {
-		fprintf(stderr, "Failed to resolve TRUSTHUB family identifier\n");
+		thlog(LOG_ERROR, "Failed to resolve TRUSTHUB family identifier\n");
 		return -1;
 	}
 
 	if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTHUB", "query")) < 0) {
-		fprintf(stderr, "Failed to resolve group identifier\n");
+		thlog(LOG_ERROR, "Failed to resolve group identifier\n");
 		return -1;
 	}
 
 	if (nl_socket_add_membership(netlink_sock, group) < 0) {
-		fprintf(stderr, "Failed to add membership to group\n");
+		thlog(LOG_ERROR, "Failed to add membership to group\n");
 		return -1;
 	}
 	
 	if (signal(SIGINT, int_handler) == SIG_ERR) {
-		fprintf(stderr, "Cannot listen for SIGINT\n");
+		thlog(LOG_ERROR, "Cannot listen for SIGINT\n");
 	}
 	keep_running = 1;
 	while (keep_running == 1) {
@@ -150,14 +149,14 @@ int listen_for_queries(void) {
 			break;
 		}
 	}
-	fprintf(stderr, "Closing TrustBase\n");
+	thlog(LOG_INFO, "Closing TrustBase\n");
 	nl_socket_free(netlink_sock);
 	return 0;
 }
 
 void int_handler(int signal) {
 	if (signal == SIGINT) {
-		fprintf(stderr, " Caught SIGINT\n");
+		thlog(LOG_DEBUG, " Caught SIGINT\n");
 		keep_running = 0;
 		// Wait for our netlink_message to break the loop
 	}
