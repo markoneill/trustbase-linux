@@ -18,6 +18,7 @@
 #include "handshake_handler.h"
 #include "communications.h"
 #include "../util/utils.h"
+#include "../util/kth_logging.h" // For logging
 #include "../interceptor/interceptor.h"
 #include "../loader.h"
 #include "../policy-engine/policy_response.h"
@@ -362,10 +363,10 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	tls_record_bytes = buf_state->bytes_to_read;
 	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
-	//printk(KERN_ALERT "Record length is %u", tls_record_bytes);
+	kthlog(LOG_DEBUG, "Reading handshake, Record length is %u", tls_record_bytes);
 	while (tls_record_bytes > 0) {
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
-		//printk(KERN_ALERT "Message length is %u", handshake_message_length);
+		kthlog(LOG_DEBUG, "Message length is %u", handshake_message_length);
 		tls_record_bytes -= handshake_message_length;
 		if (cs_buf[0] == TYPE_CLIENT_HELLO) {
 			//print_call_info("Sent a Client Hello");
@@ -379,7 +380,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			 cs_buf[0] == TYPE_CLIENT_KEY_EXCHANGE) {
 			// Should never get here (should already be uninterested
 			// or in client hello sent state
-			printk(KERN_ALERT "Received a certificate verify or client key exchange");
+			kthlog(LOG_DEBUG, "Received a certificate verify or client key exchange");
 			//BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
@@ -391,7 +392,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		else if (cs_buf[0] == TYPE_CERTIFICATE) { 
 			// XXX check to see if additional certificates are contained within this record
 			//printk(KERN_ALERT "addr: %pISpc", &state->addr_v4);
-			//print_call_info("Received a Certificate");
+			kthlog(LOG_DEBUG, "Received a Certificate");
 			new_bytes = handle_certificates(state, &cs_buf[1]); // Certificates start here
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
@@ -445,7 +446,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		}
 		else if (cs_buf[0] == TYPE_FINISHED) {
 			// Should never get here (should already be uninterested)
-			printk(KERN_ALERT "Finished message received");
+			kthlog(LOG_DEBUG, "Finished message received");
 			BUG_ON(1);
 		}
 		else {
@@ -453,8 +454,8 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->state = IRRELEVANT;
 			state->interest = UNINTERESTED;
 			buf_state->user_cur_max = buf_state->buf_length;
-			printk(KERN_ALERT "Someone sent a weird thing: %x", (unsigned int)cs_buf[0]);
-			printk(KERN_ALERT "It was from the %s buffer", buf_state == &state->recv_state ? "receive" : "send");
+			kthlog(LOG_DEBUG, "Someone sent a weird thing: %x", (unsigned int)cs_buf[0]);
+			kthlog(LOG_DEBUG, "It was from the %s buffer", buf_state == &state->recv_state ? "receive" : "send");
 			cs_buf += handshake_message_length;
 			tls_record_bytes = 0; // Out
 		}

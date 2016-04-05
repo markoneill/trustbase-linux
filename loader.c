@@ -148,7 +148,7 @@ int start_mitm_proxy(char* path) {
         };
         char* argv[10];
         snprintf(prog_path, 64, "%s/sslsplit/sslsplit", path);
-	printk(KERN_INFO "Starting SSLSplit at %s", prog_path);
+	kthlog(LOG_INFO, "Starting SSLSplit at %s", prog_path);
         snprintf(cert_path, 64, "%s/certs/ca.crt", path);
         snprintf(key_path, 64, "%s/certs/ca.key", path);
         argv[0] = prog_path;
