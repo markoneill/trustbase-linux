@@ -2,6 +2,7 @@
 #include <net/genetlink.h>
 #include <linux/semaphore.h>
 #include "handshake_handler.h"
+#include "../util/kth_logging.h" // For logging
 #include "communications.h"
 
 int th_response(struct sk_buff* skb, struct genl_info* info);
@@ -96,6 +97,7 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, unsigned c
 	void* msg_head;
 	uint16_t port;
 	skb = genlmsg_new(length, GFP_ATOMIC);
+	kthlog(LOG_DEBUG, "Trying to send a cert query");
 	if (skb == NULL) {
 		printk(KERN_ALERT "failed in genlmsg");
 		nlmsg_free(skb);

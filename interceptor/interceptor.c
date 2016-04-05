@@ -18,6 +18,7 @@
 #include <linux/netfilter_ipv4.h> // For nat_ops registration	
 #include <linux/delay.h>
 
+#include "../util/kth_logging.h" // For logging
 #include "../util/utils.h"
 #include "interceptor.h"
 #include "connection_state.h" // For accessing handler functions
@@ -261,7 +262,7 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 		//	&((struct sockaddr_in*)uaddr)->sin_addr,
 		//	ntohs(((struct sockaddr_in*)uaddr)->sin_port));
 	}
-	//printk(KERN_INFO "TCP over IPv4 connection detected");
+	kthlog(LOG_DEBUG, "TCP over IPv4 connection detected");
 	//print_call_info("TCP IPv4 connect");
 	start_conn_state(current->pid, current->tgid, uaddr, 0, addr_len, sock);
 	return ret;
@@ -279,7 +280,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
-	//printk(KERN_INFO "TCP over IPv6 connection detected");
+	kthlog(LOG_DEBUG, "TCP over IPv6 connection detected");
 	//print_call_info(sock, "TCP IPv6 connect");
 	if (start_conn_state(current->pid, current->tgid, uaddr, 1, addr_len, sock)) {
 	}

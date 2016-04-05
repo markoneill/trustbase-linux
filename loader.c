@@ -70,13 +70,13 @@ int __init loader_start(void) {
 		.get_mitm_sock = th_get_mitm_sock,
 	};
 	
-	printk(KERN_INFO "Looking for TrustHub binaries in %s", th_path);
+	kthlog(LOG_DEBUG, "Looking for TrustHub binaries in %s", th_path);
 	start_mitm_proxy(th_path);
 	nat_ops_register();
 	proxy_register(&trusthub_ops);
 	start_policy_engine(th_path);
-	printk(KERN_INFO "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
-	printk(KERN_INFO "Policy Engine started (PID: %d)(GID: )", policy_engine_task->pid);
+	kthlog(LOG_DEBUG, "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
+	kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: )", policy_engine_task->pid);
 
 	return 0;
 }
