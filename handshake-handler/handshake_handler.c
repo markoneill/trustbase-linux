@@ -369,7 +369,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		kthlog(LOG_DEBUG, "Message length is %u", handshake_message_length);
 		tls_record_bytes -= handshake_message_length;
 		if (cs_buf[0] == TYPE_CLIENT_HELLO) {
-			//print_call_info("Sent a Client Hello");
+			kthlog(LOG_DEBUG, "Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
 			set_state_hostname(state, cs_buf+1, handshake_message_length); // Plus one to ignore protocol type
@@ -384,7 +384,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			//BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
-			//print_call_info("Received a Server Hello");
+			kthlog(LOG_DEBUG, "Received a Server Hello");
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			cs_buf += handshake_message_length;
@@ -426,7 +426,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			buf_state->user_cur_max = buf_state->buf_length;
-			//print_call_info("Server Key Exchange Received");
+			kthlog(LOG_DEBUG, "Received a Server Key Exchange");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO_DONE) {	
@@ -434,11 +434,12 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->state = SERVER_HELLO_DONE_SENT;
 			buf_state->user_cur_max = buf_state->buf_length;
 			state->interest = UNINTERESTED;
-			//printk(KERN_ALERT "Server Hello Done Received");
+			kthlog(LOG_DEBUG, "Received a Server Hello Done Exchange");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_HELLO_REQUEST || 
 			 cs_buf[0] == TYPE_CERTIFICATE_REQUEST) {
+			kthlog(LOG_DEBUG, "Read a Hello Request or Certificate request");
 			cs_buf += handshake_message_length;
 			buf_state->user_cur_max = buf_state->buf_length;
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
