@@ -2,11 +2,13 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/string.h>
+#include <linux/slab.h>
 #include "kth_logging.h"
 
 /* FIFO linked list, to store log entries */
 typedef struct log_msg_t {
 	char* message;
+	thlog_level_t level;
 	struct log_msg_t* next;
 	char sent;
 }log_msg_t;
@@ -14,22 +16,20 @@ typedef struct log_msg_t {
 static log_msg_t* log_head;
 static log_msg_t* log_tail;
 
-static void log_new(char* message);
+static int log_new(thlog_level_t level, char* msg);
 static void log_remove(log_msg_t* entry);
 
 /* Proc File with Sequence File for communication */
-static struct proc_dir_entry* kthlog_file;
-
 static void * kth_seq_start(struct seq_file *m, loff_t *pos);
 static int kth_seq_show(struct seq_file *m, void *v);
 static void * kth_seq_next(struct seq_file *m, void *v, loff_t *pos);
 static void kth_seq_stop(struct seq_file *m, void *v);
 
 static struct seq_operations kth_seq_ops = {
-	.start = kth_seq_start;
-	.show = kth_seq_show;
-	.next = kth_seq_next;
-	.stop = kth_seq_stop;
+	.start = kth_seq_start,
+	.show = kth_seq_show,
+	.next = kth_seq_next,
+	.stop = kth_seq_stop,
 }; 
 
 static int kthlog_open(struct inode *inode, struct file *file);
@@ -39,7 +39,7 @@ static const struct file_operations kth_file_ops = {
 	.open = kthlog_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = single_release,
+	.release = seq_release,
 };
 
 // Tells the proc file how to handle being opened
@@ -54,10 +54,7 @@ int kthlog_init() {
 	log_tail = NULL;
 
 
-	entry = create_proc_entry(KTHLOG_FILENAME, 0, NULL);
-	if (entry) {
-		entry->proc_fops = &kth_file_ops;
-	}
+	entry = proc_create(KTHLOG_FILENAME, 0440, NULL, &kth_file_ops);
 	return 0;
 }
 
@@ -65,10 +62,25 @@ void kthlog_exit() {
 	remove_proc_entry(KTHLOG_FILENAME, NULL);
 }
 
-int log_new(const char* msg) {
+void kthlog(thlog_level_t level, const char* fmt, ...) {
+	va_list args;
+	char* log_message;
+	
+	log_message = (char*)kmalloc(1024, GFP_KERNEL);
+	
+	va_start(args, fmt);
+	vsnprintf(log_message, 1024, fmt, args);
+	va_end(args);
+	
+	log_new(level, log_message);
+	
+	return;
+}
+
+int log_new(thlog_level_t level, char* msg) {
 	log_msg_t* entry;
 	// Allocate new entry
-	entry = (log_msg_t*)malloc(sizeof(*entry));
+	entry = (log_msg_t*)kmalloc(sizeof(*entry), GFP_KERNEL);
 	if (entry == NULL) {
 		// Ran out of memory
 		return -1;
@@ -83,6 +95,7 @@ int log_new(const char* msg) {
 	entry->next = NULL;
 	entry->message = msg;
 	entry->sent = 0;
+	entry->level = level;
 	log_tail = entry;
 	return 0;
 }
@@ -92,12 +105,12 @@ void log_remove(log_msg_t* entry) {
 	// Set new head as next
 	log_head = entry->next;
 	if (log_head == NULL) {
-		log_tail == NULL;
+		log_tail = NULL;
 	}
 	// Free the message string
-	free(entry->message);
+	kfree(entry->message);
 	// Free the entry
-	free(entry);
+	kfree(entry);
 }
 
 void * kth_seq_start(struct seq_file *m, loff_t *pos) {
@@ -105,13 +118,35 @@ void * kth_seq_start(struct seq_file *m, loff_t *pos) {
 }
 int kth_seq_show(struct seq_file *m, void *v) {
 	log_msg_t* entry;
+	char* level;
+	if (v == NULL) {
+		return 0;
+	}
 	entry = (log_msg_t*)v;
-	seq_printf(m, "%s\n", entry->message);
+	switch (entry->level) {
+	case LOG_DEBUG:
+		level = "KDBG";
+		break;
+	case LOG_INFO:
+		level = "KINF";
+		break;
+	case LOG_WARNING:
+		level = "KWRN";
+		break;
+	case LOG_ERROR:
+		level = "KERR";
+		break;
+	default:
+		level = "KDBG";
+	}
+	seq_printf(m, "%s: %s\n", level, entry->message);
 	entry->sent = 1;
 	return 0;
 }
 void * kth_seq_next(struct seq_file *m, void *v, loff_t *pos) {
 	log_msg_t* entry;
+	// Inc the offset, just because
+	(*pos)++;
 	entry = (log_msg_t*)v;
 	return entry->next;
 }

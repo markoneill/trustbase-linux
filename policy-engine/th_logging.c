@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <time.h>
 #include "th_logging.h"
 
@@ -13,12 +14,10 @@
     #define my_vsnprintf vsnprintf
 #endif
 
-const char *log_name = NULL;
 FILE *log_file = NULL;
 thlog_level_t minimum_level = LOG_WARNING;
 
 int thlog_init(const char *log_file_name, thlog_level_t min_level) {
-	// TESTING
 	// Write log
 	log_file = fopen(log_file_name, "a");
 	if (log_file == NULL) {
@@ -64,6 +63,9 @@ int thlog(thlog_level_t level, const char* format, ... ) {
 	case LOG_ERROR:
 		strncat(extended_format, " :ERR: ", 7);
 		break;
+	case LOG_NONE:
+		strncat(extended_format, " :", 2);
+		break;
 	}
 	strncat(extended_format, format, strlen(format));
 	strncat(extended_format, "\n", 1);
@@ -82,6 +84,34 @@ void thlog_close() {
 	}
 
 	fclose(log_file);
+}
+
+void* read_kthlog(void* arg) {
+	while (1) {
+		sleep(2);
+		FILE * fp;
+		char * line = NULL;
+		size_t len = 0;
+		ssize_t read;
+		fp = fopen("/proc/trusthub_klog", "r");
+		if (fp == NULL) {
+			thlog(LOG_ERROR, "Failed to open kernel log");
+			return NULL;
+		}
+	
+		while ((read = getline(&line, &len, fp)) != -1) {
+			// replace newline
+			line[strlen(line)-1] = '\0';
+			thlog(LOG_NONE, line);
+		}
+		
+		fclose(fp);
+		
+		if (line) {
+			free(line);
+		}
+	}
+	return NULL;
 }
 
 /*int main(int argc, char** argv) {

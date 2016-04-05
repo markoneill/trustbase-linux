@@ -51,6 +51,7 @@ int poll_schemes(uint64_t stptr, char* hostname, uint16_t port, unsigned char* c
 
 int main(int argc, char* argv[]) {
 	int i;
+	pthread_t logging_thread;
 	pthread_t decider_thread;
 	pthread_t* plugin_threads;
 	thread_param_t decider_thread_params;
@@ -58,9 +59,9 @@ int main(int argc, char* argv[]) {
 	
 	keep_running = 1;
 	
-	// Start Logging
-	thlog_init("/tmp/policy_engine_log.txt", LOG_DEBUG);
-	thlog(LOG_DEBUG, "Testing");
+	/* Start Logging */
+	thlog_init("/var/log/trusthub.log", LOG_DEBUG);
+	pthread_create(&logging_thread, NULL, read_kthlog, NULL);
 	
 	load_config(&context, argv[1]);
 	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
@@ -104,6 +105,7 @@ int main(int argc, char* argv[]) {
 	close_addons(context.addons, context.addon_count);
 	free(plugin_thread_params);
 	free(plugin_threads);
+	pthread_kill(logging_thread, SIGTERM);
 	thlog_close();
 	return 0;
 }
