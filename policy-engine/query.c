@@ -6,6 +6,7 @@
 #include "plugin_response.h"
 #include "reverse_dns.h"
 #include "query.h"
+#include "th_logging.h"
 
 #define MAX_LENGTH	1024
 #define CERT_LENGTH_FIELD_SIZE	3
@@ -23,14 +24,14 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	//printf("Creating query for host %s\n", hostname);
 	query = (query_t*)malloc(sizeof(query_t));
 	if (query == NULL) {
-		fprintf(stderr, "Could not create query\n");
+		thlog(LOG_WARNING, "Could not create query\n");
 		return NULL;
 	}
 	query->num_plugins = num_plugins;
 
 	query->responses = (int*)malloc(sizeof(int) * num_plugins);
 	if (query->responses == NULL) {
-		fprintf(stderr, "Could not create response array for query\n");
+		thlog(LOG_WARNING, "Could not create response array for query\n");
 		free(query);
 		return NULL;
 	}
@@ -41,13 +42,13 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 	query->num_responses = 0;
 	
 	if (pthread_mutex_init(&query->mutex, NULL) != 0) {
-		fprintf(stderr, "Failed to create mutex for query\n");
+		thlog(LOG_WARNING, "Failed to create mutex for query\n");
 		free(query->responses);
 		free(query);
 		return NULL;
 	}
 	if (pthread_cond_init(&query->threshold_met, NULL) != 0) {
-		fprintf(stderr, "Failed to create condvar for query\n");
+		thlog(LOG_WARNING, "Failed to create condvar for query\n");
 		pthread_mutex_destroy(&query->mutex);
 		free(query->responses);
 		free(query);

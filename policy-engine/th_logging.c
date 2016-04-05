@@ -50,6 +50,7 @@ int thlog(thlog_level_t level, const char* format, ... ) {
 	current_time = time(NULL);
 	extended_format = (char*)malloc(strlen(format) + 25 + 7 + 1 + 1);
 	memcpy(extended_format, asctime(gmtime(&current_time)), 24);
+	extended_format[24] = '\0';
 	switch (level) {
 	case LOG_DEBUG:
 		strncat(extended_format, " :DBG: ", 7);

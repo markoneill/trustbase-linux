@@ -67,7 +67,7 @@ int main(int argc, char* argv[]) {
 	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
-	printf("Congress Threshold is %2.1lf\n", context.congress_threshold);
+	thlog(LOG_DEBUG, "Congress Threshold is %2.1lf\n", context.congress_threshold);
 	print_plugins(context.plugins, context.plugin_count);
 
 	/* Decider thread (runs CA system and aggregates plugin verdicts */
@@ -198,7 +198,7 @@ int async_callback(int plugin_id, int query_id, int result) {
 
 	query = list_get(context.timeout_list, query_id);
 	if (query == NULL) {
-		fprintf(stderr, "Plugin %d timed out on query %d but sent data anyway\n", plugin_id, query_id);
+		thlog(LOG_INFO, "Plugin %d timed out on query %d but sent data anyway\n", plugin_id, query_id);
 		return 0; /* let plugin know this result timed out */
 	}
 	query->responses[plugin_id] = result;
@@ -226,7 +226,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 				/* We don't need to count necessary plugins' responses.
  				 * If any of them don't say yes we just say no immediately */
 				if (query->responses[i] != PLUGIN_RESPONSE_VALID) {
-					printf("Policy Engine reporting BAD cert for %s\n", query->hostname);
+					thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->hostname);
 					return POLICY_RESPONSE_INVALID;
 				}
 				break;
@@ -238,7 +238,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 				break;
 			case AGGREGATION_NONE:
 			default:
-				fprintf(stderr, "A plugin without an aggregation setting is running\n");
+				thlog(LOG_WARNING, "A plugin without an aggregation setting is running\n");
 				break;
 		}
 	}
@@ -246,16 +246,16 @@ int aggregate_responses(query_t* query, int ca_system_response) {
  	 * found were valid, otherwise we'd have returned already.  Therefore the decision
  	 * is in the hands of the congress plugins */
 	if (congress_total && (congress_approved_count / congress_total) < context.congress_threshold) {
-		printf("Policy Engine reporting BAD cert for %s\n", query->hostname);
+		thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->hostname);
 		return POLICY_RESPONSE_INVALID;
 	}
 
 	/* At this point we know the certificates are valid, but what we send back depends on
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
-		printf("Policy Engine reporting good cert for %s but it needs to be proxied\n", query->hostname);
+		thlog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied\n", query->hostname);
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
-	printf("Policy Engine reporting good cert for %s\n", query->hostname);
+	thlog(LOG_INFO, "Policy Engine reporting good cert for %s\n", query->hostname);
 	return POLICY_RESPONSE_VALID;
 }
