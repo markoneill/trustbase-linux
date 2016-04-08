@@ -155,3 +155,4 @@ void kth_seq_stop(struct seq_file *m, void *v) {
 		log_remove(log_head);
 	}
 }
+

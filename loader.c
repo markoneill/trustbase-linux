@@ -47,7 +47,7 @@ int __init loader_start(void) {
 
 	// Set up IPC module-policyengine interaction
 	if (th_register_netlink() != 0) {
-		printk(KERN_ALERT "unable to register netlink family and ops");
+		kthlog(LOG_ERROR, "Unable to register generic netlink family and ops for Trusthub");
 		return -1;
 	}
 
@@ -76,7 +76,7 @@ int __init loader_start(void) {
 	proxy_register(&trusthub_ops);
 	start_policy_engine(th_path);
 	kthlog(LOG_DEBUG, "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
-	kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: )", policy_engine_task->pid);
+	kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
 
 	return 0;
 }
@@ -129,7 +129,7 @@ int start_policy_engine(char* path) {
         };
         char* argv[3];
         snprintf(prog_path, 64, "%s/policy_engine", path);
-	printk(KERN_INFO "Starting policy engine at %s", prog_path);
+	kthlog(LOG_INFO, "Starting policy engine at %s", prog_path);
         argv[0] = prog_path;
         argv[1] = path;
 	argv[2] = NULL;

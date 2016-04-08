@@ -107,7 +107,7 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	ops = reg_ops;
 
 	// Save all references to original TCP functionality and override them with wrappers
-	printk(KERN_INFO "address of tcp_prot is %p", &tcp_prot);
+	kthlog(LOG_INFO, "address of tcp_prot is %p", &tcp_prot);
 	ref_tcp_v4_connect = (void *)tcp_prot.connect;
 	ref_tcp_disconnect = (void *)tcp_prot.disconnect;
 	ref_tcp_close = (void *)tcp_prot.close;
@@ -121,10 +121,10 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	tcp_prot.recvmsg = new_tcp_recvmsg;
 	tcp_prot.accept = new_inet_csk_accept;
 	if ((tcpv6_prot_ptr = (void *)kallsyms_lookup_name("tcpv6_prot")) == 0) {
-		printk(KERN_ALERT "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
+		kthlog(LOG_WARNING, "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
 	}
 	else {
-		printk(KERN_INFO "tcpv6_prot lookup succeeded, address is %p", tcpv6_prot_ptr);
+		kthlog(LOG_INFO, "tcpv6_prot lookup succeeded, address is %p", tcpv6_prot_ptr);
 		ref_tcp_v6_connect = (void *)tcpv6_prot_ptr->connect;
 		tcpv6_prot_ptr->connect = new_tcp_v6_connect;
 		tcpv6_prot_ptr->disconnect = new_tcp_disconnect;
@@ -168,7 +168,7 @@ int nat_ops_register(void) {
 	INIT_LIST_HEAD(&proxy_accept_list.list);
 	err = nf_register_sockopt(&nat_ops);
 	if (err != 0) {
-		printk(KERN_ALERT "Failed to register new sock opts with kernel");
+		kthlog(LOG_ERROR, "Failed to register new sock opts with kernel, locally proxied connections will fail");
 	}
 	nat_ops_registered = 1;
 	return 0;
@@ -304,7 +304,6 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 int new_tcp_disconnect(struct sock *sk, int flags) {
 	int ret;
 	ret = ref_tcp_disconnect(sk, flags);
-	//printk(KERN_INFO "TCP disconnect detected");
 	return ret;
 }
 
@@ -379,20 +378,13 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		#else
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 		#endif
-		/*oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		iov.iov_len = size;
-		iov.iov_base = new_data;
-		real_ret = ref_tcp_sendmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, size);
-		set_fs(oldfs);
-		return real_ret;*/ // Old stuff... remove?
 	}
 
 	// 0) If last send attempt was an error, don't copy or update state
 	if (conn_state->queued_send_ret > 0) {
 		// 1) Copy data from user to our connection state buffer
 		if (ops->give_to_handler_send(conn_state->state, new_data, size) != 0) {
-			printk(KERN_ALERT "failed to copy data to handler");
+			kthlog(LOG_ERROR, "Traffic interceptor failed to copy to send state");
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
@@ -404,7 +396,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		}
 		// 2) Update handler's state now that it has new data
 		if (ops->update_send_state(conn_state->state) != 0) {
-			printk(KERN_ALERT "failed to update state");
+			kthlog(LOG_ERROR, "Handler failed to update send state");
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
@@ -438,8 +430,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// 4) Forward what handler told us to forward, if anything
 	if (iov.iov_len <= 0) { //should never really be negative
 		if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
-			//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
-	stop_conn_state(conn_state); 
+			stop_conn_state(conn_state); 
 	        }
 		// Tell the user we sent everything he wanted
 		return size;
@@ -460,7 +451,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		ops->inc_send_bytes_forwarded(conn_state->state, real_ret);
 	}
 	if (real_ret != iov.iov_len) {
-		printk(KERN_ALERT "Kernel couldn't send everything we wanted to");
+		kthlog(LOG_WARNING, "Traffic interceptor couldn't forward all the bytes desired to destination");
 		if (msg->msg_flags & MSG_DONTWAIT) { // nonblocking IO
 			// This forces a resend (dont need to delete here because we're
 			// still interested in socket, clearly)
@@ -529,8 +520,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		#else
 		ret = ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 		#endif
-		//printk(KERN_INFO " A connection was found to not be tracked, and was ignored");
-		//print_call_info("this stuff");
 		return ret;
 	}
 
@@ -547,35 +536,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		#else
 		return ref_tcp_recvmsg(iocb, sk, msg, len, nonblock, flags, addr_len);
 		#endif
-		/*kmsg = *msg;
-		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0)
-		kmsg.msg_iter.iov = &iov;
-		#else
-		kmsg.msg_iov = &iov;
-		#endif
-		b_to_read = ops->bytes_to_read_recv(conn_state->state);
-	        buffer = kmalloc(b_to_read, GFP_KERNEL);
-		iov.iov_len = b_to_read;
-		iov.iov_base = buffer;
-
-		oldfs = get_fs();
-		set_fs(KERNEL_DS);
-		ret = ref_tcp_recvmsg(iocb, ops->get_mitm_sock(conn_state->state), &kmsg, iov.iov_len, nonblock, flags, addr_len);
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
-		if (ret == -EIOCBQUEUED) {
-			ret = wait_on_sync_kiocb(iocb);
-		}
-		#endif
-		set_fs(oldfs);
-		if (ret > 0) {
-			if (copy_to_user(user_buffer, buffer, ret) != 0) {
-				printk(KERN_ALERT "Copy to user failed in proxy");
-			}
-		}
-		kfree(buffer);
-		return ret;*/ // Old, remove?
 	}
-
 
 	bytes_sent = 0;
 	// 1) Place into user's buffer any data already marked for fowarding
@@ -584,15 +545,13 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if (b_to_forward > 0) {
 		bytes_to_copy = b_to_forward > len ? len : b_to_forward;
 		if (ops->copy_to_user(conn_state->state, user_buffer, bytes_to_copy) != 0) {
-			printk(KERN_ALERT "failed to copy what we wanted to");
+			kthlog(LOG_ERROR, "Traffic interceptor copy_to_user() failed");
 			// XXX how do we fail here?
 		}
 		bytes_sent += bytes_to_copy;
 		ops->inc_recv_bytes_forwarded(conn_state->state, bytes_sent);
 	}
 
-	//if (bytes_sent)
-		//printk(KERN_ALERT "I sent the user %d cached bytes", bytes_sent);
 	// 2) If we've already given the user everything he wants, end
 	if (bytes_sent == len) {
 		return len;
@@ -673,18 +632,17 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 		// 5) If operation succeeded then copy to state and update state
 		if (ops->give_to_handler_recv(conn_state->state, buffer, ret) != 0) {
-			printk(KERN_ALERT "failed to copy to recv state");
+			kthlog(LOG_ERROR, "Traffic interceptor failed to copy to recv state");
 			// XXX how do we fail here?
 		}
 		kfree(buffer);
 		if (ops->update_recv_state(conn_state->state) != 0) {
-			printk(KERN_ALERT "failed to update recv state");
+			kthlog(LOG_ERROR, "Handler failed to update recv state");
 			// XXX how do we fail here?
 		}
 
 		// XXX Enum this	
 		if (ops->get_state(conn_state->state) == 2) {
-			//printk(KERN_ALERT "Gotta proxeh");
 			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 			return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 			#else
@@ -695,7 +653,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-			//printk(KERN_ALERT "returning at nonb with %d", bytes_sent);
 			return bytes_sent > 0 ? bytes_sent : -EAGAIN;
 		}
 
@@ -707,12 +664,11 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->state);
 	bytes_to_copy = b_to_forward > len - bytes_sent ? len - bytes_sent : b_to_forward;
 	if (ops->copy_to_user(conn_state->state, user_buffer + bytes_sent, bytes_to_copy) != 0) {
-		printk(KERN_ALERT "failed to copy what we wanted to");
+		kthlog(LOG_ERROR, "Traffic interceptor copy_to_user() failed");
 		// XXX how do we fail here?
 	}
 	ops->inc_recv_bytes_forwarded(conn_state->state, bytes_to_copy);
 	bytes_sent += bytes_to_copy;
-	//printk(KERN_ALERT "returning at end with %d", bytes_sent);
 	return bytes_sent;
 
 }
@@ -741,7 +697,7 @@ int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		if (tmp->src_port == src_port) {
-			//printk(KERN_INFO "Found data in list");
+			kthlog(LOG_INFO, "Identified original destination info for local proxy");
 			if (tmp->addr.sa_family == AF_INET) {
 				*len = sizeof(struct sockaddr_in);
 				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in));
