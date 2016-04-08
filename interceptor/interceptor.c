@@ -193,7 +193,15 @@ int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6
 	if (nat_ops_registered != 1) {
 		return 1;
 	}
-	tmp = (proxy_accept_list_t*)kmalloc(GFP_KERNEL, sizeof(proxy_accept_list_t));
+	if (addr == NULL) {
+		kthlog(LOG_ERROR, "addr in proxy original destination info is NULL");
+		return 1;
+	}
+	tmp = (proxy_accept_list_t*)kmalloc(sizeof(proxy_accept_list_t), GFP_KERNEL);
+	if (tmp == NULL) {
+		kthlog(LOG_ERROR, "Failed to allocate space for proxy original destination info");
+		return 1;
+	}
 	if (is_ipv6) {
 		tmp->addr_v6 = *(struct sockaddr_in6*)addr;
 	}
@@ -625,12 +633,9 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	// 3) Attempt to get more data from external sources
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-		kmsg = *msg;
 		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
+		kmsg = *msg;
 		kmsg.msg_iov = &iov;
-		//BUG_ON(kmsg.msg_iter.nr_segs > 1);
-		#else
-		kmsg.msg_iter.iov = &iov;
 		#endif
 		b_to_read = ops->bytes_to_read_recv(conn_state->state);
 	        buffer = kmalloc(b_to_read, GFP_KERNEL);
@@ -732,7 +737,7 @@ int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
 	}
 
 	src_port = inet_sk(sk)->inet_dport;
-	//printk(KERN_INFO "Accepted socket Source Port is %d", ntohs(src_port));
+	kthlog(LOG_DEBUG, "Accepted socket Source Port is %d", ntohs(src_port));
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		if (tmp->src_port == src_port) {

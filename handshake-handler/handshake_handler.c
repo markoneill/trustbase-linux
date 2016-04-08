@@ -455,7 +455,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->state = IRRELEVANT;
 			state->interest = UNINTERESTED;
 			buf_state->user_cur_max = buf_state->buf_length;
-			kthlog(LOG_DEBUG, "Someone sent a weird thing: %x", (unsigned int)cs_buf[0]);
+			kthlog(LOG_DEBUG, "Someone sent a weird thing: %x", (unsigned int)cs_buf[0] & 0xFF);
 			kthlog(LOG_DEBUG, "It was from the %s buffer", buf_state == &state->recv_state ? "receive" : "send");
 			cs_buf += handshake_message_length;
 			tls_record_bytes = 0; // Out
@@ -705,48 +705,24 @@ void setup_ssl_proxy(handler_state_t* state) {
 		.sin_addr.s_addr = htonl(INADDR_ANY), // 127.0.0.1
 	};
 	
-	printTime("---Before disconnect");
-	printStatus(state->orig_sock->sk);
 	ref_tcp_disconnect(state->orig_sock->sk, 0);
-	printTime("---After disconnect");
-	printStatus(state->orig_sock->sk);
 
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
 	//printk(KERN_INFO "Source Port before reconnect is %d", ntohs(src_port));
 	source_addr.sin_port = src_port;
 	kernel_bind(state->orig_sock, (struct sockaddr*)&source_addr, sizeof(source_addr));
-	add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6);
+	if (add_to_proxy_accept_list(src_port, (struct sockaddr*)&state->addr_v4, state->is_ipv6)) {
+		kthlog(LOG_ERROR, "Cannot send data to local proxy, error occured");
+		return;
+	}
 	tp = tcp_sk(state->orig_sock->sk);
-	printTime("---Before reconnect");
-	printStatus(state->orig_sock->sk);
 	lock_sock(state->orig_sock->sk);
 	error = ref_tcp_v4_connect(state->orig_sock->sk, (struct sockaddr*)&proxy_addr, sizeof(struct sockaddr));
 	release_sock(state->orig_sock->sk);
-	//printk(KERN_ALERT "reconnect returned %d", error);
-	printTime("---After reconnect");
-	printStatus(state->orig_sock->sk);
 	src_port = inet_sk(state->orig_sock->sk)->inet_sport;
-	//printk(KERN_INFO "Source Port after reconnect is %d", ntohs(src_port));
 
-	/*if (state->is_ipv6 == 1) {
-		//send_proxy_meta_data(&state->addr_v6, state->hostname);
-		send_proxy_meta_data(state->orig_sock,
-			(struct sockaddr*)&state->addr_v6, state->is_ipv6, state->hostname,
-			state->orig_leaf_cert, state->orig_leaf_cert_len);
-	}
-	else {
-		send_proxy_meta_data(state->orig_sock,
-			(struct sockaddr*)&state->addr_v4, state->is_ipv6, state->hostname,
-			state->orig_leaf_cert, state->orig_leaf_cert_len);
-	}*/
-	//printk(KERN_INFO "Sending cloned Client Hello (and anything else sent by client)");
-	printTime("Before client hello");
-	printStatus(state->orig_sock->sk);
+	kthlog(LOG_DEBUG, "Sending cloned Client Hello (and anything else sent by client)");
 	error = kernel_tcp_send_buffer(state->orig_sock, state->send_state.buf, state->send_state.buf_length);
-	printTime("After client hello");
-	printStatus(state->orig_sock->sk);
-
-	//printk(KERN_ALERT "%d", error);
 	return;
 }
 
@@ -806,29 +782,19 @@ void setup_ssl_proxy(handler_state_t* state) {
 
 */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
-int __our_sock_sendmsg_nosec(struct socket *sock, struct msghdr *msg, size_t size) {
-#else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 int __our_sock_sendmsg_nosec(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t size) {
-#endif
 	int ret;
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 	struct sock_iocb *si = kiocb_to_siocb(iocb);
 	si->sock = sock;
 	si->scm = NULL;
 	si->msg = msg;
 	si->size = size;
-	#endif
-	#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
-	ret = sock->ops->sendmsg(sock, msg, size);
-	#else
 	ret = sock->ops->sendmsg(iocb, sock, msg, size);
-	#endif
 	return ret;
 }
 
 int our_sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size) {
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 	struct kiocb iocb;
 	struct sock_iocb siocb;
 	int ret;
@@ -838,10 +804,8 @@ int our_sock_sendmsg(struct socket *sock, struct msghdr *msg, size_t size) {
 	if (-EIOCBQUEUED == ret)
 		ret = wait_on_sync_kiocb(&iocb);
 	return ret;
-	#else
-	return  __our_sock_sendmsg_nosec(sock, msg, size);
-	#endif
 }
+
 
 int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t length) {
 	struct msghdr	msg;
@@ -873,6 +837,24 @@ int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t
 	//printk(KERN_ALERT "len is %d", len);
 	return len;
 }
+
+#else
+
+int kernel_tcp_send_buffer(struct socket *sock, const char *buffer, const size_t length) {
+	int ret;
+	struct kvec vec;
+	//struct msghdr msg = { .msg_flags = MSG_NOSIGNAL | MSG_FASTOPEN };
+	struct msghdr msg = { .msg_flags =  0 };
+	vec.iov_base = (void *)buffer;
+	vec.iov_len = length;
+	//ret = kernel_sendmsg(sock, &msg, &vec, 1, length);
+	iov_iter_kvec(&msg.msg_iter, WRITE | ITER_KVEC, &vec, 1, length);
+	ret = sock->ops->sendmsg(sock, &msg, msg_data_left(&msg));
+	kthlog(LOG_DEBUG, "Successfully sent proxy %d bytes", ret);
+	return ret;
+}
+
+#endif
 
 struct sock* th_get_mitm_sock(void* state) {
 	handler_state_t* s = (handler_state_t*)state;
