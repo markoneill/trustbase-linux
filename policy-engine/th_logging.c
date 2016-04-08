@@ -103,6 +103,29 @@ void* read_kthlog(void* arg) {
 		while ((read = getline(&line, &len, fp)) != -1) {
 			// replace newline
 			line[strlen(line)-1] = '\0';
+			// Read to know what type it is
+			// Hackish way
+			switch (minimum_level) {
+			case LOG_DEBUG:
+				break;
+			case LOG_INFO:
+				if (line[2] == 'D') {
+					continue;
+				}
+				break;
+			case LOG_WARNING:
+				if (line[2] == 'D' || line[2] == 'I') {
+					continue;
+				}
+				break;
+			case LOG_ERROR:
+				if (line[2] == 'D' || line[2] == 'I' || line[2] == 'W') {
+					continue;
+				}
+				break;
+			case LOG_NONE:
+				break;
+			}
 			thlog(LOG_NONE, line);
 		}
 		
