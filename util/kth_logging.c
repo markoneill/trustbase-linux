@@ -1,9 +1,14 @@
 #include <linux/kernel.h>
+#include <linux/sched.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/string.h>
 #include <linux/slab.h>
 #include "kth_logging.h"
+
+// Magic Numbers
+#define PROCESS_INFO_LENGTH	64
+#define MAX_LOG_LENGTH		1024
 
 /* FIFO linked list, to store log entries */
 typedef struct log_msg_t {
@@ -24,6 +29,8 @@ static void * kth_seq_start(struct seq_file *m, loff_t *pos);
 static int kth_seq_show(struct seq_file *m, void *v);
 static void * kth_seq_next(struct seq_file *m, void *v, loff_t *pos);
 static void kth_seq_stop(struct seq_file *m, void *v);
+
+static void get_call_info(char* info);
 
 static struct seq_operations kth_seq_ops = {
 	.start = kth_seq_start,
@@ -65,12 +72,20 @@ void kthlog_exit() {
 void kthlog(thlog_level_t level, const char* fmt, ...) {
 	va_list args;
 	char* log_message;
-	
-	log_message = (char*)kmalloc(1024, GFP_KERNEL);
-	
-	va_start(args, fmt);
-	vsnprintf(log_message, 1024, fmt, args);
-	va_end(args);
+
+	if (level == LOG_PROCESS) {	
+		log_message = (char*)kmalloc(MAX_LOG_LENGTH, GFP_KERNEL);
+		get_call_info(log_message);
+		va_start(args, fmt);
+		vsnprintf(log_message + strlen(log_message), MAX_LOG_LENGTH - PROCESS_INFO_LENGTH, fmt, args);
+		va_end(args);
+	} else {
+		log_message = (char*)kmalloc(MAX_LOG_LENGTH, GFP_KERNEL);
+		
+		va_start(args, fmt);
+		vsnprintf(log_message, MAX_LOG_LENGTH, fmt, args);
+		va_end(args);
+	}
 	
 	log_new(level, log_message);
 	
@@ -125,6 +140,7 @@ int kth_seq_show(struct seq_file *m, void *v) {
 	entry = (log_msg_t*)v;
 	switch (entry->level) {
 	case LOG_DEBUG:
+	case LOG_PROCESS:
 		level = "KDBG";
 		break;
 	case LOG_INFO:
@@ -154,4 +170,10 @@ void kth_seq_stop(struct seq_file *m, void *v) {
 	while(log_head != NULL && log_head->sent == 1) {
 		log_remove(log_head);
 	}
+}
+
+void get_call_info(char* info) {
+	struct task_struct* tgptr;
+	tgptr = pid_task(find_vpid(current->tgid), PIDTYPE_PID);
+	snprintf(info, PROCESS_INFO_LENGTH, "%s (PID: %i)(TGID: %i): ", tgptr->comm, current->pid, current->tgid);
 }

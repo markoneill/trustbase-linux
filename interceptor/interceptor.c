@@ -19,7 +19,6 @@
 #include <linux/delay.h>
 
 #include "../util/kth_logging.h" // For logging
-#include "../util/utils.h"
 #include "interceptor.h"
 #include "connection_state.h" // For accessing handler functions
 

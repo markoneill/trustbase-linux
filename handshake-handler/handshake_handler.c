@@ -17,8 +17,8 @@
 
 #include "handshake_handler.h"
 #include "communications.h"
-#include "../util/utils.h"
 #include "../util/kth_logging.h" // For logging
+#include "../util/utils.h"
 #include "../interceptor/interceptor.h"
 #include "../loader.h"
 #include "../policy-engine/policy_response.h"
