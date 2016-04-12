@@ -591,9 +591,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	// 3) Attempt to get more data from external sources
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
 		kmsg = *msg;
+		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
 		kmsg.msg_iov = &iov;
+		#endif
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
+		kmsg.msg_iter.iov = &iov;
 		#endif
 		b_to_read = ops->bytes_to_read_recv(conn_state->state);
 	        buffer = kmalloc(b_to_read, GFP_KERNEL);
@@ -602,6 +605,9 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 		oldfs = get_fs();
 		set_fs(KERNEL_DS);
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 19, 0) && LINUX_VERSION_CODE < KERNEL_VERSION(4, 0, 0)
+		iov_iter_init(&kmsg.msg_iter, READ, &iov, 1, iov.iov_len);
+		#endif
 		#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 1, 0)
 		ret = ref_tcp_recvmsg(iocb, sk, &kmsg, iov.iov_len, nonblock, flags, addr_len);
 		if (ret == -EIOCBQUEUED) {
