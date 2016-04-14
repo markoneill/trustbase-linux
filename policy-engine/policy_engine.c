@@ -32,12 +32,12 @@ static volatile int keep_running;
 typedef struct { unsigned char b[3]; } be24, le24;
 
 
-int poll_schemes(uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
+int poll_schemes(uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
 	static int id = 0;
 	int i;
 	query_t* query;
 	/* Validation */
-	query = create_query(context.plugin_count, id++, stptr, hostname, port, cert_data, len);
+	query = create_query(context.plugin_count, id++, spid, stptr, hostname, port, cert_data, len);
 	list_add(context.timeout_list, query);
 	enqueue(context.decider_queue, query);
 	for (i = 0; i < context.plugin_count; i++) {
@@ -188,7 +188,7 @@ void* decider_thread_init(void* arg) {
 		//printf("All plugins have submitted an answer\n");
 		final_response = aggregate_responses(query, ca_system_response);
 		free_query(query);
-		send_response(query->state_pointer, final_response);
+		send_response(query->spid, query->state_pointer, final_response);
 	}
 	return NULL;
 }

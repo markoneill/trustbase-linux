@@ -20,7 +20,7 @@ static volatile int keep_running;
 
 void int_handler(int signal);
 
-int send_response(uint64_t stptr, int result) {
+int send_response(uint32_t spid, uint64_t stptr, int result) {
 	int rc;
 	struct nl_msg* msg;
 	void* msg_head;
@@ -45,6 +45,7 @@ int send_response(uint64_t stptr, int result) {
 		return -1;
 	}
 	pthread_mutex_lock(&nl_sock_mutex);
+	nl_socket_set_peer_port(netlink_sock, spid);
 	rc = nl_send_auto(netlink_sock, msg);
 	pthread_mutex_unlock(&nl_sock_mutex);
 	if (rc < 0) {
@@ -79,7 +80,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
 		case TRUSTHUB_C_QUERY:
-			thlog(LOG_DEBUG, "Received a query from the Kernel");
+			thlog(LOG_DEBUG, "Received a query from PID %u", nlh->nlmsg_pid);
+			thlog(LOG_DEBUG, "Policy engine PID is %u", nl_socket_get_local_port(netlink_sock));
 			/* Get message fields */
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
@@ -89,7 +91,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			//print_bytes(cert_chain, chain_length);
 
 			/* Query registered schemes */
-			poll_schemes(stptr, hostname, port, cert_chain, chain_length);
+			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length);
 			// XXX I *think* the message is freed by whatever function calls this one
 			// within libnl.  Verify this.
 			break;
@@ -106,6 +108,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 int listen_for_queries(void) {
 	int group;
 	netlink_sock = nl_socket_alloc();
+	nl_socket_set_local_port(netlink_sock, 100);
+	thlog(LOG_DEBUG, "policy engine has PID %u", nl_socket_get_local_port(netlink_sock));
 	if (pthread_mutex_init(&nl_sock_mutex, NULL) != 0) {
 		fprintf(stderr, "Failed to create mutex for netlink\n");
 		return -1;
@@ -139,6 +143,7 @@ int listen_for_queries(void) {
 		return -1;
 	}
 	
+
 	if (signal(SIGINT, int_handler) == SIG_ERR) {
 		thlog(LOG_ERROR, "Cannot listen for SIGINT\n");
 	}

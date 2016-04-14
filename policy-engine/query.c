@@ -16,7 +16,7 @@ static unsigned int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
 void print_certificate(X509* cert);
 
-query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
+query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
 	char* hostname_resolved[1];
 	int hostname_len;
 	int i;
@@ -28,6 +28,7 @@ query_t* create_query(int num_plugins, int id, uint64_t stptr, char* hostname, u
 		return NULL;
 	}
 	query->num_plugins = num_plugins;
+	query->spid = spid;
 
 	query->responses = (int*)malloc(sizeof(int) * num_plugins);
 	if (query->responses == NULL) {
@@ -142,22 +143,22 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	STACK_OF(X509)* chain;
 
 
-	printf("1st char of chain is %02x\n", data[0] & 0xff);
-	printf("2nd char of chain is %02x\n", data[1] & 0xff);
-	printf("3rd char of chain is %02x\n", data[2] & 0xff);
+	//printf("1st char of chain is %02x\n", data[0] & 0xff);
+	//printf("2nd char of chain is %02x\n", data[1] & 0xff);
+	//printf("3rd char of chain is %02x\n", data[2] & 0xff);
 
 	chain = sk_X509_new_null();
 	while ((current_pos - start_pos) < len) {
-		printf("%02x%02x%02x", current_pos[0], current_pos[1], current_pos[2]);
+		//printf("%02x%02x%02x", current_pos[0], current_pos[1], current_pos[2]);
 		cert_len = ntoh24(current_pos);
 		current_pos += CERT_LENGTH_FIELD_SIZE;
-		printf("The next cert to parse is %d bytes\n", cert_len);
+		//printf("The next cert to parse is %d bytes\n", cert_len);
 		cert_ptr = current_pos;
 		cert = d2i_X509(NULL, &cert_ptr, cert_len);
 		if (!cert) {
-			fprintf(stderr,"unable to parse certificate\n");
+			thlog(LOG_ERROR,"unable to parse certificate\n");
 		}
-		//print_certificate(cert);
+		print_certificate(cert);
 		
 		sk_X509_push(chain, cert);
 		current_pos += cert_len;
@@ -186,7 +187,7 @@ void print_certificate(X509* cert) {
 	char issuer[MAX_LENGTH+1];
 	X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
 	X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-	printf("subject: %s\n", subj);
-	printf("issuer: %s\n", issuer);
+	thlog(LOG_DEBUG, "subject: %s", subj);
+	thlog(LOG_DEBUG, "issuer: %s", issuer);
 }
 
