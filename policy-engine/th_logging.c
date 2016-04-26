@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <time.h>
+#include <openssl/x509.h>
 #include "th_logging.h"
 
 /* Useful trick for windows */
@@ -78,6 +79,17 @@ int thlog(thlog_level_t level, const char* format, ... ) {
 	va_end(args);
 	return 0;
 } 
+
+int thlog_cert(X509* cert) {
+	static const int MAX_LENGTH = 1024;
+	char subj[MAX_LENGTH+1];
+	char issuer[MAX_LENGTH+1];
+	X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
+	X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
+	thlog(LOG_DEBUG, "subject: %s", subj);
+	thlog(LOG_DEBUG, "issuer: %s", issuer);
+	return 0;
+}
 
 void thlog_close() {	
 	if (log_file == NULL) {

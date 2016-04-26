@@ -60,6 +60,10 @@ WHITELIST_PLUGIN_SRC = policy-engine/plugins/whitelist_plugin/whitelist.c
 WHITELIST_PLUGIN_OBJ = $(WHITELIST_PLUGIN_SRC:%.c=%.o)
 WHITELIST_PLUGIN_SO = policy-engine/plugins/whitelist_plugin/whitelist.so
 
+CERT_PIN_PLUGIN_SRC = policy-engine/plugins/cert_pinning/certificate_pinning.c
+CERT_PIN_PLUGIN_OBJ = $(CERT_PIN_PLUGIN_SRC:%.c=%.o)
+CERT_PIN_PLUGIN_SO = policy-engine/plugins/cert_pinning/certificate_pinning.so
+
 SIMPLE_SERVER_SRC = userspace_tests/simple_server.c
 SIMPLE_SERVER_OBJ = $(SIMPLE_SERVER_SRC:%.c=%.o)
 SIMPLE_SERVER_EXE = simple_server
@@ -72,7 +76,7 @@ CERT_TEST_SRC = userspace_tests/cert_sandbox.c
 CERT_TEST_OBJ = $(CERT_TEST_SRC:%.c=%.o)
 CERT_TEST_EXE = cert_test
 
-all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO)
+all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 $(POLICY_ENGINE_EXE) : $(POLICY_ENGINE_OBJ)
@@ -95,6 +99,9 @@ $(OPENSSL_TEST_PLUGIN_SO) : $(OPENSSL_TEST_PLUGIN_OBJ)
 
 $(WHITELIST_PLUGIN_SO) : $(WHITELIST_PLUGIN_OBJ)
 	$(CC) -shared $^ -o $@
+
+$(CERT_PIN_PLUGIN_SO) : $(CERT_PIN_PLUGIN_OBJ)
+	$(CC) -shared -lsqlite3 $^ -o $@
 
 $(SIMPLE_SERVER_EXE) : $(SIMPLE_SERVER_OBJ)
 	$(CC) $(CCFLAGS) $^ -o $@ $(LIBS)

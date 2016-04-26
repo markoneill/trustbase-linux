@@ -14,7 +14,6 @@
 static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
 static unsigned int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
-void print_certificate(X509* cert);
 
 query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
 	char* hostname_resolved[1];
@@ -91,7 +90,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->port = port;
 
 	query->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
-	if (query->hostname == NULL) {
+	if (query->raw_chain == NULL) {
 		fprintf(stderr, "Failed to allocate cert chain for query\n");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
@@ -158,7 +157,7 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 		if (!cert) {
 			thlog(LOG_ERROR,"unable to parse certificate\n");
 		}
-		print_certificate(cert);
+		//thlog_cert(cert);
 		
 		sk_X509_push(chain, cert);
 		current_pos += cert_len;
@@ -182,12 +181,4 @@ unsigned int ntoh24(const unsigned char* data) {
 }*/
 
 
-void print_certificate(X509* cert) {
-	char subj[MAX_LENGTH+1];
-	char issuer[MAX_LENGTH+1];
-	X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
-	X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-	thlog(LOG_DEBUG, "subject: %s", subj);
-	thlog(LOG_DEBUG, "issuer: %s", issuer);
-}
 

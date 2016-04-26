@@ -221,6 +221,9 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	congress_approved_count = 0;
 	congress_total = 0;
 	for (i = 0; i < context.plugin_count; i++) {
+		if (query->responses[i] == PLUGIN_RESPONSE_ERROR) {
+			thlog(LOG_INFO, "Plugin %s had an error", context.plugins[i].name);
+		}
 		switch (context.plugins[i].aggregation) {
 			case AGGREGATION_NECESSARY:
 				/* We don't need to count necessary plugins' responses.
