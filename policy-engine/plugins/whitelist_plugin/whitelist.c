@@ -9,12 +9,13 @@
 #include <dirent.h>
 #include <libgen.h>
 #include "../../trusthub_plugin.h"
+#include "../../th_logging.h"
 
 
 #define MAX_LENGTH	1024
-#define CRS_DEBUG	0
 
-char* plugin_path; // This will be set by trusthub
+int (*plog)(thlog_level_t level, const char* format, ...);
+char* plugin_path;
 
 int initialize(init_data_t* idata);
 int query(query_data_t* data);
@@ -23,10 +24,12 @@ static int compare_fingerprint(unsigned char *fp1, int fp1len, unsigned char *fp
 static STACK_OF(X509)* get_whitelist();
 
 static int pem_append(char* filename, STACK_OF(X509)* chain);
-//static void print_certificate(X509* cert);
 
 int initialize(init_data_t* idata) {
 	plugin_path = idata->plugin_path;
+	plog = idata->thlog;
+	plog(LOG_DEBUG, "Whitelist initilized");
+	return 0;
 }
 
 int query(query_data_t* data) {
@@ -50,18 +53,12 @@ int query(query_data_t* data) {
 	digest = (EVP_MD*)EVP_sha1();
 	fingerprint_len = sizeof(fingerprint);
 	if (!get_cert_fingerprint(cert, digest, fingerprint, &fingerprint_len)) {
-		if (CRS_DEBUG >= 1) {	
-			printf("Could not get the fingerprint of the leaf certificate\n");
-		}
 		return PLUGIN_RESPONSE_ERROR;
 	}
 	
 	/* Compare fingerprint to the whitelist */
 	whitelist = get_whitelist();
 	if (!whitelist) {
-		if (CRS_DEBUG >= 1) {
-			printf("Could not get the whitelist\n");	
-		}
 		return PLUGIN_RESPONSE_ERROR;
 	}
 	
@@ -71,25 +68,17 @@ int query(query_data_t* data) {
 		cert = sk_X509_value(whitelist, i);
 		white_fingerprint_len = sizeof(white_fingerprint);
 		if (!get_cert_fingerprint(cert, digest, white_fingerprint, &white_fingerprint_len)) {
-			if (CRS_DEBUG >= 1) {	
-				printf("Could not get the fingerprint of the whitelist certificate #%d\n", i);
-			}
+			// Couldn't get a fingerprint
 			sk_X509_pop_free(whitelist, X509_free);
 			return PLUGIN_RESPONSE_ERROR;
 		}
 		if (compare_fingerprint(fingerprint, fingerprint_len, white_fingerprint, white_fingerprint_len)) {
-			if (CRS_DEBUG >= 1) {	
-				printf("Found a whitelisted certificate #%d\n", i);
-			}
+			// We found a good certificate
 			sk_X509_pop_free(whitelist, X509_free);
 			return PLUGIN_RESPONSE_VALID;
-		} else {
 		}
 	}
 		
-	if (CRS_DEBUG >= 1) {	
-		printf("Could not find a whitelisted certificate\n");
-	}
 	sk_X509_pop_free(whitelist, X509_free);
 	return PLUGIN_RESPONSE_INVALID;
 }
@@ -115,7 +104,7 @@ static STACK_OF(X509)* get_whitelist() {
 	char* whitelist_dir;
 	char* filename;
 
-	whitelist_dir = (char*)malloc(strlen(plugin_path + 11);
+	whitelist_dir = (char*)malloc(strlen(plugin_path) + 11);
 	whitelist_dir = dirname(plugin_path);
 	strcat(whitelist_dir,"/whitelist");
 
@@ -127,17 +116,12 @@ static STACK_OF(X509)* get_whitelist() {
 				filename = (char*)malloc(sizeof(whitelist_dir) + sizeof(ent->d_name));
 				sprintf(filename, "%s/%s", whitelist_dir, ent->d_name);
 				if (!pem_append(filename, whitelist)) {
-					if (CRS_DEBUG >= 1) {
-						printf("Error adding %s\n", filename);
-					}
+					// Could not add the file
 				}
 				free(filename);
 			}
 		}
 		closedir(dir);
-	}
-	if (CRS_DEBUG >= 1) {
-		printf("Whitelist size = %d certificates\n", sk_X509_num(whitelist));
 	}
 	free(whitelist_dir);
 	return whitelist;
@@ -163,12 +147,3 @@ static int pem_append(char* filename, STACK_OF(X509)* chain) {
 
 	return 1;
 }
-
-/*static void print_certificate(X509* cert) {
-        char subj[MAX_LENGTH+1];
-        char issuer[MAX_LENGTH+1];
-        X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
-        X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-        printf("subject: %s\n", subj);
-        printf("issuer : %s\n", issuer);
-}*/

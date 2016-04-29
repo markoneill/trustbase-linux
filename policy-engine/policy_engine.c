@@ -128,20 +128,21 @@ void* plugin_thread_init(void* arg) {
 	if (plugin->generic_init_func != NULL) {
 		idata = (init_data_t*)malloc(sizeof(init_data_t));
 		if (idata == NULL) {
-			thlog(LOG_DEBUG, "Unable to acllocate memory");
+			thlog(LOG_WARNING, "Unable to acllocate memory");
 		}
 		idata->plugin_id = plugin_id;
 		idata->plugin_path = plugin->path;
 		idata->thlog = thlog;
 		idata->callback = (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) ? NULL : async_callback;
-		thlog(LOG_DEBUG, "Before the init, we have path:%s",idata->plugin_path);
 		plugin->init(idata);
 	}
+	thlog(LOG_DEBUG, "Plugin %s ready", plugin->name);
 	while (keep_running == 1) {
 		//printf("Dequeuing query\n");
 		query = dequeue(queue);
 		//printf("Query dequeued\n");
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
+			thlog(LOG_DEBUG, "Querying synch plugin %s", plugin->name);
 			result = query_plugin(plugin, plugin_id, query);
 			query->responses[plugin_id] = result;
 			pthread_mutex_lock(&query->mutex);
@@ -153,6 +154,7 @@ void* plugin_thread_init(void* arg) {
 			pthread_mutex_unlock(&query->mutex);
 		}
 		else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
+			thlog(LOG_DEBUG, "Querying asynch plugin %s", plugin->name);
 			query_plugin(plugin, plugin_id, query);
 		}
 	}
@@ -207,7 +209,7 @@ int async_callback(int plugin_id, int query_id, int result) {
 
 	query = list_get(context.timeout_list, query_id);
 	if (query == NULL) {
-		thlog(LOG_INFO, "Plugin %d timed out on query %d but sent data anyway\n", plugin_id, query_id);
+		thlog(LOG_INFO, "Plugin %d timed out on query %d but sent data anyway", plugin_id, query_id);
 		return 0; /* let plugin know this result timed out */
 	}
 	query->responses[plugin_id] = result;
@@ -230,15 +232,21 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	congress_approved_count = 0;
 	congress_total = 0;
 	for (i = 0; i < context.plugin_count; i++) {
-		if (query->responses[i] == PLUGIN_RESPONSE_ERROR) {
-			thlog(LOG_INFO, "Plugin %s had an error", context.plugins[i].name);
+		if (query->responses[i] == PLUGIN_RESPONSE_VALID) {
+			thlog(LOG_INFO, "Plugin %s returned valid", context.plugins[i].name);
+		} else if (query->responses[i] == PLUGIN_RESPONSE_ERROR) {
+			thlog(LOG_INFO, "Plugin %s returned with an error", context.plugins[i].name);
+		} else if (query->responses[i] == PLUGIN_RESPONSE_INVALID) {
+			thlog(LOG_INFO, "Plugin %s returned invalid", context.plugins[i].name);
+		} else if (query->responses[i] == PLUGIN_RESPONSE_ABSTAIN) {
+			thlog(LOG_INFO, "Plugin %s abstained", context.plugins[i].name);
 		}
 		switch (context.plugins[i].aggregation) {
 			case AGGREGATION_NECESSARY:
 				/* We don't need to count necessary plugins' responses.
  				 * If any of them don't say yes we just say no immediately */
 				if (query->responses[i] != PLUGIN_RESPONSE_VALID) {
-					thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->data->hostname);
+					thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s", query->data->hostname);
 					return POLICY_RESPONSE_INVALID;
 				}
 				break;
@@ -250,7 +258,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 				break;
 			case AGGREGATION_NONE:
 			default:
-				thlog(LOG_WARNING, "A plugin without an aggregation setting is running\n");
+				thlog(LOG_WARNING, "A plugin without an aggregation setting is running");
 				break;
 		}
 	}
@@ -258,16 +266,16 @@ int aggregate_responses(query_t* query, int ca_system_response) {
  	 * found were valid, otherwise we'd have returned already.  Therefore the decision
  	 * is in the hands of the congress plugins */
 	if (congress_total && (congress_approved_count / congress_total) < context.congress_threshold) {
-		thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->data->hostname);
+		thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s", query->data->hostname);
 		return POLICY_RESPONSE_INVALID;
 	}
 
 	/* At this point we know the certificates are valid, but what we send back depends on
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
-		thlog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied\n", query->data->hostname);
+		thlog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied", query->data->hostname);
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
-	thlog(LOG_INFO, "Policy Engine reporting good cert for %s\n", query->data->hostname);
+	thlog(LOG_INFO, "Policy Engine reporting good cert for %s", query->data->hostname);
 	return POLICY_RESPONSE_VALID;
 }

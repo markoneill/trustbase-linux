@@ -44,7 +44,6 @@ class TrustHubPlugin(object):
         return self.initialize()
     
     def _query(self, host, port, cert_chain, query_id):
-        print "Python plugin id", self.plugin_ID, "\nQuery id", query_id
         return_value = self.query(host, port, cert_chain)
         if self.async:
             self.cb_func(return_value, self.plugin_ID, query_id)
@@ -64,7 +63,6 @@ def convert_tls_certificates_to_x509_list(cert_chain):
     while chain_length:
         # get the length of next cert and decrement chain_length accordingly
         cert_len = get_cert_length_from_bytes(cert_chain)
-        print "Cert len is", cert_len
         cert_chain = cert_chain[length_field_size:]
         chain_length -= length_field_size
 
