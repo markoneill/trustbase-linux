@@ -1,4 +1,5 @@
 #include <Python.h>
+#include "../trusthub_plugin.h"
 #include "python_plugins.h"
 
 PyObject **plugin_functions;
@@ -301,7 +302,7 @@ static int init_plugin(PyObject* pFunc, int id, int is_async) {
  * @param cert_chain A character representation of the certificate chain
  * @param length The length of cert_chain
  */
-int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_chain, size_t length) {
+int query_plugin(int id, query_data_t* data) {
 	int result;
 	int set_arg;
 	PyObject* pFunc;
@@ -312,12 +313,12 @@ int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_ch
 		return -1;
 	}
 
-	if (host == NULL) {
+	if (data->hostname == NULL) {
 		fprintf(stderr, "host cannot be NULL\n");
 		return -1;
 	}
 
-	if (cert_chain == NULL) {
+	if (data->raw_chain == NULL) {
 		fprintf(stderr, "cert_chain cannot be NULL\n");
 		return -1;
 	}
@@ -333,7 +334,7 @@ int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_ch
 		return -1;
 	}
 	// set host argument
-	pValue = PyString_FromString(host);
+	pValue = PyString_FromString(data->hostname);
 	if(pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
@@ -354,7 +355,7 @@ int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_ch
 	}
 
 	// set port argument
-	pValue = PyInt_FromLong((long) port);
+	pValue = PyInt_FromLong((long) data->port);
 	if (pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
@@ -375,12 +376,12 @@ int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_ch
 	}
 
 	// set cert chain argument
-	pValue = PyByteArray_FromStringAndSize((const char*)cert_chain, length);
+	pValue = PyByteArray_FromStringAndSize((const char*)data->raw_chain, data->raw_chain_len);
 	if (pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
 		}
-		fprintf(stderr, "Failed to parse cert_chain argument\n");
+		fprintf(stderr, "Failed to parse cert chain argument\n");
 		Py_DECREF(pArgs);
 		return -1;
 	}
@@ -390,7 +391,7 @@ int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_ch
 		if (PyErr_Occurred()) {
 			PyErr_Print();
 		}
-		fprintf(stderr, "Failed to set cert_chain argument in tuple\n");
+		fprintf(stderr, "Failed to set cert chain argument in tuple\n");
 		Py_DECREF(pArgs);
 		return -1;
 	}
@@ -424,7 +425,7 @@ int query_plugin(int id, char *host, uint16_t port, const unsigned char *cert_ch
  * @param cert_chain A character representation of the certificate chain
  * @param length The length of cert_chain
  */
-int query_plugin_async(int id, int query_id, char *host, uint16_t port, const unsigned char *cert_chain, size_t length) {
+int query_plugin_async(int id, query_data_t* data) {
 	int result;
 	int set_arg;
 	PyObject* pFunc;
@@ -435,12 +436,12 @@ int query_plugin_async(int id, int query_id, char *host, uint16_t port, const un
 		return -1;
 	}
 
-	if (host == NULL) {
+	if (data->hostname == NULL) {
 		fprintf(stderr, "host cannot be NULL\n");
 		return -1;
 	}
 
-	if (cert_chain == NULL) {
+	if (data->raw_chain == NULL) {
 		fprintf(stderr, "cert_chain cannot be NULL\n");
 		return -1;
 	}
@@ -456,7 +457,7 @@ int query_plugin_async(int id, int query_id, char *host, uint16_t port, const un
 		return -1;
 	}
 	// set host argument
-	pValue = PyString_FromString(host);
+	pValue = PyString_FromString(data->hostname);
 	if(pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
@@ -477,7 +478,7 @@ int query_plugin_async(int id, int query_id, char *host, uint16_t port, const un
 	}
 
 	// set port argument
-	pValue = PyInt_FromLong((long) port);
+	pValue = PyInt_FromLong((long) data->port);
 	if (pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
@@ -498,7 +499,7 @@ int query_plugin_async(int id, int query_id, char *host, uint16_t port, const un
 	}
 
 	// set cert chain argument
-	pValue = PyByteArray_FromStringAndSize((const char*)cert_chain, length);
+	pValue = PyByteArray_FromStringAndSize((const char*)data->raw_chain, data->raw_chain_len);
 	if (pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
@@ -519,12 +520,12 @@ int query_plugin_async(int id, int query_id, char *host, uint16_t port, const un
 	}
 	
 	// set query_id
-	pValue = PyInt_FromLong((long) query_id);
+	pValue = PyInt_FromLong((long) data->id);
 	if(pValue == NULL) {
 		if (PyErr_Occurred()) {
 			PyErr_Print();
 		}
-		fprintf(stderr, "Failed to parse query_id argument\n");
+		fprintf(stderr, "Failed to parse query id argument\n");
 		Py_DECREF(pArgs);
 		return 1;
 	}
@@ -533,7 +534,7 @@ int query_plugin_async(int id, int query_id, char *host, uint16_t port, const un
 		if (PyErr_Occurred()) {
 			PyErr_Print();
 		}
-		fprintf(stderr, "Failed to set query_id argument in tuple\n");
+		fprintf(stderr, "Failed to set query id argument in tuple\n");
 		Py_DECREF(pArgs);
 		return 1;
 	} 

@@ -6,6 +6,7 @@
 #include "query_queue.h"
 #include "query.h"
 #include "addons.h"
+#include "trusthub_plugin.h"
 
 enum {
 	PLUGIN_HANDLER_TYPE_UNKNOWN,
@@ -40,23 +41,17 @@ typedef struct plugin_t {
 	union {
 		/* used as a generic identifier for all these union members */
 		int (*generic_query_func)(void);
-		/* used for native plugins using OpenSSL */
-		int (*query_sync_openssl)(const char*, uint16_t, STACK_OF(X509)*);
-		int (*query_async_openssl)(int, const char*, uint16_t, STACK_OF(X509)*);
-		/* used for native plugins needing raw DER certificates */
-		int (*query_sync_raw)(const char*, uint16_t, const unsigned char*, size_t);
-		int (*query_async_raw)(int, const char*, uint16_t, const unsigned char*, size_t);
+		/* used for native plugins using OpenSSL or using raw DER certificates */
+		int (*query)(query_data_t*);
 		/* used by plugins handled by addons */
-		int (*query_sync_by_addon)(int, const char*, uint16_t, const unsigned char*, size_t);
-		int (*query_async_by_addon)(int, int, const char*, uint16_t, const unsigned char*, size_t);
+		int (*query_by_addon)(int, query_data_t*);
 	};
 	union {
 		/* used as a generic identifier for all these union members */
 		int (*generic_init_func)(void);
 		/* used for synchronous plugins that want an init stage (optional) */
-		int (*init_sync)(int);
+		int (*init)(init_data_t*);
 		/* used for asynchronous plugins that want an init stage (optional) */
-		int (*init_async)(int, int(*callback)(int, int, int));
 	};
 	/* used for plugins that want a finalize stage (optional) */
 	int (*finalize)(void);
@@ -69,7 +64,6 @@ void print_plugins(plugin_t* plugins, size_t plugin_count);
 void close_plugins(plugin_t* plugins, size_t plugin_count);
 int load_plugin_functions(plugin_t* plugin);
 void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t plugin_count);
-int query_sync_plugin(plugin_t* plugin, int id, query_t* query);
-int query_async_plugin(plugin_t* plugin, int id, query_t* query);
+int query_plugin(plugin_t* plugin, int id, query_t* query);
 
 #endif

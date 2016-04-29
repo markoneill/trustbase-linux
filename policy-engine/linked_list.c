@@ -102,7 +102,7 @@ query_t* list_remove(list_t* list, int id) {
 	while (current != NULL) {
 		tmp = current;
 		current = current->next;
-		if (tmp->query->id == id) {
+		if (tmp->query->data->id == id) {
 			pthread_mutex_unlock(&list->mutex);
 			return list_node_remove(list, tmp);
 		}
@@ -130,7 +130,7 @@ query_t* list_get(list_t* list, int id) {
 	while (current != NULL) {
 		tmp = current;
 		current = current->next;
-		if (tmp->query->id == id) {
+		if (tmp->query->data->id == id) {
 			pthread_mutex_unlock(&list->mutex);
 			return tmp->query;
 		}

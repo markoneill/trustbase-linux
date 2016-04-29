@@ -7,27 +7,29 @@
 #include <fnmatch.h>
 #include <openssl/evp.h>
 #include <dirent.h>
-#include "../../plugin_response.h"
+#include <libgen.h>
+#include "../../trusthub_plugin.h"
 
 
 #define MAX_LENGTH	1024
-#define WHITELIST_DIR	"./policy-engine/plugins/whitelist_plugin/whitelist/"
+#define CRS_DEBUG	0
 
-#define CRS_DEBUG	1
+char* plugin_path; // This will be set by trusthub
 
-int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs);
+int initialize(init_data_t* idata);
+int query(query_data_t* data);
 static unsigned int get_cert_fingerprint(X509* cert, EVP_MD* digest, unsigned char* fingerprint, unsigned int* fingerprint_len);
 static int compare_fingerprint(unsigned char *fp1, int fp1len, unsigned char *fp2, int fp2len);
 static STACK_OF(X509)* get_whitelist();
 
-static int verify_alternate_hostname(const char* hostname, X509* cert);
-static int verify_hostname(const char* hostname, X509* cert);
-static int cmp_names(const char* hostname, char* cn);
-
 static int pem_append(char* filename, STACK_OF(X509)* chain);
 //static void print_certificate(X509* cert);
 
-int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs) {
+int initialize(init_data_t* idata) {
+	plugin_path = idata->plugin_path;
+}
+
+int query(query_data_t* data) {
 	X509* cert;
 	STACK_OF(X509)* whitelist;
 	EVP_MD* digest;
@@ -38,18 +40,8 @@ int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs) {
 	unsigned int white_fingerprint_len;
 
 	/* Only check the leaf certificate */
-	cert = sk_X509_value(certs, 0);
+	cert = sk_X509_value(data->chain, 0);
 	//print_certificate(cert);
-	
-	/* Check the hostname ? */	
-	if (verify_hostname(hostname, cert) < 1) {
-		if (verify_alternate_hostname(hostname, cert) < 1) {
-			if (CRS_DEBUG >= 1) {	
-				printf("The hostname was found invalid\n");
-			}
-			return PLUGIN_RESPONSE_INVALID;
-		}
-	}
 	
 	/* Get the fingerprint for the leaf cert */
 
@@ -116,156 +108,24 @@ static int compare_fingerprint(unsigned char *fp1, int fp1len, unsigned char *fp
 	return ( (fp1len == fp2len) && !memcmp(fp1, fp2, fp1len));
 }
 
-/** This function checks the alternative hostnames in the certificate
- *
- */
-static int verify_alternate_hostname(const char* hostname, X509* cert) {
-	int result;
-	int i;
-	STACK_OF(GENERAL_NAME)* alt_names;
-	const GENERAL_NAME* current_alt_name;
-	char* cn;
-	
-	result = 0;
-
-	alt_names = X509_get_ext_d2i((X509 *) cert, NID_subject_alt_name, NULL, NULL);
-	if (alt_names == NULL) {
-		return 0;
-		if (CRS_DEBUG >= 1) {	
-			printf("No alternative hostnames found.\n");
-		}
-	}
-	
-	for (i=0; i<sk_GENERAL_NAME_num(alt_names); i++) {
-		current_alt_name = sk_GENERAL_NAME_value(alt_names, i);
-		
-		if (current_alt_name->type == GEN_DNS) {
-			cn = (char *) ASN1_STRING_data(current_alt_name->d.dNSName);
-			
-			/* check for null characters */
-			if (ASN1_STRING_length(current_alt_name->d.dNSName) != strlen(cn)) {
-				if (CRS_DEBUG >= 1) {
-					printf("Malformed Certificate\n");
-				}
-				continue;
-			}
-			
-			if (cmp_names(hostname, cn) > 0) {
-				result = 1;
-			}
-		}
-	}
-	sk_GENERAL_NAME_pop_free(alt_names, GENERAL_NAME_free);
-	return result;
-}
-
-/** This function tests a hostname against all CNs in the cert
- *
- */
-static int verify_hostname(const char* hostname, X509* cert) {
-	X509_NAME *subj;
-	int lastpos;
-	X509_NAME_ENTRY* entry;
-	ASN1_STRING* data;
-	char* cn;
-	int result;
-	
-	/* Get the Common Name from the certificate */
-		
-	subj = X509_get_subject_name(cert);
-	result = 0;
-	
-	lastpos = -1;
-	for (;;) {
-		lastpos = X509_NAME_get_index_by_NID(subj, NID_commonName, lastpos);
-		if (lastpos == -1) {
-			break;
-		}
-		entry = X509_NAME_get_entry(subj, lastpos);
-		data = X509_NAME_ENTRY_get_data(entry);
-		cn = (char*)ASN1_STRING_data(data);
-		
-		/* check for null characters */
-		if (ASN1_STRING_length(data) != strlen(cn)) {
-			if (CRS_DEBUG >= 1) {
-				printf("Malformed Certificate\n");
-			}
-			continue;
-		}
-
-		if (cmp_names(hostname, cn) > 0) {
-			result = 1;
-		}
-	}
-	
-	
-	return result;
-}
-
-/** This does the actual string manipulation and comparison for hostnames
- *
- */
-static int cmp_names(const char* hostname, char* cn) {
-	int i;
-	int count;
-	int len;
-	char* tempstr;
-	int result;
-
-	result = 0;
-	tempstr = NULL;
-	
-	/* Note, if the hostname starts with a dot, it should be valid for any subdomain */
-	if (hostname[0] == '.') {
-		count = 0;
-		len = strlen(cn);
-		for (i=0; cn[i]; i++) {
-			if (cn[i] == '.') {
-				count++;
-			}
-		}
-		if (count > 1) {
-			/* remove up to the first '.' */
-			for (i=0; cn[i]; i++) {
-				if (cn[i] == '.') {
-					count = i;
-					break;
-				}
-			}
-			tempstr = (char *) malloc(len - (count));
-			memcpy(tempstr, cn+count+1, len - (count));
-			cn = tempstr;
-		}
-		/* add *. to the front of the cn */
-		len = strlen(cn);
-		tempstr = (char *) malloc(len+3);
-		memcpy(tempstr, "*.", 2);
-		memcpy(tempstr+2, cn, len+1);
-		free(cn);
-		cn = tempstr;
-	}
-	if (fnmatch(cn, hostname, 0) == 0) {
-		result = 1;
-	}
-	if (tempstr != NULL) {
-		free(tempstr);
-	}
-	return result;
-}
-
 static STACK_OF(X509)* get_whitelist() {
 	STACK_OF(X509)* whitelist;
 	DIR *dir;
 	struct dirent *ent;
+	char* whitelist_dir;
 	char* filename;
+
+	whitelist_dir = (char*)malloc(strlen(plugin_path + 11);
+	whitelist_dir = dirname(plugin_path);
+	strcat(whitelist_dir,"/whitelist");
 
 	whitelist = sk_X509_new_null();
 	
-	if ((dir = opendir (WHITELIST_DIR)) != NULL) {
+	if ((dir = opendir (whitelist_dir)) != NULL) {
 		while ((ent = readdir (dir)) != NULL) {
 			if (!fnmatch("*.pem", ent->d_name, 0)) {
-				filename = (char*)malloc(sizeof(WHITELIST_DIR) + sizeof(ent->d_name));
-				sprintf(filename, "%s%s", WHITELIST_DIR, ent->d_name);
+				filename = (char*)malloc(sizeof(whitelist_dir) + sizeof(ent->d_name));
+				sprintf(filename, "%s/%s", whitelist_dir, ent->d_name);
 				if (!pem_append(filename, whitelist)) {
 					if (CRS_DEBUG >= 1) {
 						printf("Error adding %s\n", filename);
@@ -279,6 +139,7 @@ static STACK_OF(X509)* get_whitelist() {
 	if (CRS_DEBUG >= 1) {
 		printf("Whitelist size = %d certificates\n", sk_X509_num(whitelist));
 	}
+	free(whitelist_dir);
 	return whitelist;
 }
 

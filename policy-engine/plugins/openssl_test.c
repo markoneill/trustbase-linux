@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <openssl/x509.h>
-#include "../plugin_response.h"
+#include "../trusthub_plugin.h"
 
 #define MAX_LENGTH	1024
 
-int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs);
+int query(query_data_t* data);
 void print_certificate(X509* cert);
 
 void print_certificate(X509* cert) {
@@ -17,7 +17,7 @@ void print_certificate(X509* cert) {
 	printf("issuer: %s\n", issuer);
 }
 
-int query(const char* hostname, uint16_t port, STACK_OF(X509)* certs) {
+int query(query_data_t* data) {
 	//int i;
 	//X509* cert;
 	//printf("OpenSSL Test Plugin checking cert for host: %s\n", hostname);

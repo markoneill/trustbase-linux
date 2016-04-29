@@ -14,7 +14,7 @@
 #include "linked_list.h"
 #include "plugins.h"
 #include "policy_response.h"
-#include "plugin_response.h"
+#include "trusthub_plugin.h"
 #include "check_root_store.h"
 #include "th_logging.h"
 
@@ -117,26 +117,32 @@ void* plugin_thread_init(void* arg) {
 	plugin_t* plugin;
 	query_t* query;
 	int result;
+	init_data_t* idata;
 
 	params = (thread_param_t*)arg;
 	plugin_id = params->plugin_id;
 	plugin = &context.plugins[plugin_id];
 	queue = plugin->queue;
 	
+	idata = NULL;
 	if (plugin->generic_init_func != NULL) {
-		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
-			plugin->init_sync(plugin_id);
+		idata = (init_data_t*)malloc(sizeof(init_data_t));
+		if (idata == NULL) {
+			thlog(LOG_DEBUG, "Unable to acllocate memory");
 		}
-		else {
-			plugin->init_async(plugin_id, async_callback);
-		}
+		idata->plugin_id = plugin_id;
+		idata->plugin_path = plugin->path;
+		idata->thlog = thlog;
+		idata->callback = (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) ? NULL : async_callback;
+		thlog(LOG_DEBUG, "Before the init, we have path:%s",idata->plugin_path);
+		plugin->init(idata);
 	}
 	while (keep_running == 1) {
 		//printf("Dequeuing query\n");
 		query = dequeue(queue);
 		//printf("Query dequeued\n");
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
-			result = query_sync_plugin(plugin, plugin_id, query);
+			result = query_plugin(plugin, plugin_id, query);
 			query->responses[plugin_id] = result;
 			pthread_mutex_lock(&query->mutex);
 			query->num_responses++;
@@ -147,8 +153,11 @@ void* plugin_thread_init(void* arg) {
 			pthread_mutex_unlock(&query->mutex);
 		}
 		else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
-			query_async_plugin(plugin, plugin_id, query);
+			query_plugin(plugin, plugin_id, query);
 		}
+	}
+	if (idata != NULL) {
+		free(idata);
 	}
 	return NULL;
 }
@@ -167,7 +176,7 @@ void* decider_thread_init(void* arg) {
 	root_store = make_new_root_store();
 	while (keep_running == 1) {
 		query = dequeue(queue);
-		ca_system_response =  query_store(query->hostname, query->chain, root_store);
+		ca_system_response =  query_store(query->data->hostname, query->data->chain, root_store);
 		//printf("CA System response is %d\n", ca_system_response);
 		gettimeofday(&now, NULL);
 		time_to_wait.tv_sec = now.tv_sec + TRUSTHUB_PLUGIN_TIMEOUT;
@@ -183,7 +192,7 @@ void* decider_thread_init(void* arg) {
 		pthread_mutex_unlock(&query->mutex);
 		/* Either all plugins reported or some timed out.
  		 * either way, remove the query from the timeout storage */
-		list_remove(context.timeout_list, query->id);
+		list_remove(context.timeout_list, query->data->id);
 		
 		//printf("All plugins have submitted an answer\n");
 		final_response = aggregate_responses(query, ca_system_response);
@@ -229,7 +238,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 				/* We don't need to count necessary plugins' responses.
  				 * If any of them don't say yes we just say no immediately */
 				if (query->responses[i] != PLUGIN_RESPONSE_VALID) {
-					thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->hostname);
+					thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->data->hostname);
 					return POLICY_RESPONSE_INVALID;
 				}
 				break;
@@ -249,16 +258,16 @@ int aggregate_responses(query_t* query, int ca_system_response) {
  	 * found were valid, otherwise we'd have returned already.  Therefore the decision
  	 * is in the hands of the congress plugins */
 	if (congress_total && (congress_approved_count / congress_total) < context.congress_threshold) {
-		thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->hostname);
+		thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s\n", query->data->hostname);
 		return POLICY_RESPONSE_INVALID;
 	}
 
 	/* At this point we know the certificates are valid, but what we send back depends on
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
-		thlog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied\n", query->hostname);
+		thlog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied\n", query->data->hostname);
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
-	thlog(LOG_INFO, "Policy Engine reporting good cert for %s\n", query->hostname);
+	thlog(LOG_INFO, "Policy Engine reporting good cert for %s\n", query->data->hostname);
 	return POLICY_RESPONSE_VALID;
 }

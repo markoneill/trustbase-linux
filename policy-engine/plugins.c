@@ -3,10 +3,10 @@
 #include <dlfcn.h>
 #include <string.h>
 #include "query_queue.h"
-#include "plugins.h"
-#include "plugin_response.h"
 #include "addons.h"
+#include "trusthub_plugin.h"
 #include "th_logging.h"
+#include "plugins.h"
 
 void print_plugins(plugin_t* plugins, size_t plugin_count) {
 	int i;
@@ -57,31 +57,17 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 	return;
 }
 
-int query_async_plugin(plugin_t* plugin, int id, query_t* query) {
+int query_plugin(plugin_t* plugin, int id, query_t* query) {
+	/* Make a copy of the data for the plugins */
 	switch (plugin->handler_type) {
 		case PLUGIN_HANDLER_TYPE_RAW:
-			return plugin->query_async_raw(query->id, query->hostname, query->port, query->raw_chain, query->raw_chain_len);
 		case PLUGIN_HANDLER_TYPE_OPENSSL:
-			return plugin->query_async_openssl(query->id, query->hostname, query->port, query->chain);
+			return plugin->query(query->data);
 		case PLUGIN_HANDLER_TYPE_ADDON:
-			if (plugin->query_async_by_addon == NULL) {
+			if (plugin->query_by_addon == NULL) {
 				return PLUGIN_RESPONSE_ERROR;
 			}
-			return plugin->query_async_by_addon(id, query->id, query->hostname, query->port, query->raw_chain, query->raw_chain_len);
-	}
-	return PLUGIN_RESPONSE_ABSTAIN;
-}
-int query_sync_plugin(plugin_t* plugin, int id, query_t* query) {
-	switch (plugin->handler_type) {
-		case PLUGIN_HANDLER_TYPE_RAW:
-			return plugin->query_sync_raw(query->hostname, query->port, query->raw_chain, query->raw_chain_len);
-		case PLUGIN_HANDLER_TYPE_OPENSSL:
-			return plugin->query_sync_openssl(query->hostname, query->port, query->chain);
-		case PLUGIN_HANDLER_TYPE_ADDON:
-			if (plugin->query_sync_by_addon == NULL) {
-				return PLUGIN_RESPONSE_ERROR;
-			}
-			return plugin->query_sync_by_addon(id, query->hostname, query->port, query->raw_chain, query->raw_chain_len);
+			return plugin->query_by_addon(id, query->data);
 	}
 	return PLUGIN_RESPONSE_ABSTAIN;
 }
@@ -99,21 +85,20 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 					plugins[i].handler_type = PLUGIN_HANDLER_TYPE_ADDON;
 					if (plugins[i].type == PLUGIN_TYPE_SYNCHRONOUS) {
 						if (addons[j].addon_load_plugin(i, plugins[i].path, 0) == 0) {
-							plugins[i].query_sync_by_addon = addons[j].addon_query_plugin;
+							plugins[i].query_by_addon = addons[j].addon_query_plugin;
 						} else {
-							plugins[i].query_sync_by_addon = NULL;
+							plugins[i].query_by_addon = NULL;
 							thlog(LOG_WARNING, "Could not load plugin %s\n", plugins[i].name);
 						}
 					}
 					else {
 						if (addons[j].addon_load_plugin(i, plugins[i].path, 1) == 0) {
-							plugins[i].query_async_by_addon = addons[j].addon_async_query_plugin;
+							plugins[i].query_by_addon = addons[j].addon_async_query_plugin;
 						} else {
-							plugins[i].query_async_by_addon = NULL;
+							plugins[i].query_by_addon = NULL;
 							thlog(LOG_WARNING, "Could not load plugin %s\n", plugins[i].name);
 						}
 					}
-
 					break;
 				}
 			}

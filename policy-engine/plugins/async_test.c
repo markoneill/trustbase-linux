@@ -9,7 +9,7 @@
 #include <sys/stat.h> /* S_IRWXU constant */
 #include <semaphore.h>
 #include <openssl/x509.h>
-#include "../plugin_response.h"
+#include "../trusthub_plugin.h"
 
 #define MAX_LENGTH	1024
 
@@ -20,9 +20,9 @@ typedef struct query_t {
 } query_t;
 
 /* Plugin functions */
-int initialize(int id, int(*callback)(int, int, int));
+int initialize(init_data_t* idata);
 int finalize(void);
-int query(int query_id, const char* hostname, uint16_t port, STACK_OF(X509)* certs);
+int query(query_data_t* data);
 void* worker(void* arg);
 void print_certificate(X509* cert);
 
@@ -52,9 +52,9 @@ int running;
 pthread_t worker_thread;
 queue_t* queue;
 
-int initialize(int id, int(*callback)(int, int, int)) {
-	result_callback = callback;
-	plugin_id = id;
+int initialize(init_data_t* idata) {
+	result_callback = idata->callback;
+	plugin_id = idata->plugin_id;
 	running = 1;
 	queue = make_queue("async_test");
 	pthread_create(&worker_thread, NULL, worker, (void*)NULL);
@@ -92,12 +92,12 @@ void* worker(void* arg) {
  * all plugins have reported or there is a timeout. In a real plugin you
  * should copy the source data to avoid bad dereferences in the case of a
  * timeout. */
-int query(int query_id, const char* hostname, uint16_t port, STACK_OF(X509)* certs) {
+int query(query_data_t* data) {
 	query_t* query;
 	query = (query_t*)malloc(sizeof(query_t));
-	query->id = query_id;
-	query->hostname = hostname;
-	query->chain = certs;
+	query->id = data->id;
+	query->hostname = data->hostname;
+	query->chain = data->chain;
 	enqueue(queue, query);
 	return 1;
 }

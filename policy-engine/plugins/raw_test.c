@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "../plugin_response.h"
+#include "../trusthub_plugin.h"
 
-int query(const char* hostname, uint16_t port, unsigned char* certs, size_t certs_length);
+int query(query_data_t* data);
 
-int query(const char* hostname, uint16_t port, unsigned char* certs, size_t certs_length) {
+int query(query_data_t* data) {
 	/*FILE *f = fopen("/tmp/raw_ran.txt", "a");
 	if (f == NULL) {
 		printf("Error opening file!\n");

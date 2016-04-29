@@ -3,7 +3,7 @@
 #include <string.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
-#include "plugin_response.h"
+#include "trusthub_plugin.h"
 #include "reverse_dns.h"
 #include "query.h"
 #include "th_logging.h"
@@ -23,7 +23,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	//printf("Creating query for host %s\n", hostname);
 	query = (query_t*)malloc(sizeof(query_t));
 	if (query == NULL) {
-		thlog(LOG_WARNING, "Could not create query\n");
+		thlog(LOG_WARNING, "Could not create query");
 		return NULL;
 	}
 	query->num_plugins = num_plugins;
@@ -31,7 +31,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 
 	query->responses = (int*)malloc(sizeof(int) * num_plugins);
 	if (query->responses == NULL) {
-		thlog(LOG_WARNING, "Could not create response array for query\n");
+		thlog(LOG_WARNING, "Could not create response array for query");
 		free(query);
 		return NULL;
 	}
@@ -42,21 +42,31 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->num_responses = 0;
 	
 	if (pthread_mutex_init(&query->mutex, NULL) != 0) {
-		thlog(LOG_WARNING, "Failed to create mutex for query\n");
+		thlog(LOG_WARNING, "Failed to create mutex for query");
 		free(query->responses);
 		free(query);
 		return NULL;
 	}
 	if (pthread_cond_init(&query->threshold_met, NULL) != 0) {
-		thlog(LOG_WARNING, "Failed to create condvar for query\n");
+		thlog(LOG_WARNING, "Failed to create condvar for query");
 		pthread_mutex_destroy(&query->mutex);
 		free(query->responses);
 		free(query);
 		return NULL;
 	}
 	
+	query->data = (query_data_t*)malloc(sizeof(query_data_t));
+	if (query->data == NULL) {
+		thlog(LOG_WARNING, "Could not allocate query_data_t");
+		pthread_mutex_destroy(&query->mutex);
+		pthread_cond_destroy(&query->threshold_met);
+		free(query->responses);
+		free(query);
+		return NULL;
+	}
+	
 	/* Parse chain to X509 structures */
-	query->chain = parse_chain(cert_data, len);
+	query->data->chain = parse_chain(cert_data, len);
 	
 	/* resolve the hostname */
 	// This code below will do a Reverse DNS lookup
@@ -77,34 +87,36 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	hostname_resolved[0] = hostname;
 
 	hostname_len = strlen(hostname_resolved[0])+1;
-	query->hostname = (char*)malloc(sizeof(char) * hostname_len);
-	if (query->hostname == NULL) {
-		fprintf(stderr, "Failed to allocate hostname for query\n");
+	query->data->hostname = (char*)malloc(sizeof(char) * hostname_len);
+	if (query->data->hostname == NULL) {
+		fprintf(stderr, "Failed to allocate hostname for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
+		free(query->data);
 		free(query);
 		//free(hostname_resolved[0]);
 		return NULL;
 	}
-	query->port = port;
+	query->data->port = port;
 
-	query->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
-	if (query->raw_chain == NULL) {
-		fprintf(stderr, "Failed to allocate cert chain for query\n");
+	query->data->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
+	if (query->data->raw_chain == NULL) {
+		fprintf(stderr, "Failed to allocate cert chain for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
-		free(query->hostname);
+		free(query->data->hostname);
+		free(query->data);
 		free(query);
 		//free(hostname_resolved[0]);
 		return NULL;
 	}
-	query->raw_chain_len = len;
-	memcpy(query->hostname, hostname_resolved[0], hostname_len);
-	memcpy(query->raw_chain, cert_data, len);
+	query->data->raw_chain_len = len;
+	memcpy(query->data->hostname, hostname_resolved[0], hostname_len);
+	memcpy(query->data->raw_chain, cert_data, len);
 	query->state_pointer = stptr;
-	query->id = id;
+	query->data->id = id;
 	
 	//free(hostname_resolved[0]);
 	return query;
@@ -123,9 +135,10 @@ void free_query(query_t* query) {
 	if (pthread_cond_destroy(&query->threshold_met) != 0) {
 		fprintf(stderr, "Failed to destroy query condvar\n");
 	}
-	sk_X509_pop_free(query->chain, X509_free);
-	free(query->raw_chain);
-	free(query->hostname);
+	sk_X509_pop_free(query->data->chain, X509_free);
+	free(query->data->raw_chain);
+	free(query->data->hostname);
+	free(query->data);
 	free(query);
 	return;
 }
