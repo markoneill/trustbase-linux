@@ -92,6 +92,32 @@ void kthlog(thlog_level_t level, const char* fmt, ...) {
 	return;
 }
 
+void kthlog_buffer(void* buffer, int length) {
+	unsigned char* msg;
+	unsigned char* end;
+	int i;
+	int w;
+	
+	if (length > 1024) {
+		length = 1024;
+	}
+	msg = (unsigned char*)kmalloc((length * 3) + 2, GFP_KERNEL | __GFP_NOFAIL);
+	if (msg == NULL) {
+		kthlog(LOG_DEBUG, "Could not allocate memory to print the buffer");
+		return;
+	}
+	msg[0] = '\n';
+	msg[1] = '\0';
+	end = msg + 1;
+	for (i=0; i < length; i++) {
+		// Sorry if this is messy, but it outputs the buffer as hex, grouping the output
+		w = snprintf(end, 4, "%02x%s", ((unsigned char*)buffer)[i], ((i+1)%16)?((i+1)%2)?"":" ":"\n");
+		end = end + w;
+	}
+	
+	log_new(LOG_DEBUG, msg);
+}
+
 int log_new(thlog_level_t level, char* msg) {
 	log_msg_t* entry;
 	// Allocate new entry

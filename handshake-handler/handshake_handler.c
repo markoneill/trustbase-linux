@@ -128,6 +128,7 @@ void* buf_state_init(buf_state_t* buf_state) {
 	buf_state->user_cur = 0;
 	buf_state->user_cur_max = 0;
 	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
+	kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_HANDSHAKE_IDENTIFIER_SIZE of %i", TH_TLS_HANDSHAKE_IDENTIFIER_SIZE); 
 	buf_state->buf = NULL;
 	buf_state->state = UNKNOWN;
 	return buf_state;
@@ -312,9 +313,11 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 		//print_call_info("May be initiating an SSL/TLS connection");
 		buf_state->state = RECORD_LAYER;
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+		kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_RECORD_HEADER_SIZE of %i", TH_TLS_RECORD_HEADER_SIZE); 
 	}
 	else {
 		buf_state->bytes_to_read = 0;
+		kthlog(LOG_DEBUG, "set bytes to read to 0"); 
 		buf_state->state = IRRELEVANT;
 		state->interest = UNINTERESTED;
 		buf_state->user_cur_max = buf_state->buf_length;
@@ -336,6 +339,7 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
 	buf_state->bytes_to_read = tls_record_length;
+	kthlog(LOG_DEBUG, "set bytes to read from tls_record_length of %i", tls_record_length); 
 	return;
 }
 
@@ -361,6 +365,8 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
 	kthlog(LOG_DEBUG, "Reading handshake, Record length is %u", tls_record_bytes);
+	
+	kthlog_buffer(cs_buf, tls_record_bytes);
 	while (tls_record_bytes > 0) {
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
 		kthlog(LOG_DEBUG, "Message length is %u", handshake_message_length);
@@ -435,7 +441,12 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		}
 		else if (cs_buf[0] == TYPE_HELLO_REQUEST || 
 			 cs_buf[0] == TYPE_CERTIFICATE_REQUEST) {
-			kthlog(LOG_DEBUG, "Read a Hello Request or Certificate request");
+			
+			if (cs_buf[0] == TYPE_HELLO_REQUEST) {
+				kthlog(LOG_DEBUG, "Read a Hello Request (0) at %p", cs_buf);
+			} else {
+				kthlog(LOG_DEBUG, "Read a Certificate request");
+			};
 			cs_buf += handshake_message_length;
 			buf_state->user_cur_max = buf_state->buf_length;
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;

@@ -24,11 +24,9 @@ class danePlugin(TrustHubPlugin):
     
     def query(self, host, port, raw_certs):
         cert_chain = convert_tls_certificates_to_x509_list(raw_certs)
-        print "Cert", cert_chain
         return checkDANE(self, host, port, "tcp", chain)
     
     def finalize():
-        print "Python plugin finalized"
         return
         
     def getTLSARecord(self, hostname, port, protocol):
@@ -50,7 +48,6 @@ class danePlugin(TrustHubPlugin):
         elif record.usage == 3:
             checkEnd(chain, record, False)
         else:
-            print '%d Certificate validation not supported' % record[0]
         return toReturn
     
     def checkCA(self, chain, record):

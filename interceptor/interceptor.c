@@ -511,9 +511,9 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	void __user* user_buffer;
 	sock = sk->sk_socket;
 
-
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
+		//kthlog(LOG_DEBUG, "tcp_rcv: ignore");
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 		ret = ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 		#else
@@ -530,6 +530,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
+		kthlog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 		return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 		#else
@@ -553,16 +554,19 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// 2) If we've already given the user everything he wants, end
 	if (bytes_sent == len) {
+		kthlog(LOG_DEBUG, "tcp_rcv: emptied buffer");
 		return len;
 	}
 
 	// If we've not sent anything yet and the socket was closed last time
 	// we actually read, then delete state and return
 	if (bytes_sent == 0 && conn_state->queued_recv_ret == 0) {
+		kthlog(LOG_DEBUG, "tcp_rcv: reading then deleting");
 		stop_conn_state(conn_state);
 		return 0;
 	}
 	if (bytes_sent == 0 && conn_state->queued_recv_ret < 0) {
+		kthlog(LOG_DEBUG, "tcp_rcv: received an error, but gonna pass for a round");
 		ret = conn_state->queued_recv_ret;
 		conn_state->queued_recv_ret = 1; // pretend no error for next time
 		return ret;
@@ -570,6 +574,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// If we don't care to read any more bytes for this socket, stop now
 	if (ops->get_state(conn_state->state) == 0 && ops->bytes_to_read_recv(conn_state->state) == 0) {
+		kthlog(LOG_DEBUG, "tcp_rcv: we don't wanna read any more");
 		if (bytes_sent > 0) {
 			return bytes_sent;
 		}
@@ -590,6 +595,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	
 	// 3) Attempt to get more data from external sources
+	kthlog(LOG_DEBUG, "tcp_rcv: going to get more data");
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
 		kmsg = *msg;
 		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
@@ -623,6 +629,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		//    or the error code
 		conn_state->queued_recv_ret = ret;
 		if (ret <= 0) {
+			kthlog(LOG_DEBUG, "tcp_rcv: failed on reading");
 			if (bytes_sent > 0) {
 				// error code is cached for next time
 				return bytes_sent; 
@@ -637,17 +644,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 		// 5) If operation succeeded then copy to state and update state
 		if (ops->give_to_handler_recv(conn_state->state, buffer, ret) != 0) {
-			kthlog(LOG_ERROR, "Traffic interceptor failed to copy to recv state");
+			kthlog(LOG_ERROR, "tcp_rcv: Traffic interceptor failed to copy to recv state");
 			// XXX how do we fail here?
 		}
 		kfree(buffer);
 		if (ops->update_recv_state(conn_state->state) != 0) {
-			kthlog(LOG_ERROR, "Handler failed to update recv state");
+			kthlog(LOG_ERROR, "tcp_rcv: Handler failed to update recv state");
 			// XXX how do we fail here?
 		}
 
 		// XXX Enum this	
 		if (ops->get_state(conn_state->state) == 2) {
+			kthlog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
 			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 			return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 			#else
@@ -658,6 +666,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
+			kthlog(LOG_DEBUG, "tcp_rcv: breakout early");
 			return bytes_sent > 0 ? bytes_sent : -EAGAIN;
 		}
 
@@ -669,11 +678,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->state);
 	bytes_to_copy = b_to_forward > len - bytes_sent ? len - bytes_sent : b_to_forward;
 	if (ops->copy_to_user(conn_state->state, user_buffer + bytes_sent, bytes_to_copy) != 0) {
-		kthlog(LOG_ERROR, "Traffic interceptor copy_to_user() failed");
+		kthlog(LOG_ERROR, "tcp_rcv: Traffic interceptor copy_to_user() failed");
 		// XXX how do we fail here?
 	}
 	ops->inc_recv_bytes_forwarded(conn_state->state, bytes_to_copy);
 	bytes_sent += bytes_to_copy;
+	kthlog(LOG_DEBUG, "tcp_rcv: read");
 	return bytes_sent;
 
 }
