@@ -605,7 +605,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		kmsg.msg_iter.iov = &iov;
 		#endif
 		b_to_read = ops->bytes_to_read_recv(conn_state->state);
-	        buffer = kmalloc(b_to_read, GFP_KERNEL);
+	        buffer = kmalloc(b_to_read, GFP_KERNEL | __GFP_NOFAIL);
 		iov.iov_len = b_to_read;
 		iov.iov_base = buffer;
 

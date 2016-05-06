@@ -331,6 +331,14 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	unsigned char tls_minor_version;
 	unsigned short tls_record_length;
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
+	if (cs_buf[0] != TH_TLS_HANDSHAKE_IDENTIFIER) {
+		buf_state->bytes_to_read = 0;
+		kthlog(LOG_DEBUG, "set bytes to read to 0"); 
+		buf_state->state = IRRELEVANT;
+		state->interest = UNINTERESTED;
+		buf_state->user_cur_max = buf_state->buf_length;
+		return;
+	}
 	tls_major_version = cs_buf[1];
 	tls_minor_version = cs_buf[2];
 	tls_record_length = be16_to_cpu(*(unsigned short*)(cs_buf+3));
