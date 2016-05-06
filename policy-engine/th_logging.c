@@ -101,7 +101,7 @@ void thlog_close() {
 
 void* read_kthlog(void* arg) {
 	while (1) {
-		sleep(2);
+		sleep(1);
 		FILE * fp;
 		char * line = NULL;
 		size_t len = 0;

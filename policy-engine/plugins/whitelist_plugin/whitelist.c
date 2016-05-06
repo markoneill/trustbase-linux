@@ -42,6 +42,7 @@ int query(query_data_t* data) {
 	unsigned char white_fingerprint[EVP_MAX_MD_SIZE];
 	unsigned int white_fingerprint_len;
 
+	plog(LOG_DEBUG, "Whitelist querying");
 	/* Only check the leaf certificate */
 	cert = sk_X509_value(data->chain, 0);
 	//print_certificate(cert);
@@ -56,6 +57,8 @@ int query(query_data_t* data) {
 		return PLUGIN_RESPONSE_ERROR;
 	}
 	
+	plog(LOG_DEBUG, "Got fingerprint");
+
 	/* Compare fingerprint to the whitelist */
 	whitelist = get_whitelist();
 	if (!whitelist) {
@@ -64,6 +67,7 @@ int query(query_data_t* data) {
 	
 	// Right now this is going over every whitelisted cert, and taking a hash of them, then comparing
 	// TODO: For quicker results, switch to storing only hashes of the whitelisted certificates
+	plog(LOG_DEBUG, "running through whitelist");
 	for (i = 0; i < sk_X509_num(whitelist); i++) {
 		cert = sk_X509_value(whitelist, i);
 		white_fingerprint_len = sizeof(white_fingerprint);
@@ -102,11 +106,24 @@ static STACK_OF(X509)* get_whitelist() {
 	DIR *dir;
 	struct dirent *ent;
 	char* whitelist_dir;
+	char* temp_path;
 	char* filename;
 
 	whitelist_dir = (char*)malloc(strlen(plugin_path) + 11);
-	whitelist_dir = dirname(plugin_path);
+	if (whitelist_dir == NULL) {
+		return NULL;
+	}
+
+	//make copy of plugin_path because dirname changes whats passed in
+	temp_path = (char*)malloc(strlen(plugin_path)+1);
+	if (temp_path == NULL) {
+		return NULL;
+	}
+	
+	strncpy(temp_path, plugin_path, strlen(plugin_path)+1);
+	whitelist_dir = dirname(temp_path);
 	strcat(whitelist_dir,"/whitelist");
+	plog(LOG_DEBUG, "Getting whitelist at %s", whitelist_dir);
 
 	whitelist = sk_X509_new_null();
 	
