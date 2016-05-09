@@ -7,6 +7,7 @@
 #include <QList>
 #include <QTextStream>
 #include <QDebug>
+#include <QKeyEvent>
 #include "logmessage.h"
 
 namespace Ui {
@@ -27,6 +28,10 @@ public slots:
     void updateEarly(void);
     void updateLate(void);
 
+protected:
+    void keyPressEvent(QKeyEvent *event) Q_DECL_OVERRIDE;
+    void keyReleaseEvent(QKeyEvent *event) Q_DECL_OVERRIDE;
+
 private:
     Ui::Viewer *ui;
     QList<LogMessage*> messages;
@@ -35,6 +40,8 @@ private:
     int late_index;
 
     const QString dateformat = "ddd h:mm:ss";
+
+    bool ctrl_pressed;
 
 };
 

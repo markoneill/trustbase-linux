@@ -16,7 +16,6 @@ public:
     LogMessage::level message_level; // The messages level
     QDateTime time; // The time when the message happened
 
-private:
     QString message; // The actual recorded message
     bool kernel_message; // If the message originated from the kernel
 

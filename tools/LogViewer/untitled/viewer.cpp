@@ -25,7 +25,10 @@ Viewer::Viewer(QWidget *parent) :
 
     connect(ui->CloseButton, SIGNAL(clicked(bool)), this, SLOT(close()));
 
+    connect(ui->SearchButton, SIGNAL(clicked(bool)), this, SLOT(updateOutput()));
+
     this->loadFile();
+    this->ctrl_pressed = false;
 }
 
 Viewer::~Viewer()
@@ -93,6 +96,8 @@ void Viewer::loadFile()
     ui->EarlyLabel->setText(this->messages[this->early_index]->time.toString(this->dateformat));
     ui->LateLabel->setText(this->messages[this->late_index]->time.toString(this->dateformat));
 
+    ui->SearchGroup->setHidden(true);
+
     this->updateOutput();
     return;
 }
@@ -122,6 +127,12 @@ void Viewer::updateOutput() {
             continue;
         }
 
+        // Show rows with the search stuff lines
+        if (ui->SearchGroup->isVisible() && !ui->SearchLine->text().isEmpty()) {
+            if (!message->message.contains(ui->SearchLine->text())) {
+                continue;
+            }
+        }
 
         output.append("<tr>");
         if (ui->PButton->isChecked()) {
@@ -174,3 +185,19 @@ void Viewer::updateLate() {
     this->updateOutput();
 }
 
+void Viewer::keyPressEvent(QKeyEvent *event) {
+    if (event->key() == Qt::Key_Control) {
+        this->ctrl_pressed = true;
+    }
+    if (event->key() == Qt::Key_F && this->ctrl_pressed) {
+        //Show or hide the finding thing
+        ui->SearchGroup->setHidden(ui->SearchGroup->isVisible());
+        this->updateOutput();
+    }
+}
+
+void Viewer::keyReleaseEvent(QKeyEvent *event) {
+    if (event->key() == Qt::Key_Control) {
+        this->ctrl_pressed = false;
+    }
+}

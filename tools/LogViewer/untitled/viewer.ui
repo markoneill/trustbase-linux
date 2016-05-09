@@ -134,7 +134,7 @@ QSlider#LateSlider::sub-page {
    <item>
     <widget class="QTabWidget" name="tabWidget">
      <property name="currentIndex">
-      <number>1</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="Log">
       <attribute name="title">
@@ -156,9 +156,32 @@ p, li { white-space: pre-wrap; }
         </widget>
        </item>
        <item>
+        <widget class="QWidget" name="SearchGroup" native="true">
+         <property name="enabled">
+          <bool>true</bool>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QLineEdit" name="SearchLine">
+            <property name="placeholderText">
+             <string>Search...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="SearchButton">
+            <property name="text">
+             <string>Search</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <widget class="QLabel" name="label">
          <property name="text">
-          <string>Mouseover text for timestamp</string>
+          <string>Mouseover for Timestamp -- Ctrl-f to Search</string>
          </property>
          <property name="alignment">
           <set>Qt::AlignCenter</set>
