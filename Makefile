@@ -30,6 +30,7 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/check_root_store.c \
 		    policy-engine/reverse_dns.c \
 		    policy-engine/th_logging.c \
+		    policy-engine/notifications.c \
 		    policy-engine/policy_engine.c
 
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)

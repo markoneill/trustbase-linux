@@ -1,7 +1,6 @@
 #ifndef NOTIFICATIONS_H_
 #define NOTIFICATIONS_H_
 
-void notify_user();
-void query_user();
+int notify_user(char* username, char* message);
 
 #endif
