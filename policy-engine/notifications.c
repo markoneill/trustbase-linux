@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <utmp.h>
 #include <fcntl.h>
+#include "th_logging.h"
 #include "notifications.h"
 
 #define TERM_COL 60
@@ -20,8 +21,50 @@ static int notify_user_term(char* username, char* message);
 /* This function will notify a user in the best way */
 int notify_user(char* username, char* message) {
 	// TODO
-	notify_user_term(username, message);
+	switch (user_type(username)) {
+	case USER_NO_GUI:
+		notify_user_term(username, message);
+		break;
+	default:
+		// Write to the log
+		thlog(LOG_WARNING, "Failed to notify %s: %s", username, message);
+	}
 	return 0; // Success
+}
+
+user_session_t user_type(char* username) {
+	struct utmp current_record;
+	int utmpfd;
+	int i;
+	int num_sessions;
+	int reclen = sizeof(current_record);
+	
+	utmpfd = open(UTMP_FILE, O_RDONLY);
+	if (utmpfd == -1) {
+		return USER_ERROR;
+	}
+
+	num_sessions = 0;
+	while (read(utmpfd, &current_record, reclen) == reclen) {
+		// Parse the record
+		if (strncmp(current_record.ut_name, username, MAX_USERNAME) != 0) {
+			continue;
+		}
+		num_sessions++;
+		// find any screens, local or remote
+		for (i=0; i<strlen(current_record.ut_line); i++) {
+			if (current_record.ut_line[i] == ':') {
+				// User has a display, and probably a GUI
+				// We can use a popup or whatever
+				return USER_GUI;
+			}
+		} 
+	}
+	
+	if (num_sessions > 0) {
+		return USER_NO_GUI;
+	}
+	return USER_UNKNOWN;
 }
 
 void terminal_notify(FILE* term, char* message) {
@@ -73,12 +116,12 @@ void terminal_restore(FILE* term) {
 int notify_user_term(char* username, char* message) {
 	struct utmp current_record;
 	int utmpfd;
-	int reclen = sizeof(current_record);
 	char* term_path;
 	FILE* terminal;
 	FILE* terminals[MAX_TERMS];
 	int term_num;
 	int i;
+	int reclen = sizeof(current_record);
 	
 	utmpfd = open(UTMP_FILE, O_RDONLY);
 	if (utmpfd == -1) {
