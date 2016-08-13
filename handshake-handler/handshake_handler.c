@@ -57,6 +57,12 @@
 #define IPV4_STR_LEN			15
 #define IPV6_STR_LEN			39
 
+
+// STARTTLS entries
+char smtp_string[] = "EHLO ";
+char smtp_server_string[] = "220 ";
+char smtp_starttls_command[] = "STARTTLS\r\n";
+
 inline size_t th_buf_state_get_num_bytes_unread(buf_state_t* buf_state);
 inline int th_buf_state_can_transition(buf_state_t* buf_state, int interest);
 static void* buf_state_init(buf_state_t* buf_state);
@@ -74,6 +80,14 @@ static void handle_state_server_hello_done_sent(handler_state_t* state, buf_stat
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
 static void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_length);
+
+// SMTP state machine handling
+void handle_state_smtp_potential(handler_state_t* state, buf_state_t* buf_state);
+void handle_state_smtp_fqdn(handler_state_t* state, buf_state_t* buf_state);
+void handle_state_smtp_starttls(handler_state_t* state, buf_state_t* buf_state);
+void handle_state_smtp_server_potential(handler_state_t* state, buf_state_t* buf_state);
+void handle_state_smtp_server_greeting(handler_state_t* state, buf_state_t* buf_state);
+void handle_state_smtp_server_options(handler_state_t* state, buf_state_t* buf_state);
 
 // SSL Proxy Setup
 void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned int certificates_length);
@@ -271,6 +285,15 @@ void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state) {
 		case CLIENT_HELLO_SENT:
 			handle_state_client_hello_sent(state, buf_state);
 			break;
+		case SMTP_POTENTIAL:
+			handle_state_smtp_potential(state, buf_state);
+			break;
+		case SMTP_FQDN:
+			handle_state_smtp_fqdn(state, buf_state);
+			break;
+		case SMTP_STARTTLS:
+			handle_state_smtp_starttls(state, buf_state);
+			break;
 		case IRRELEVANT:
 			// Should never get here
 		default:
@@ -292,6 +315,17 @@ void update_buf_state_recv(handler_state_t* state, buf_state_t* buf_state) {
 			break;
 		case SERVER_HELLO_DONE_SENT:
 			handle_state_server_hello_done_sent(state, buf_state);
+			break;
+		case SMTP_SERVER_POTENTIAL:
+			handle_state_smtp_server_potential(state, buf_state);
+			break;
+		case SMTP_SERVER_GREETING:
+			handle_state_smtp_server_greeting(state, buf_state);
+			break;
+		case SMTP_SERVER_OPTIONS:
+		case SMTP_SERVER_OPTIONS_END:
+		case SMTP_SERVER_OPTIONS_DONE:
+			handle_state_smtp_server_options(state, buf_state);
 			break;
 		case IRRELEVANT:
 			// Should never get here
@@ -315,6 +349,16 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 		kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_RECORD_HEADER_SIZE of %i", TH_TLS_RECORD_HEADER_SIZE); 
 	}
+	else if (buf_state->buf[0] == smtp_string[0]) {
+		buf_state->state = SMTP_POTENTIAL;
+		buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+		kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
+	}
+	else if (buf_state->buf[0] == smtp_server_string[0]) {
+		buf_state->state = SMTP_SERVER_POTENTIAL;
+		buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+		kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
+	}
 	else {
 		buf_state->bytes_to_read = 0;
 		kthlog(LOG_DEBUG, "set bytes to read to 0"); 
@@ -322,6 +366,128 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 		state->interest = UNINTERESTED;
 		buf_state->user_cur_max = buf_state->buf_length;
 	}
+	return;
+}
+
+void handle_state_smtp_server_potential(handler_state_t* state, buf_state_t* buf_state) {
+	if (buf_state->buf[buf_state->bytes_read] != smtp_server_string[buf_state->bytes_read]) {
+		buf_state-> state = IRRELEVANT;
+		state->interest = UNINTERESTED;
+		buf_state->bytes_to_read = 0;
+		kthlog(LOG_DEBUG, "server not SMTP, ignoring now"); 
+	}
+	else {
+		buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+	}
+
+	// Regardless of what we see, let data pass on and update our counters
+	buf_state->bytes_read++;
+	buf_state->user_cur_max = buf_state->bytes_read;
+
+	if (buf_state->bytes_read == strlen(smtp_server_string)) {
+		buf_state->state = SMTP_SERVER_GREETING;
+		kthlog(LOG_DEBUG, "full server 220 found, most likely SMTP");
+	}
+	return;
+}
+
+void handle_state_smtp_server_greeting(handler_state_t* state, buf_state_t* buf_state) {
+	if (buf_state->buf[buf_state->bytes_read] == '\n') {
+		kthlog(LOG_DEBUG, "Server greeting found: %s", &buf_state->buf[strlen(smtp_server_string)]);
+		buf_state->state = SMTP_SERVER_OPTIONS;
+	}
+	// Regardless of what we see, let data pass on and update our counters
+	buf_state->bytes_read++;
+	buf_state->user_cur_max = buf_state->bytes_read;
+	buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+	return;
+}
+
+void handle_state_smtp_server_options(handler_state_t* state, buf_state_t* buf_state) {
+	buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+	if (buf_state->state == SMTP_SERVER_OPTIONS &&
+		buf_state->buf[buf_state->bytes_read] == ' ' &&
+		buf_state->buf[buf_state->bytes_read-1] == '0' && 
+		buf_state->buf[buf_state->bytes_read-2] == '5' && 
+		buf_state->buf[buf_state->bytes_read-3] == '2') { // XXX should be checking for status code here, but PoC first
+		kthlog(LOG_DEBUG, "Last line of server options found");
+		buf_state->state = SMTP_SERVER_OPTIONS_END;
+	}
+	else if (buf_state->state == SMTP_SERVER_OPTIONS_END &&
+		buf_state->buf[buf_state->bytes_read] == '\n') {
+		kthlog(LOG_DEBUG, "Server options ended: %s", buf_state->buf);
+		buf_state->state = SMTP_SERVER_OPTIONS_DONE;
+	}
+	else if (buf_state->state == SMTP_SERVER_OPTIONS_DONE &&
+		buf_state->buf[buf_state->bytes_read] == '\n') {
+		buf_state->state = RECORD_LAYER;
+		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+		kthlog(LOG_DEBUG, "Server responded again with %s", buf_state->buf);
+		//kthlog(LOG_DEBUG, "Full output: %s", buf_state->buf);
+	}
+
+	// Regardless of what we see, let data pass on and update our counters
+	buf_state->bytes_read++;
+	buf_state->user_cur_max = buf_state->bytes_read;
+	return;
+}
+
+void handle_state_smtp_potential(handler_state_t* state, buf_state_t* buf_state) {
+	if (buf_state == &state->recv_state) kthlog(LOG_DEBUG, "uh oh");
+	if (buf_state->buf[buf_state->bytes_read] != smtp_string[buf_state->bytes_read]) {
+		buf_state-> state = IRRELEVANT;
+		state->interest = UNINTERESTED;
+		buf_state->bytes_to_read = 0;
+		kthlog(LOG_DEBUG, "not SMTP, ignoring now"); 
+	}
+	else {
+		buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+	}
+
+	// Regardless of what we see, let data pass on and update our counters
+	buf_state->bytes_read++;
+	buf_state->user_cur_max = buf_state->bytes_read;
+
+	// If we're done reading a full "EHLO ", go to next state
+	if (buf_state->bytes_read == strlen(smtp_string)) {
+		kthlog(LOG_DEBUG, "full EHLO found, most likely SMTP");
+		buf_state->state = SMTP_FQDN;
+	}
+	return;
+}
+
+void handle_state_smtp_fqdn(handler_state_t* state, buf_state_t* buf_state) {
+	if (buf_state->buf[buf_state->bytes_read] == '\n') {
+		kthlog(LOG_DEBUG, "SMTP IP/FQDN found: %s", &buf_state->buf[strlen(smtp_string)]);
+		buf_state->state = SMTP_STARTTLS;
+	}
+	// Regardless of what we see, let data pass on and update our counters
+	buf_state->bytes_read++;
+	buf_state->user_cur_max = buf_state->bytes_read;
+	buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+	return;
+}
+
+void handle_state_smtp_starttls(handler_state_t* state, buf_state_t* buf_state) {
+	buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
+	if (buf_state->buf[buf_state->bytes_read] == '\n') {
+		if (strncmp(&buf_state->buf[buf_state->bytes_read - (strlen(smtp_starttls_command) -1)],
+			smtp_starttls_command, strlen(smtp_starttls_command)-1) == 0) {
+			kthlog(LOG_DEBUG, "Found a STARTTLS command");
+			//kthlog(LOG_DEBUG, "Send Buffer contents: %s", buf_state->buf);
+			//kthlog(LOG_DEBUG, "Recv Buffer contents: %s", state->recv_state.buf);
+			buf_state->state = RECORD_LAYER;
+			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
+		}
+		else {
+			kthlog(LOG_DEBUG, "no STARTTLS! stopped tracking SMTP %s", &buf_state->buf[buf_state->bytes_read-9]);
+			buf_state->state = IRRELEVANT;
+			state->interest = UNINTERESTED;
+			buf_state->bytes_to_read = 0;
+		}
+	}
+	buf_state->bytes_read++;
+	buf_state->user_cur_max = buf_state->bytes_read;
 	return;
 }
 

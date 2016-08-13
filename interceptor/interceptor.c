@@ -595,7 +595,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	
 	// 3) Attempt to get more data from external sources
-	kthlog(LOG_DEBUG, "tcp_rcv: going to get more data");
+	//kthlog(LOG_DEBUG, "tcp_rcv: going to get more data");
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
 		kmsg = *msg;
 		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
