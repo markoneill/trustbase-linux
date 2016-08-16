@@ -56,6 +56,7 @@ typedef struct handler_state_t {
 	pid_t pid;
 	pid_t tgid;
 	char* hostname;
+	char* ip;
 	buf_state_t recv_state;
 	buf_state_t send_state;
 	int policy_response;

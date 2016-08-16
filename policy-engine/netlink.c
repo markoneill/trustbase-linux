@@ -1,6 +1,7 @@
 #include <netlink/genl/genl.h>
 #include <netlink/genl/ctrl.h>
 #include <signal.h>
+#include <sqlite3.h>
 #include "netlink.h"
 #include "policy_engine.h"
 #include "th_logging.h"
@@ -8,6 +9,7 @@
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
+	[TRUSTHUB_A_IP] = { .type = NLA_STRING },
         [TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
         [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
@@ -17,6 +19,7 @@ static int family;
 struct nl_sock* netlink_sock;
 pthread_mutex_t nl_sock_mutex;
 static volatile int keep_running;
+sqlite3* db;
 
 void int_handler(int signal);
 
@@ -68,7 +71,10 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	struct nlmsghdr* nlh;
 	struct genlmsghdr* gnlh;
 	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
+	char query[256];
+	sqlite3_stmt* res;
 	char* hostname;
+	char* ip_str;
 	unsigned char* cert_chain;
 	int chain_length;
 	uint64_t stptr;
@@ -88,12 +94,42 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
+			ip_str = nla_get_string(attrs[TRUSTHUB_A_IP]);
 			//print_bytes(cert_chain, chain_length);
 
 			/* Query registered schemes */
 			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length);
+			sprintf(query, "INSERT OR IGNORE INTO Pins VALUES ('%s', %d)", ip_str, port);
+			if (sqlite3_prepare_v2(db, query, 256, &res, 0) != SQLITE_OK) {
+				thlog(LOG_ERROR, "TLS Pin insert failed %s", sqlite3_errmsg(db));
+			}
+			sqlite3_step(res);
+			sqlite3_finalize(res);
 			// XXX I *think* the message is freed by whatever function calls this one
 			// within libnl.  Verify this.
+			break;
+		case TRUSTHUB_C_SHOULDTLS:
+			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
+			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
+			ip_str = nla_get_string(attrs[TRUSTHUB_A_IP]);
+			sprintf(query, "SELECT COUNT(*) FROM Pins WHERE Hostname = '%s' AND Port = %d", ip_str, port);
+			if (sqlite3_prepare_v2(db, query, 256, &res, 0) != SQLITE_OK) {
+				thlog(LOG_ERROR, "Failed to lookup pin, %s", sqlite3_errmsg(db));
+			}
+			if (sqlite3_step(res) == SQLITE_ROW) {
+				if (sqlite3_column_int(res, 0) == 1) {
+					send_response(nlh->nlmsg_pid, stptr, 1);
+					thlog(LOG_DEBUG, "Pin found!");
+				}
+				else {
+					send_response(nlh->nlmsg_pid, stptr, 0);
+					thlog(LOG_DEBUG, "Pin not found");
+				}
+			}
+			else {
+				thlog(LOG_ERROR, "Failed to return a result");
+			}
+			sqlite3_finalize(res);
 			break;
 		case TRUSTHUB_C_SHUTDOWN:
 			/* Receiving this will exit the listen_for_queries loop, as long as keep_running is set to 0 first */
@@ -107,7 +143,19 @@ int recv_query(struct nl_msg *msg, void *arg) {
 
 int listen_for_queries(void) {
 	int group;
+	char query[256];
+	sqlite3_stmt* res;
 	netlink_sock = nl_socket_alloc();
+	if (sqlite3_open("/var/log/tls_pinning.db", &db) != SQLITE_OK) {
+		thlog(LOG_ERROR, "Failed to open sqlite database for tls pinning");
+		return -1;
+	}
+	sprintf(query, "CREATE TABLE IF NOT EXISTS Pins (Hostname TEXT, Port INT, PRIMARY KEY (Hostname, Port))");
+	if (sqlite3_prepare_v2(db, query, 256, &res, 0) != SQLITE_OK) {
+		thlog(LOG_ERROR, "Pin table creation failed %s", sqlite3_errmsg(db));
+	}
+	sqlite3_step(res);
+	sqlite3_finalize(res);
 	nl_socket_set_local_port(netlink_sock, 100);
 	thlog(LOG_DEBUG, "policy engine has PID %u", nl_socket_get_local_port(netlink_sock));
 	if (pthread_mutex_init(&nl_sock_mutex, NULL) != 0) {
@@ -155,6 +203,7 @@ int listen_for_queries(void) {
 		}
 	}
 	thlog(LOG_INFO, "Closing TrustBase\n");
+	sqlite3_close(db);
 	nl_socket_free(netlink_sock);
 	return 0;
 }

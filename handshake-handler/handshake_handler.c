@@ -122,9 +122,13 @@ void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr 
 		state->hostname = NULL; // This is initialized only if we get a client hello
 		if (is_ipv6) {
 			state->addr_v6 = *((struct sockaddr_in6 *)uaddr);
+			state->ip = kmalloc(IPV6_STR_LEN+1, GFP_KERNEL);
+			snprintf(state->ip, IPV6_STR_LEN+1, "%pI6", &(state->addr_v6.sin6_addr));
 		}
 		else {
 			state->addr_v4 = *((struct sockaddr_in*)uaddr);
+			state->ip = kmalloc(IPV4_STR_LEN+1, GFP_KERNEL);
+			snprintf(state->ip, IPV4_STR_LEN+1, "%pI4", &(state->addr_v4.sin_addr));
 		}
 		state->is_ipv6 = is_ipv6;
 		state->addr_len = addr_len;
@@ -417,6 +421,24 @@ void handle_state_smtp_server_options(handler_state_t* state, buf_state_t* buf_s
 		buf_state->buf[buf_state->bytes_read] == '\n') {
 		kthlog(LOG_DEBUG, "Server options ended: %s", buf_state->buf);
 		buf_state->state = SMTP_SERVER_OPTIONS_DONE;
+		th_send_is_starttls_query(state);
+		if (state->policy_response == POLICY_RESPONSE_VALID) {
+			
+			//reset this, we'll use it again when we check the cert
+			// XXX should probably make a cleanr version of this
+			state->policy_response = POLICY_RESPONSE_INVALID;
+
+			if (strnstr(buf_state->buf, "\r\n250-STARTTLS\r\n", buf_state->buf_length) == 0 &&
+		            strnstr(buf_state->buf, "\r\n250 STARTTLS\r\n", buf_state->buf_length) == 0) {
+				buf_state->bytes_to_read = 0;
+				buf_state->user_cur_max = buf_state->buf_length;
+				buf_state->state = IRRELEVANT;
+				state->interest = UNINTERESTED;
+				kthlog(LOG_DEBUG, "STRIPTLS attack detected!  Abort!");
+				ref_tcp_disconnect(state->orig_sock->sk, 0); // terminate the connection
+				return;
+			}
+		}
 	}
 	else if (buf_state->state == SMTP_SERVER_OPTIONS_DONE &&
 		buf_state->buf[buf_state->bytes_read] == '\n') {
@@ -424,6 +446,7 @@ void handle_state_smtp_server_options(handler_state_t* state, buf_state_t* buf_s
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 		kthlog(LOG_DEBUG, "Server responded again with %s", buf_state->buf);
 		//kthlog(LOG_DEBUG, "Full output: %s", buf_state->buf);
+
 	}
 
 	// Regardless of what we see, let data pass on and update our counters
