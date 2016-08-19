@@ -14,7 +14,7 @@ int th_query(struct sk_buff* skb, struct genl_info* info);
 
 static const struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 	[TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
-	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_NUL_STRING },
+	[TRUSTHUB_A_CLIENT_HELLO] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_IP] = { .type = NLA_NUL_STRING },
 	[TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
@@ -94,15 +94,15 @@ void th_unregister_netlink() {
 	genl_unregister_family(&th_family);
 }
 
-int th_send_certificate_query(handler_state_t* state, char* hostname, unsigned char* certificate, size_t length) {
+int th_send_certificate_query(handler_state_t* state, unsigned char* certificate, size_t length) {
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
 	uint16_t port;
-	skb = genlmsg_new(length+strlen(hostname)+strlen(state->ip)+10, GFP_ATOMIC); // size is port + hostname + ip+ chain + state pointer
+	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+10, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
 	kthlog(LOG_DEBUG, "Trying to send a cert query");
 	if (skb == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg");
+		kthlog(LOG_ERROR, "failed in genlmsg for sending the query");
 		nlmsg_free(skb);
 		return -1;
 	}
@@ -112,9 +112,10 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, unsigned c
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put_string(skb, TRUSTHUB_A_HOSTNAME, hostname);
+	kthlog(LOG_DEBUG, "Trying to send client hello of length %d", state->client_hello_len);
+	rc = nla_put(skb, TRUSTHUB_A_CLIENT_HELLO, state->client_hello_len, state->client_hello);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put_string");
+		kthlog(LOG_ERROR, "failed in nla_put for Client Hello");
 		nlmsg_free(skb);
 		return -1;
 	}
@@ -126,8 +127,7 @@ int th_send_certificate_query(handler_state_t* state, char* hostname, unsigned c
 	}
 	if (state->is_ipv6) {
 		port = ntohs((uint16_t)state->addr_v4.sin_port);
-	}
-	else {
+	} else {
 		port = ntohs((uint16_t)state->addr_v6.sin6_port);
 	}
 	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
@@ -171,7 +171,7 @@ int th_send_shutdown() {
 	
 	skb = genlmsg_new(0, GFP_ATOMIC);
 	if (skb == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg");
+		kthlog(LOG_ERROR, "failed in genlmsg for sending shutdown");
 		nlmsg_free(skb);
 		return -1;
 	}
@@ -200,7 +200,7 @@ int th_send_is_starttls_query(struct handler_state_t* state) {
 	skb = genlmsg_new(strlen(state->ip) + 10, GFP_ATOMIC);
 	kthlog(LOG_DEBUG, "Trying to send a shouldtls query for %s", state->ip);
 	if (skb == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg");
+		kthlog(LOG_ERROR, "failed in genlmsg for starttls");
 		nlmsg_free(skb);
 		return -1;
 	}
@@ -212,7 +212,7 @@ int th_send_is_starttls_query(struct handler_state_t* state) {
 	}
 	rc = nla_put_string(skb, TRUSTHUB_A_IP, state->ip);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put_string (hostname)");
+		kthlog(LOG_ERROR, "failed in nla_put_string (ip)");
 		nlmsg_free(skb);
 		return -1;
 	}

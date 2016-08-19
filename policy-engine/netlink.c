@@ -3,12 +3,14 @@
 #include <signal.h>
 #include <sqlite3.h>
 #include "netlink.h"
+#include "sni_parser.h"
 #include "policy_engine.h"
 #include "th_logging.h"
 
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
+	[TRUSTHUB_A_CLIENT_HELLO] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_IP] = { .type = NLA_STRING },
         [TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
@@ -58,15 +60,6 @@ int send_response(uint32_t spid, uint64_t stptr, int result) {
 	return 0;	
 }
 
-void print_bytes(unsigned char* seq, int num) {
-	int i;
-	for (i = 0; i < num; i++) {
-		printf("%02x", seq[i]);
-	}
-	printf("\n");
-	return;
-}
-
 int recv_query(struct nl_msg *msg, void *arg) {
 	struct nlmsghdr* nlh;
 	struct genlmsghdr* gnlh;
@@ -77,6 +70,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	char* ip_str;
 	unsigned char* cert_chain;
 	int chain_length;
+	char* client_hello;
+	int client_hello_len;
 	uint64_t stptr;
 	uint16_t port;
 
@@ -93,10 +88,11 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
 			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
-			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
+			//hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
+			client_hello_len = nla_len(attrs[TRUSTHUB_A_CLIENT_HELLO]);
+			client_hello = nla_data(attrs[TRUSTHUB_A_CLIENT_HELLO]);
+			hostname = sni_get_hostname(client_hello, client_hello_len);
 			ip_str = nla_get_string(attrs[TRUSTHUB_A_IP]);
-			//print_bytes(cert_chain, chain_length);
-
 			/* Query registered schemes */
 			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length);
 			sprintf(query, "INSERT OR IGNORE INTO Pins VALUES ('%s', %d)", ip_str, port);

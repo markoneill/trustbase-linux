@@ -77,8 +77,23 @@ int thlog(thlog_level_t level, const char* format, ... ) {
 	fflush(log_file);
 	
 	va_end(args);
+	free(extended_format);
 	return 0;
 } 
+
+int thlog_bytes(char* seq, int num) {
+	int i;
+	char* output_str;
+	
+	output_str = (char*) malloc(num * 3);
+	output_str[0] = '\0';
+	for (i=0; i<num; i++) {
+		sprintf(output_str, "%s%02x%s", output_str, seq[i] & 0xff, ((i+1)%16==0 || i==num-1)?"\n":((i+1)%2==0)?" ":"");
+	}
+	thlog(LOG_NONE, output_str);
+	free(output_str);
+	return 0;
+}
 
 int thlog_cert(X509* cert) {
 	static const int MAX_LENGTH = 1024;

@@ -79,7 +79,7 @@ static void handle_state_client_hello_sent(handler_state_t* state, buf_state_t* 
 static void handle_state_server_hello_done_sent(handler_state_t* state, buf_state_t* buf_state);
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
-static void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_length);
+static void set_state_client_hello(handler_state_t* state, char* buf, unsigned int message_length);
 
 // SMTP state machine handling
 void handle_state_smtp_potential(handler_state_t* state, buf_state_t* buf_state);
@@ -119,7 +119,7 @@ void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr 
 		state->policy_response = POLICY_RESPONSE_INVALID;
 		state->new_cert = NULL;
 		state->new_cert_length = 0;
-		state->hostname = NULL; // This is initialized only if we get a client hello
+		state->client_hello = NULL; // This is initialized only if we get a client hello
 		if (is_ipv6) {
 			state->addr_v6 = *((struct sockaddr_in6 *)uaddr);
 			state->ip = kmalloc(IPV6_STR_LEN+1, GFP_KERNEL);
@@ -159,9 +159,6 @@ void th_state_free(void* state) {
 	}
 	if (s->recv_state.buf != NULL) {
 		kfree(s->recv_state.buf);
-	}
-	if (s->hostname != NULL) {
-		kfree(s->hostname);
 	}
 	if (s->new_cert != NULL) {
 		kfree(s->new_cert);
@@ -572,7 +569,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			kthlog(LOG_DEBUG, "Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
-			set_state_hostname(state, cs_buf+1, handshake_message_length); // Plus one to ignore protocol type
+			set_state_client_hello(state, cs_buf, handshake_message_length);
 			buf_state->user_cur_max = buf_state->bytes_read;
 			cs_buf += handshake_message_length;
 		}
@@ -686,77 +683,20 @@ unsigned int handle_certificates(handler_state_t* state, unsigned char* buf) {
 	//int i = 0;
 	handshake_message_length = be24_to_cpu(*(__be24*)bufptr);
 
-	//th_send_certificate_query(
+	//th_send_certificate_query
 	bufptr += 3; // handshake identifier + 24bit length of protocol message
 	//certificates_length = be32_to_cpu(*(unsigned int*)(bufptr) & 0xFFFFFF00);
 	certificates_length = be24_to_cpu(*(__be24*)bufptr);
 	bufptr += 3; // 24-bit length of certificates
 	set_orig_leaf_cert(state, bufptr, certificates_length);
-	th_send_certificate_query(state, state->hostname, bufptr, certificates_length);
+	th_send_certificate_query(state, bufptr, certificates_length);
 	return 0;
 }
 
-void set_state_hostname(handler_state_t* state, char* buf, unsigned int message_len) {
-	// XXX clean this function up.  It was made in haste just to get the hostname
-	char* bufptr;
-	unsigned int hello_length;
-	unsigned char session_id_length;
-	unsigned short cipher_suite_length;
-	unsigned char compression_methods_length;
-	unsigned short extensions_length;
-	unsigned short extension_length;
-	unsigned short extension_type;
-	unsigned char type;
-	unsigned short name_length;
-	bufptr = buf;
-	hello_length = be24_to_cpu(*(__be24*)bufptr);
-	bufptr += SIZE_CLIENT_HELLO_LEN; // advance past length info
-	bufptr += SIZE_TLS_VERSION_INFO; // advance past version info
-	bufptr += SIZE_RANDOM_DATA; // skip 32-byte random
-	session_id_length = bufptr[0];
-	bufptr += SIZE_SESSION_ID_LEN; // advance past session id length field
-	bufptr += session_id_length; // advance past session ID
-	cipher_suite_length = be16_to_cpu(*(__be16*)bufptr);
-	bufptr += SIZE_CIPHER_SUITE_LEN; // advance past cipher suite length field
-	bufptr += cipher_suite_length; // advance past cipher suites;
-	compression_methods_length = be16_to_cpu(*(__be16*)bufptr);
-	bufptr += SIZE_COMPRESSION_METHODS_LEN; // advance past compression methods length field
-	bufptr += compression_methods_length; // advance past compression methods
-	/* If there are bytes left, there are extensions, and possibly a SNI */
-	if (message_len - (unsigned int)((bufptr + SIZE_CLIENT_HELLO_LEN) - buf) > 0) {
-		extensions_length = be16_to_cpu(*(__be16*)bufptr);
-		bufptr += SIZE_EXTS_LEN; // advance past extensions length
-		while (extensions_length) {
-			// Check how many bytes have been read vs how many are left
-			extension_type = be16_to_cpu(*(__be16*)bufptr);
-			bufptr += SIZE_EXT_TYPE; // advance past type field
-			extension_length = be16_to_cpu(*(__be16*)bufptr);
-			bufptr += SIZE_EXT_LEN; // advance past extension length field
-			if (extension_type == EXT_TYPE_SNI) {
-				bufptr += SIZE_SNI_LIST_LEN; // advance past the list length 
-				type = bufptr[0];
-				bufptr += SIZE_SNI_TYPE; // advance past type field
-				name_length = be16_to_cpu(*(__be16*)bufptr);
-				bufptr += SIZE_SNI_NAME_LEN; // advance past name length field
-				state->hostname = kmalloc(name_length+1, GFP_KERNEL);
-				memcpy(state->hostname, bufptr, name_length);
-				state->hostname[name_length] = '\0'; // null terminate it
-				break;
-			}
-			bufptr += extension_length; // advanced to the next extension
-			extensions_length -= extension_length + SIZE_EXT_TYPE + SIZE_EXT_LEN;
-		}
-	}
-
-	if (state->hostname == NULL) {
-		if (state->is_ipv6) {
-			state->hostname = kmalloc(IPV6_STR_LEN+1, GFP_KERNEL);
-			snprintf(state->hostname, IPV6_STR_LEN+1, "%pI6", &(state->addr_v6.sin6_addr));
-		} else {
-			state->hostname = kmalloc(IPV4_STR_LEN+1, GFP_KERNEL);
-			snprintf(state->hostname, IPV4_STR_LEN+1, "%pI4", &(state->addr_v4.sin_addr));
-		}
-	}
+void set_state_client_hello(handler_state_t* state, char* buf, unsigned int message_len) {
+	state->client_hello = (char*)kmalloc(message_len, GFP_KERNEL); 
+	memcpy(state->client_hello, buf, message_len);
+	state->client_hello_len = message_len;
 	return;
 }
 

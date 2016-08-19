@@ -55,7 +55,6 @@ typedef struct handler_state_t {
 	interest_state_t interest;
 	pid_t pid;
 	pid_t tgid;
-	char* hostname;
 	char* ip;
 	buf_state_t recv_state;
 	buf_state_t send_state;
@@ -72,6 +71,8 @@ typedef struct handler_state_t {
 	int new_cert_length;
 	unsigned char* orig_leaf_cert;
 	unsigned int orig_leaf_cert_len;
+	char* client_hello;
+	unsigned int client_hello_len;
 } handler_state_t;
 
 void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);

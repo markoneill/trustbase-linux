@@ -31,6 +31,7 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/reverse_dns.c \
 		    policy-engine/th_logging.c \
 		    policy-engine/notifications.c \
+		    policy-engine/sni_parser.c \
 		    policy-engine/policy_engine.c
 
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
@@ -77,11 +78,7 @@ CERT_TEST_SRC = userspace_tests/cert_sandbox.c
 CERT_TEST_OBJ = $(CERT_TEST_SRC:%.c=%.o)
 CERT_TEST_EXE = cert_test
 
-DNS_TEST_SRC = userspace_tests/dns_test.c
-DNS_TEST_OBJ = $(DNS_TEST_SRC:%.c=%.o)
-DNS_TEST_EXE = dns_test
-
-all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(DNS_TEST_EXE)
+all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 $(POLICY_ENGINE_EXE) : $(POLICY_ENGINE_OBJ)
@@ -117,12 +114,9 @@ $(SIMPLE_CLIENT_EXE) : $(SIMPLE_CLIENT_OBJ)
 $(CERT_TEST_EXE) : $(CERT_TEST_OBJ)
 	$(CC) $(CCFLAGS) $^ -o $@ $(LIBS)
 
-$(DNS_TEST_EXE) : $(DNS_TEST_OBJ)
-	$(CC) $(CCFLAGS) $^ -o $@ $(LIBS)
-
 %.o : %.c
 	$(CC) $(CCFLAGS) -c $< $(INCLUDES) -o $@
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(NATIVE_LIB_EXE) $(DNS_TEST_EXE)
+	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(NATIVE_LIB_EXE) 
