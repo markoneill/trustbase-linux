@@ -75,11 +75,22 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	uint64_t stptr;
 	uint16_t port;
 
+	hostname = NULL;
+	ip_str = NULL;
+
 	// Get Message
 	nlh = nlmsg_hdr(msg);
 	gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
+		case TRUSTHUB_C_QUERY_NATIVE:
+			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
+			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
+			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
+			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
+			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
+			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length);
+			break;
 		case TRUSTHUB_C_QUERY:
 			thlog(LOG_DEBUG, "Received a query from PID %u", nlh->nlmsg_pid);
 			thlog(LOG_DEBUG, "Policy engine PID is %u", nl_socket_get_local_port(netlink_sock));
@@ -88,7 +99,6 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
 			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
-			//hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
 			client_hello_len = nla_len(attrs[TRUSTHUB_A_CLIENT_HELLO]);
 			client_hello = nla_data(attrs[TRUSTHUB_A_CLIENT_HELLO]);
 			hostname = sni_get_hostname(client_hello, client_hello_len);

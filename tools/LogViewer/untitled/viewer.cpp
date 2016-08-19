@@ -66,8 +66,12 @@ void Viewer::loadFile()
     QTextStream in(&logfile);
     while (!in.atEnd()) {
         QString line = in.readLine();
-        if (line.isEmpty() || line.section(':',4).isEmpty()) {
+        if (line.isEmpty()) {
             continue;
+        } else if (line.section(':',4).isEmpty()) {
+            // Add it to the previous one
+            this->messages.last()->message.append('\n');
+            this->messages.last()->message.append(line);
         }
         // Process the hexdump
         if (line.endsWith(":HEX START:")) {

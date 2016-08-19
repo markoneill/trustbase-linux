@@ -99,7 +99,7 @@ int th_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	int rc;
 	void* msg_head;
 	uint16_t port;
-	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+10, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
+	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+250, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
 	kthlog(LOG_DEBUG, "Trying to send a cert query");
 	if (skb == NULL) {
 		kthlog(LOG_ERROR, "failed in genlmsg for sending the query");
@@ -197,7 +197,7 @@ int th_send_is_starttls_query(struct handler_state_t* state) {
 	void* msg_head;
 	uint16_t port;
 
-	skb = genlmsg_new(strlen(state->ip) + 10, GFP_ATOMIC);
+	skb = genlmsg_new(strlen(state->ip) + 250, GFP_ATOMIC);
 	kthlog(LOG_DEBUG, "Trying to send a shouldtls query for %s", state->ip);
 	if (skb == NULL) {
 		kthlog(LOG_ERROR, "failed in genlmsg for starttls");

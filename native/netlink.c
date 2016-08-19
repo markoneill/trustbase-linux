@@ -74,7 +74,7 @@ int send_query(uint64_t id, char* host, int port, unsigned char* chain, int leng
 		fprintf(stderr, "failed to allocate message buffer\n");
 		return -1;
 	}
-	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_QUERY, 1);
+	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_QUERY_NATIVE, 1);
 	if (msg_head == NULL) {
 		fprintf(stderr, "failed in genlmsg_put\n");
 		return -1;
