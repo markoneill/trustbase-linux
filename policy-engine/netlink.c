@@ -80,6 +80,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	ip_str = NULL;
 
 	// Get Message
+	thlog(LOG_DEBUG, "Received a message");
 	nlh = nlmsg_hdr(msg);
 	gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
@@ -109,9 +110,10 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			sprintf(query, "INSERT OR IGNORE INTO Pins VALUES ('%s', %d)", ip_str, port);
 			if (sqlite3_prepare_v2(db, query, 256, &res, 0) != SQLITE_OK) {
 				thlog(LOG_ERROR, "TLS Pin insert failed %s", sqlite3_errmsg(db));
+			} else {
+				sqlite3_step(res);
+				sqlite3_finalize(res);
 			}
-			sqlite3_step(res);
-			sqlite3_finalize(res);
 			// XXX I *think* the message is freed by whatever function calls this one
 			// within libnl.  Verify this.
 			break;
@@ -140,9 +142,10 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			break;
 		case TRUSTHUB_C_SHUTDOWN:
 			/* Receiving this will exit the listen_for_queries loop, as long as keep_running is set to 0 first */
+			thlog(LOG_DEBUG, "Recieved a shutdown message");
 			break;
 		default:
-			thlog(LOG_DEBUG, "Got something unusual...\n");
+			thlog(LOG_DEBUG, "Got something unusual...");
 			break;
 	}
 	return 0;
@@ -166,41 +169,41 @@ int prep_communication(const char* username) {
 	nl_socket_set_local_port(netlink_sock, 100);
 	thlog(LOG_DEBUG, "policy engine has PID %u", nl_socket_get_local_port(netlink_sock));
 	if (pthread_mutex_init(&nl_sock_mutex, NULL) != 0) {
-		fprintf(stderr, "Failed to create mutex for netlink\n");
+		thlog(LOG_ERROR, "Failed to create mutex for netlink");
 		return -1;
 	}
 	nl_socket_disable_seq_check(netlink_sock);
 	nl_socket_modify_cb(netlink_sock, NL_CB_VALID, NL_CB_CUSTOM, recv_query, (void*)netlink_sock);
 	if (netlink_sock == NULL) {
-		fprintf(stderr, "Failed to allocate socket\n");
+		thlog(LOG_ERROR, "Failed to allocate socket");
 		return -1;
 	}
 	/* Internally this calls socket() and bind() using Netlink
  	 (specifically Generic Netlink)
  	 */
 	if (genl_connect(netlink_sock) != 0) {
-		thlog(LOG_ERROR, "Failed to connect to Generic Netlink control\n");
+		thlog(LOG_ERROR, "Failed to connect to Generic Netlink control");
 		return -1;
 	}
 	
 	if ((family = genl_ctrl_resolve(netlink_sock, "TRUSTHUB")) < 0) {
-		thlog(LOG_ERROR, "Failed to resolve TRUSTHUB family identifier\n");
+		thlog(LOG_ERROR, "Failed to resolve TRUSTHUB family identifier");
 		return -1;
 	}
 
 	if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTHUB", "query")) < 0) {
-		thlog(LOG_ERROR, "Failed to resolve group identifier\n");
+		thlog(LOG_ERROR, "Failed to resolve group identifier");
 		return -1;
 	}
 
 	if (nl_socket_add_membership(netlink_sock, group) < 0) {
-		thlog(LOG_ERROR, "Failed to add membership to group\n");
+		thlog(LOG_ERROR, "Failed to add membership to group");
 		return -1;
 	}
 	
 
 	if (signal(SIGINT, int_handler) == SIG_ERR) {
-		thlog(LOG_ERROR, "Cannot listen for SIGINT\n");
+		thlog(LOG_ERROR, "Cannot listen for SIGINT");
 	}
 	
 	sqlite3_close(db);
@@ -210,21 +213,22 @@ int prep_communication(const char* username) {
 }
 	
 int listen_for_queries() {
+	int err;
 	keep_running = 1;
 	while (keep_running == 1) {
-		if (nl_recvmsgs_default(netlink_sock) < 0) {
-			thlog(LOG_DEBUG, "Failing out of main loop\n");
+		err = nl_recvmsgs_default(netlink_sock);
+		if (err < 0) {
+			thlog(LOG_DEBUG, "nl_recv failed with code %i", err);
 			break;
 		}
 	}
-	thlog(LOG_INFO, "Closing TrustBase\n");
 	nl_socket_free(netlink_sock);
 	return 0;
 }
 
 void int_handler(int signal) {
 	if (signal == SIGINT) {
-		thlog(LOG_DEBUG, " Caught SIGINT\n");
+		thlog(LOG_DEBUG, "Caught SIGINT");
 		keep_running = 0;
 		// Wait for our netlink_message to break the loop
 	}

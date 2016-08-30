@@ -31,7 +31,7 @@ int policy_engine_init(struct subprocess_info *info, struct cred *new);
 int mitm_proxy_init(struct subprocess_info *info, struct cred *new);
 int alt_call_usermodehelper(char *path, char **argv, char **envp, int wait, 
 		int (*init)(struct subprocess_info *info, struct cred *new));
-void stop_task(struct task_struct* task);
+void stop_task(struct task_struct* task, int signal);
 
 /**
  * the initial function that sets up the MITM proxy and handler
@@ -76,7 +76,7 @@ int __init loader_start(void) {
 	proxy_register(&trusthub_ops);
 	start_policy_engine(th_path);
 	kthlog(LOG_DEBUG, "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
-	kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
+	//kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
 
 	return 0;
 }
@@ -86,19 +86,19 @@ int __init loader_start(void) {
  * @post TrustHub unregistered and stopped
  */
 void __exit loader_end(void) {
+	// Kill policy engine before killing IPC because
+	// the IPC is needed for shutdown message
+	stop_task(policy_engine_task, SIGTERM);
 	// Send shutdown message to policy-engine
 	th_send_shutdown();
 	proxy_unregister();
 	nat_ops_unregister();
 
-	// Kill policy engine before killing IPC because
-	// the IPC is needed for shutdown message
-	stop_task(policy_engine_task);
 
 	// Unregister the IPC
 	th_unregister_netlink();
 
-	stop_task(mitm_proxy_task);
+	stop_task(mitm_proxy_task, SIGTERM);
 
 	// Remove the Proc File
 	kthlog_exit();
@@ -109,12 +109,12 @@ void __exit loader_end(void) {
  * Sends SIGTERM to a task
  * @param task A pointer to a task_struct
  */
-void stop_task(struct task_struct* task) {
+void stop_task(struct task_struct* task, int signal) {
 	struct siginfo sinfo;
 	memset(&sinfo, 0, sizeof(struct siginfo));
-	sinfo.si_signo = SIGTERM;
+	sinfo.si_signo = signal;
 	sinfo.si_code = SI_KERNEL;
-	send_sig_info(SIGTERM, &sinfo, task);
+	send_sig_info(signal, &sinfo, task);
 	return;
 }
 /**

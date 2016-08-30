@@ -111,6 +111,7 @@ void thlog_close() {
 		return;
 	}
 
+	fflush(log_file);
 	fclose(log_file);
 }
 
@@ -164,43 +165,3 @@ void* read_kthlog(void* arg) {
 	}
 	return NULL;
 }
-
-/*int main(int argc, char** argv) {
-	thlog_level_t min;
-	thlog_level_t text;
-	if (argc < 5) {
-		printf("Useage : %s <level> <file> <level> <text>\n", argv[0]);
-		return 0;
-	}
-	switch (argv[1][0]) {
-		case '0':
-			min = LOG_DEBUG;
-			break;
-		case '1':
-			min = LOG_INFO;
-			break;
-		case '2':
-			min = LOG_WARNING;
-			break;
-		case '3':
-			min = LOG_ERROR;
-			break;
-	}
-	switch (argv[3][0]) {
-		case '0':
-			text = LOG_DEBUG;
-			break;
-		case '1':
-			text = LOG_INFO;
-			break;
-		case '2':
-			text = LOG_WARNING;
-			break;
-		case '3':
-			text = LOG_ERROR;
-			break;
-	}
-	thlog_init(argv[2], min); 
-	thlog(text, "test:%s", argv[4]);
-	return 0;
-}*/

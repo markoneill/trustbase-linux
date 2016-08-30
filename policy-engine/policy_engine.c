@@ -19,6 +19,8 @@
 #include "th_logging.h"
 #include "policy_engine.h"
 
+#include <unistd.h>
+
 #define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
 
 policy_context_t context;
@@ -63,7 +65,7 @@ int main(int argc, char* argv[]) {
 	
 	/* Start Logging */
 	thlog_init("/var/log/trusthub.log", LOG_DEBUG);
-	thlog(LOG_INFO, "\n\tStarting logging\n");
+	thlog(LOG_INFO, "\n\n### Started Policy Engine ### Starting Logging ###\n");
 	pthread_create(&logging_thread, NULL, read_kthlog, NULL);
 	
 	load_config(&context, argv[1], username);
@@ -104,11 +106,13 @@ int main(int argc, char* argv[]) {
 	for (i = 0; i < context.plugin_count; i++) {
 		pthread_kill(plugin_threads[i], SIGTERM);
 	}
+
 	pthread_kill(decider_thread, SIGTERM);
 	for (i = 0; i < context.plugin_count; i++) {
 		pthread_join(plugin_threads[i], NULL);
 		free_queue(context.plugins[i].queue); // XXX relocate this
 	}
+
 	pthread_join(decider_thread, NULL);
 	free_queue(context.decider_queue);
 	list_free(context.timeout_list);
@@ -116,7 +120,10 @@ int main(int argc, char* argv[]) {
 	close_addons(context.addons, context.addon_count);
 	free(plugin_thread_params);
 	free(plugin_threads);
+	
+
 	pthread_kill(logging_thread, SIGTERM);
+	thlog(LOG_INFO, "\n\n### Closing Policy Engine ### Closing Logging ###\n");
 	thlog_close();
 	return 0;
 }
@@ -149,9 +156,7 @@ void* plugin_thread_init(void* arg) {
 	}
 	thlog(LOG_DEBUG, "Plugin %s ready", plugin->name);
 	while (keep_running == 1) {
-		thlog(LOG_DEBUG, "Dequeuing query");
 		query = dequeue(queue);
-		thlog(LOG_DEBUG, "Query dequeued");
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
 			thlog(LOG_DEBUG, "Querying synch plugin %s", plugin->name);
 			result = query_plugin(plugin, plugin_id, query);

@@ -1,4 +1,3 @@
-#include "check_root_store.h"
 #include <stdio.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
@@ -7,10 +6,10 @@
 #include <fnmatch.h>
 #include <openssl/evp.h>
 #include "trusthub_plugin.h"
+#include "th_logging.h"
+#include "check_root_store.h"
 
 #define MAX_LENGTH 1024
-
-#define CRS_DEBUG 0
 
 static int cmp_names(const char* hostname, char* cn);
 static void print_certificate(X509* cert);
@@ -33,9 +32,7 @@ X509_STORE* make_new_root_store() {
 	/* create a new store */
 	store = X509_STORE_new();
 	if (store == NULL) {
-		if (CRS_DEBUG) {
-			printf("Unable to create new X509 store\n");
-		}
+		thlog(LOG_ERROR, "Unable to create new X509 store");
 		return NULL;
 	}
 	
@@ -48,9 +45,7 @@ X509_STORE* make_new_root_store() {
 	
 	/* load the store */
 	if (X509_STORE_load_locations(store, full_path, NULL) < 1) {
-		if (CRS_DEBUG) {
-			printf("Unable to read the certificate store at %s\n", full_path);
-		}
+		thlog(LOG_ERROR, "Unable to read the certificate store at %s", full_path);
 		X509_STORE_free(store);
 		return NULL;
 	}
@@ -71,27 +66,18 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	X509_STORE* store;
 	int i;
 	int valid;
-	int allpassed = PLUGIN_RESPONSE_VALID;
 
 	/* Check the hostname against the leaf certificate */
 	
-	if (CRS_DEBUG >= 1) {	
-		printf("Full Chain to Verify:\n");
-		print_chain(certs);
-	}
-	
 	if (verify_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
 		if (verify_alternate_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
-			if (CRS_DEBUG >= 1) {	
-				printf("The hostname was found invalid\n");
-			}
+			thlog(LOG_INFO, "The hostname %s was found invalid", hostname);
 			return PLUGIN_RESPONSE_INVALID;
 		}
 	}
 	
 	/* Verify the certificate chain */
 	OpenSSL_add_all_algorithms();
-
 	store = root_store;
 	
 	for (i=sk_X509_num(certs)-1; i>=0; i--) {
@@ -99,40 +85,42 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	
 		ctx = X509_STORE_CTX_new();
 		if (!ctx) {
-			if (CRS_DEBUG >= 1) {
-				printf("Unable to create new X509_STORE_CTX\n");
-			}
+			thlog(LOG_ERROR, "Unable to create new X509_STORE_CTX");
 			return PLUGIN_RESPONSE_ERROR;
 		}
 
 		if (X509_STORE_CTX_init(ctx, store, cert, certs) < 1) {
-			if (CRS_DEBUG >= 1) {
-				printf("The certificate chain is invalid\n");
-			}
+			thlog(LOG_WARNING, "The certificate chain is invalid");
+			print_chain(certs);
 			X509_STORE_CTX_free(ctx);
-			return PLUGIN_RESPONSE_ERROR;
+			return PLUGIN_RESPONSE_INVALID;
 		}
 	
 		/* Verify the build certificate context */
 		valid = X509_verify_cert(ctx);
 		if (valid < 1) {
-			if (CRS_DEBUG >= 1) {
-				printf("The certificate:\n");
-				print_certificate(cert);
-				printf("Did not pass and gave error : ");
-				printf("%s\n", get_validation_errstr(X509_STORE_CTX_get_error(ctx)));	
-			}
-			allpassed = PLUGIN_RESPONSE_INVALID;
+			thlog(LOG_DEBUG, "A certificate gave an error %s. Certificate:", get_validation_errstr(X509_STORE_CTX_get_error(ctx)));	
+			print_certificate(cert);
+			X509_STORE_CTX_free(ctx);
+			return PLUGIN_RESPONSE_INVALID;
 		} else {
-			if (CRS_DEBUG >= 1) {
-				printf("The certificate:\n");
+			/* Certificate passed */
+		}
+
+		/* Check if this cert can be a CA */
+		if (i > 0) {
+			/* This should be a CA */
+			if (X509_check_ca(cert) < 1) {
+				thlog(LOG_WARNING, "Found a certificate in the chain that is not a CA, but is signing");
 				print_certificate(cert);
-				printf("Passed\n");
+				X509_STORE_CTX_free(ctx);
+				return PLUGIN_RESPONSE_INVALID;
 			}
 		}
+			
 		X509_STORE_CTX_free(ctx);
 	}
-	return allpassed;
+	return PLUGIN_RESPONSE_VALID;
 }
 
 /** This function checks the alternative hostnames in the certificate
@@ -150,9 +138,6 @@ int verify_alternate_hostname(const char* hostname, X509* cert) {
 	alt_names = X509_get_ext_d2i((X509 *) cert, NID_subject_alt_name, NULL, NULL);
 	if (alt_names == NULL) {
 		return 0;
-		if (CRS_DEBUG >= 1) {	
-			printf("No alternative hostnames found.\n");
-		}
 	}
 	
 	for (i=0; i<sk_GENERAL_NAME_num(alt_names); i++) {
@@ -163,9 +148,7 @@ int verify_alternate_hostname(const char* hostname, X509* cert) {
 			
 			/* check for null characters */
 			if (ASN1_STRING_length(current_alt_name->d.dNSName) != strlen(cn)) {
-				if (CRS_DEBUG >= 1) {
-					printf("Malformed Certificate\n");
-				}
+				thlog(LOG_DEBUG, "Parsing a malformed certificate");
 				continue;
 			}
 			
@@ -189,10 +172,6 @@ int verify_hostname(const char* hostname, X509* cert) {
 	char* cn;
 	int result;
 	
-	if (CRS_DEBUG >= 1) {
-		printf("Checking for hostname in leaf cert:");
-		print_certificate(cert);
-	}
 	/* Get the Common Name from the certificate */
 		
 	subj = X509_get_subject_name(cert);
@@ -210,9 +189,7 @@ int verify_hostname(const char* hostname, X509* cert) {
 		
 		/* check for null characters */
 		if (ASN1_STRING_length(data) != strlen(cn)) {
-			if (CRS_DEBUG >= 1) {
-				printf("Malformed Certificate\n");
-			}
+			thlog(LOG_DEBUG, "Parsing a malformed certificate");
 			continue;
 		}
 
@@ -228,7 +205,7 @@ int verify_hostname(const char* hostname, X509* cert) {
 /** This does the actual string manipulation and comparison for hostnames
  *
  */
-static int cmp_names(const char* hostname, char* cn) {
+int cmp_names(const char* hostname, char* cn) {
 	int i;
 	int count;
 	int len;
@@ -257,9 +234,6 @@ static int cmp_names(const char* hostname, char* cn) {
 			}
 			tempstr = (char *) malloc(len - (count));
 			memcpy(tempstr, cn+count+1, len - (count));
-			if (CRS_DEBUG >= 1) {
-				printf("cn without subdomain = %s\n",tempstr);
-			}
 			cn = tempstr;
 		}
 		/* add *. to the front of the cn */
@@ -267,14 +241,8 @@ static int cmp_names(const char* hostname, char* cn) {
 		tempstr = (char *) malloc(len+3);
 		memcpy(tempstr, "*.", 2);
 		memcpy(tempstr+2, cn, len+1);
-		if (CRS_DEBUG>= 1) {
-			printf("modified cn = %s\n", tempstr);
-		}
 		free(cn);
 		cn = tempstr;
-	}
-	if (CRS_DEBUG >= 1) {
-		printf("Comparison of cn %s and host %s = %d\n", cn, hostname, fnmatch(cn, hostname, 0));
 	}
 	if (fnmatch(cn, hostname, 0) == 0) {
 		result = 1;
@@ -311,24 +279,22 @@ STACK_OF(X509)* pem_to_stack(char* filename) {
 	return chain;
 }
 
-static void print_certificate(X509* cert) {
+void print_certificate(X509* cert) {
         char subj[MAX_LENGTH+1];
         char issuer[MAX_LENGTH+1];
         X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
         X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-        printf("subject: %s\n", subj);
-        printf("issuer : %s\n", issuer);
+        thlog(LOG_DEBUG, "Certificate :SUBJECT: %s :ISSUER: %s", subj, issuer);
 }
 
-static void print_chain(STACK_OF(X509)* in) {
+void print_chain(STACK_OF(X509)* in) {
 	int i;
-	
 	for (i=0; i<sk_X509_num(in); i++) {
 		print_certificate(sk_X509_value(in, i));
 	}
 }
 
-static const char* get_validation_errstr(long e) {
+const char* get_validation_errstr(long e) {
 		switch ((int) e) {
 	case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
 		return "ERR_UNABLE_TO_GET_ISSUER_CERT";
