@@ -16,7 +16,7 @@ static int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin
 static char* copy_string(const char* original);
 static char* cat_path(char* a, const char* b);
 
-int load_config(policy_context_t* policy_context, char* path) {
+int load_config(policy_context_t* policy_context, char* path, char* username) {
 	plugin_t* plugins;
 	addon_t* addons;
 	config_t cfg;
@@ -25,11 +25,13 @@ int load_config(policy_context_t* policy_context, char* path) {
 	int i;
 	int plugin_count;
 	int addon_count;
+	const char* config_username;
 
 	plugin_count = 0;
 	addon_count = 0;
 	plugins = NULL;
 	addons = NULL;
+	config_username = NULL;
 	
 	// Read config file and store data
 	config_init(&cfg);
@@ -78,6 +80,23 @@ int load_config(policy_context_t* policy_context, char* path) {
 		return 1;
 	}
 	parse_aggregation(setting, &policy_context->congress_threshold, plugins, plugin_count);
+
+	// Username parsing
+	setting = config_lookup(&cfg, "username");
+	if (setting == NULL) {
+		fprintf(stderr, "username setting not found\n");
+	} else {
+		// Take the username and have the policy engine run as that user
+		config_username = config_setting_get_string(setting);
+		if (config_username != NULL) {
+			// Set the username to be given back to the thing
+			strncpy(username, config_username, MAX_USERNAME_LEN);
+			username[MAX_USERNAME_LEN] = '\0';
+		} else {
+			username[0] = '\0';
+		}
+	}
+		
 
 	// Free up config data
 	config_destroy(&cfg);

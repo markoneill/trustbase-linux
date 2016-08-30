@@ -146,7 +146,6 @@ void* buf_state_init(buf_state_t* buf_state) {
 	buf_state->user_cur = 0;
 	buf_state->user_cur_max = 0;
 	buf_state->bytes_to_read = TH_TLS_HANDSHAKE_IDENTIFIER_SIZE;
-	kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_HANDSHAKE_IDENTIFIER_SIZE of %i", TH_TLS_HANDSHAKE_IDENTIFIER_SIZE); 
 	buf_state->buf = NULL;
 	buf_state->state = UNKNOWN;
 	return buf_state;
@@ -348,21 +347,21 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 		//print_call_info("May be initiating an SSL/TLS connection");
 		buf_state->state = RECORD_LAYER;
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
-		kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_RECORD_HEADER_SIZE of %i", TH_TLS_RECORD_HEADER_SIZE); 
+		//kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_RECORD_HEADER_SIZE of %i", TH_TLS_RECORD_HEADER_SIZE); 
 	}
 	else if (buf_state->buf[0] == smtp_string[0]) {
 		buf_state->state = SMTP_POTENTIAL;
 		buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
-		kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
+		//kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
 	}
 	else if (buf_state->buf[0] == smtp_server_string[0]) {
 		buf_state->state = SMTP_SERVER_POTENTIAL;
 		buf_state->bytes_to_read = TH_SMTP_READ_SIZE;
-		kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
+		//kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
 	}
 	else {
 		buf_state->bytes_to_read = 0;
-		kthlog(LOG_DEBUG, "set bytes to read to 0"); 
+		//kthlog(LOG_DEBUG, "set bytes to read to 0"); 
 		buf_state->state = IRRELEVANT;
 		state->interest = UNINTERESTED;
 		buf_state->user_cur_max = buf_state->buf_length;
@@ -519,7 +518,6 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	cs_buf = &buf_state->buf[buf_state->bytes_read];
 	if (cs_buf[0] != TH_TLS_HANDSHAKE_IDENTIFIER) {
 		buf_state->bytes_to_read = 0;
-		kthlog(LOG_DEBUG, "set bytes to read to 0"); 
 		buf_state->state = IRRELEVANT;
 		state->interest = UNINTERESTED;
 		buf_state->user_cur_max = buf_state->buf_length;
@@ -533,7 +531,6 @@ void handle_state_record_layer(handler_state_t* state, buf_state_t* buf_state) {
 	buf_state->state = HANDSHAKE_LAYER;
 	buf_state->bytes_read += buf_state->bytes_to_read;
 	buf_state->bytes_to_read = tls_record_length;
-	kthlog(LOG_DEBUG, "set bytes to read from tls_record_length of %i", tls_record_length); 
 	return;
 }
 
@@ -558,15 +555,11 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	tls_record_bytes = buf_state->bytes_to_read;
 	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
-	kthlog(LOG_DEBUG, "Reading handshake, Record length is %u", tls_record_bytes);
-	
-	kthlog_buffer(cs_buf, tls_record_bytes);
 	while (tls_record_bytes > 0) {
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
-		kthlog(LOG_DEBUG, "Message length is %u", handshake_message_length);
 		tls_record_bytes -= handshake_message_length;
 		if (cs_buf[0] == TYPE_CLIENT_HELLO) {
-			kthlog(LOG_DEBUG, "Sent a Client Hello");
+			//kthlog(LOG_DEBUG, "Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
 			set_state_client_hello(state, cs_buf, handshake_message_length);
@@ -577,11 +570,11 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			 cs_buf[0] == TYPE_CLIENT_KEY_EXCHANGE) {
 			// Should never get here (should already be uninterested
 			// or in client hello sent state
-			kthlog(LOG_DEBUG, "Received a certificate verify or client key exchange");
+			//kthlog(LOG_DEBUG, "Received a certificate verify or client key exchange");
 			//BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
-			kthlog(LOG_DEBUG, "Received a Server Hello");
+			//kthlog(LOG_DEBUG, "Received a Server Hello");
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			cs_buf += handshake_message_length;
@@ -622,7 +615,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			buf_state->user_cur_max = buf_state->buf_length;
-			kthlog(LOG_DEBUG, "Received a Server Key Exchange");
+			//kthlog(LOG_DEBUG, "Received a Server Key Exchange");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO_DONE) {	
@@ -630,16 +623,16 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			buf_state->state = SERVER_HELLO_DONE_SENT;
 			buf_state->user_cur_max = buf_state->buf_length;
 			state->interest = UNINTERESTED;
-			kthlog(LOG_DEBUG, "Received a Server Hello Done Exchange");
+			//kthlog(LOG_DEBUG, "Received a Server Hello Done Exchange");
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_HELLO_REQUEST || 
 			 cs_buf[0] == TYPE_CERTIFICATE_REQUEST) {
 			
 			if (cs_buf[0] == TYPE_HELLO_REQUEST) {
-				kthlog(LOG_DEBUG, "Read a Hello Request (0) at %p", cs_buf);
+				//kthlog(LOG_DEBUG, "Read a Hello Request (0) at %p", cs_buf);
 			} else {
-				kthlog(LOG_DEBUG, "Read a Certificate request");
+				//kthlog(LOG_DEBUG, "Read a Certificate request");
 			};
 			cs_buf += handshake_message_length;
 			buf_state->user_cur_max = buf_state->buf_length;
@@ -648,12 +641,12 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		}
 		else if (cs_buf[0] == TYPE_FINISHED) {
 			// Should never get here (should already be uninterested)
-			kthlog(LOG_DEBUG, "Finished message received");
+			//kthlog(LOG_DEBUG, "Finished message received");
 			BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_CERTIFICATE_URL ||
 			 cs_buf[0] == TYPE_CERTIFICATE_STATUS) {
-			kthlog(LOG_DEBUG, "TLS Handshake extension message sent/received");
+			//kthlog(LOG_DEBUG, "TLS Handshake extension message sent/received");
 			// We may have to handle these situations in the future
 			// See: https://www.ietf.org/rfc/rfc3546.txt
 			cs_buf += handshake_message_length;

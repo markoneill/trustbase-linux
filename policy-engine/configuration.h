@@ -3,6 +3,8 @@
 
 #include "policy_engine.h"
 
-int load_config(policy_context_t* policy_context, char* path);
+#define MAX_USERNAME_LEN 32
+
+int load_config(policy_context_t* policy_context, char* path, char* username);
 
 #endif

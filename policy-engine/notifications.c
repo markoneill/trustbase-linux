@@ -97,7 +97,7 @@ void terminal_notify(FILE* term, char* message) {
 			r++;
 			c = 0;
 		} else {
-			c++; //heh
+			c++;
 		}
 	}
 	

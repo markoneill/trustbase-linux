@@ -36,7 +36,7 @@ int initialize(init_data_t* idata) {
 	strcat(database_path, "/");
 	strcat(database_path, PINNING_DATABASE);
 	
-	plog(LOG_DEBUG, "Trying to use database at %s", database_path);
+	plog(LOG_DEBUG, "CERT PINNING: Trying to use database at %s", database_path);
 	return 0;
 }
 
@@ -77,6 +77,13 @@ int query(query_data_t* data) {
 	if (sqlite3_open_v2(database_path, &database, SQLITE_OPEN_READWRITE, NULL) != SQLITE_OK) {
 		return PLUGIN_RESPONSE_ERROR;
 	}
+	
+	// Build the table if it is not there
+	if (sqlite3_prepare_v2(database, "CREATE TABLE IF NOT EXISTS pinned (hostname TEXT PRIMARY KEY, hash TEXT, exptime INTEGER)", -1, &statement, NULL) != SQLITE_OK) {
+		plog(LOG_ERROR, "CERT PINNING: Could not create certificate table"); 
+	}
+	sqlite3_step(statement);
+	sqlite3_finalize(statement);
 
 	// Get the current time
 	time(&ptime);

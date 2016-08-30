@@ -269,8 +269,6 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 		//	&((struct sockaddr_in*)uaddr)->sin_addr,
 		//	ntohs(((struct sockaddr_in*)uaddr)->sin_port));
 	}
-	kthlog(LOG_DEBUG, "TCP over IPv4 connection detected");
-	//print_call_info("TCP IPv4 connect");
 	start_conn_state(current->pid, current->tgid, uaddr, 0, addr_len, sock);
 	return ret;
 }
@@ -287,8 +285,6 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
-	kthlog(LOG_DEBUG, "TCP over IPv6 connection detected");
-	//print_call_info(sock, "TCP IPv6 connect");
 	if (start_conn_state(current->pid, current->tgid, uaddr, 1, addr_len, sock)) {
 	}
 	return ret;
@@ -319,7 +315,6 @@ void new_tcp_close(struct sock *sk, long timeout) {
 	sock = sk->sk_socket;
 	if ((conn_state = conn_state_get(current->pid, sock)) != NULL) {
 		stop_conn_state(conn_state);
-		//print_call_info(sock, "TCP close");
 	}
 	ref_tcp_close(sk, timeout);
 	return;
@@ -513,7 +508,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// Early breakout if we aren't monitoring this connection
 	if ((conn_state = conn_state_get(current->pid, sock)) == NULL) {
-		//kthlog(LOG_DEBUG, "tcp_rcv: ignore");
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 		ret = ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 		#else
@@ -530,7 +524,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
-		kthlog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 		return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 		#else
@@ -554,19 +547,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// 2) If we've already given the user everything he wants, end
 	if (bytes_sent == len) {
-		kthlog(LOG_DEBUG, "tcp_rcv: emptied buffer");
 		return len;
 	}
 
 	// If we've not sent anything yet and the socket was closed last time
 	// we actually read, then delete state and return
 	if (bytes_sent == 0 && conn_state->queued_recv_ret == 0) {
-		kthlog(LOG_DEBUG, "tcp_rcv: reading then deleting");
+		//kthlog(LOG_DEBUG, "tcp_rcv: reading then deleting");
 		stop_conn_state(conn_state);
 		return 0;
 	}
 	if (bytes_sent == 0 && conn_state->queued_recv_ret < 0) {
-		kthlog(LOG_DEBUG, "tcp_rcv: received an error, but gonna pass for a round");
+		//kthlog(LOG_DEBUG, "tcp_rcv: received an error, but gonna pass for a round");
 		ret = conn_state->queued_recv_ret;
 		conn_state->queued_recv_ret = 1; // pretend no error for next time
 		return ret;
@@ -574,7 +566,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 	// If we don't care to read any more bytes for this socket, stop now
 	if (ops->get_state(conn_state->state) == 0 && ops->bytes_to_read_recv(conn_state->state) == 0) {
-		kthlog(LOG_DEBUG, "tcp_rcv: we don't wanna read any more");
 		if (bytes_sent > 0) {
 			return bytes_sent;
 		}
@@ -629,7 +620,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		//    or the error code
 		conn_state->queued_recv_ret = ret;
 		if (ret <= 0) {
-			kthlog(LOG_DEBUG, "tcp_rcv: failed on reading");
+			//kthlog(LOG_DEBUG, "tcp_rcv: failed on reading");
 			if (bytes_sent > 0) {
 				// error code is cached for next time
 				return bytes_sent; 
@@ -644,18 +635,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 		// 5) If operation succeeded then copy to state and update state
 		if (ops->give_to_handler_recv(conn_state->state, buffer, ret) != 0) {
-			kthlog(LOG_ERROR, "tcp_rcv: Traffic interceptor failed to copy to recv state");
+			//kthlog(LOG_ERROR, "tcp_rcv: Traffic interceptor failed to copy to recv state");
 			// XXX how do we fail here?
 		}
 		kfree(buffer);
 		if (ops->update_recv_state(conn_state->state) != 0) {
-			kthlog(LOG_ERROR, "tcp_rcv: Handler failed to update recv state");
+			//kthlog(LOG_ERROR, "tcp_rcv: Handler failed to update recv state");
 			// XXX how do we fail here?
 		}
 
 		// XXX Enum this	
 		if (ops->get_state(conn_state->state) == 2) {
-			kthlog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
+			//kthlog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
 			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 			return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 			#else
@@ -666,7 +657,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-			kthlog(LOG_DEBUG, "tcp_rcv: breakout early");
+			//kthlog(LOG_DEBUG, "tcp_rcv: breakout early");
 			return bytes_sent > 0 ? bytes_sent : -EAGAIN;
 		}
 
@@ -683,7 +674,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 	ops->inc_recv_bytes_forwarded(conn_state->state, bytes_to_copy);
 	bytes_sent += bytes_to_copy;
-	kthlog(LOG_DEBUG, "tcp_rcv: read");
 	return bytes_sent;
 
 }
@@ -708,7 +698,6 @@ int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
 	}
 
 	src_port = inet_sk(sk)->inet_dport;
-	kthlog(LOG_DEBUG, "Accepted socket Source Port is %d", ntohs(src_port));
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		if (tmp->src_port == src_port) {

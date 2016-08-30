@@ -7,5 +7,6 @@
 
 int send_response(uint32_t spid, uint64_t stptr, int result);
 int recv_query(struct nl_msg *msg, void *arg);
-int listen_for_queries(void);
+int prep_communication(const char* username);
+int listen_for_queries();
 #endif

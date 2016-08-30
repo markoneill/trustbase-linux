@@ -61,7 +61,7 @@ int kthlog_init() {
 	log_tail = NULL;
 
 
-	entry = proc_create(KTHLOG_FILENAME, 0440, NULL, &kth_file_ops);
+	entry = proc_create(KTHLOG_FILENAME, 00444, NULL, &kth_file_ops);
 	return 0;
 }
 

@@ -100,7 +100,7 @@ int th_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	void* msg_head;
 	uint16_t port;
 	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+250, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
-	kthlog(LOG_DEBUG, "Trying to send a cert query");
+	//kthlog(LOG_DEBUG, "Trying to send a cert query");
 	if (skb == NULL) {
 		kthlog(LOG_ERROR, "failed in genlmsg for sending the query");
 		nlmsg_free(skb);

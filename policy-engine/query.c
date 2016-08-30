@@ -20,7 +20,6 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	int hostname_len;
 	int i;
 	query_t* query;
-	//printf("Creating query for host %s\n", hostname);
 	query = (query_t*)malloc(sizeof(query_t));
 	if (query == NULL) {
 		thlog(LOG_WARNING, "Could not create query");
@@ -68,28 +67,12 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	/* Parse chain to X509 structures */
 	query->data->chain = parse_chain(cert_data, len);
 	
-	/* resolve the hostname */
-	// This code below will do a Reverse DNS lookup
-	// It could be insecure though, because a MitM attack can spoof the DNS lookup
-	/*
-	printf("Name before revDNS = %s\n", hostname);
-	if (reverse_lookup(hostname, port, sk_X509_value(query->chain, 0), hostname_resolved) != LOOKUP_VALID) {
-		fprintf(stderr, "Failed to do a reverse DNS lookup\n");
-		pthread_mutex_destroy(&query->mutex);
-		pthread_cond_destroy(&query->threshold_met);
-		free(query->responses);
-		free(query);
-		free(hostname_resolved[0]);
-		return NULL;
-	}	
-	printf("Name after revDNS = %s\n", hostname_resolved[0]);
-	*/
 	hostname_resolved[0] = hostname;
 
 	hostname_len = strlen(hostname_resolved[0])+1;
 	query->data->hostname = (char*)malloc(sizeof(char) * hostname_len);
 	if (query->data->hostname == NULL) {
-		fprintf(stderr, "Failed to allocate hostname for query");
+		thlog(LOG_ERROR, "Failed to allocate hostname for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -102,7 +85,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 
 	query->data->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
 	if (query->data->raw_chain == NULL) {
-		fprintf(stderr, "Failed to allocate cert chain for query");
+		thlog(LOG_ERROR, "Failed to allocate cert chain for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -130,10 +113,10 @@ void free_query(query_t* query) {
 		free(query->responses);
 	}
 	if (pthread_mutex_destroy(&query->mutex) != 0) {
-		fprintf(stderr, "Failed to destroy query mutex\n");
+		thlog(LOG_ERROR, "Failed to destroy query mutex\n");
 	}
 	if (pthread_cond_destroy(&query->threshold_met) != 0) {
-		fprintf(stderr, "Failed to destroy query condvar\n");
+		thlog(LOG_ERROR, "Failed to destroy query condvar\n");
 	}
 	sk_X509_pop_free(query->data->chain, X509_free);
 	free(query->data->raw_chain);

@@ -17,6 +17,7 @@
 #include "trusthub_plugin.h"
 #include "check_root_store.h"
 #include "th_logging.h"
+#include "policy_engine.h"
 
 #define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
 
@@ -56,18 +57,28 @@ int main(int argc, char* argv[]) {
 	pthread_t* plugin_threads;
 	thread_param_t decider_thread_params;
 	thread_param_t* plugin_thread_params;
+	char username[MAX_USERNAME_LEN + 1];
 	
 	keep_running = 1;
 	
 	/* Start Logging */
 	thlog_init("/var/log/trusthub.log", LOG_DEBUG);
+	thlog(LOG_INFO, "\n\tStarting logging\n");
 	pthread_create(&logging_thread, NULL, read_kthlog, NULL);
 	
-	load_config(&context, argv[1]);
+	load_config(&context, argv[1], username);
+	
+	if (prep_communication(username) != 0) {
+		thlog(LOG_ERROR, "Could not prepare the netlink socket, exiting...");
+		pthread_kill(logging_thread, SIGTERM);
+		thlog_close();
+		return -1;
+	}
+	
 	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
-	thlog(LOG_DEBUG, "Congress Threshold is %2.1lf\n", context.congress_threshold);
+	thlog(LOG_DEBUG, "Congress Threshold is %2.1lf", context.congress_threshold);
 	print_plugins(context.plugins, context.plugin_count);
 
 	/* Decider thread (runs CA system and aggregates plugin verdicts */
@@ -138,9 +149,9 @@ void* plugin_thread_init(void* arg) {
 	}
 	thlog(LOG_DEBUG, "Plugin %s ready", plugin->name);
 	while (keep_running == 1) {
-		//printf("Dequeuing query\n");
+		thlog(LOG_DEBUG, "Dequeuing query");
 		query = dequeue(queue);
-		//printf("Query dequeued\n");
+		thlog(LOG_DEBUG, "Query dequeued");
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
 			thlog(LOG_DEBUG, "Querying synch plugin %s", plugin->name);
 			result = query_plugin(plugin, plugin_id, query);

@@ -2,10 +2,11 @@
 #include <netlink/genl/ctrl.h>
 #include <signal.h>
 #include <sqlite3.h>
-#include "netlink.h"
 #include "sni_parser.h"
 #include "policy_engine.h"
 #include "th_logging.h"
+#include "th_user.h"
+#include "netlink.h"
 
 static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
@@ -147,7 +148,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	return 0;
 }
 
-int listen_for_queries(void) {
+int prep_communication(const char* username) {
 	int group;
 	char query[256];
 	sqlite3_stmt* res;
@@ -201,15 +202,22 @@ int listen_for_queries(void) {
 	if (signal(SIGINT, int_handler) == SIG_ERR) {
 		thlog(LOG_ERROR, "Cannot listen for SIGINT\n");
 	}
+	
+	sqlite3_close(db);
+	// drop root permissions
+	//change_to_user(username);
+	return 0;
+}
+	
+int listen_for_queries() {
 	keep_running = 1;
 	while (keep_running == 1) {
 		if (nl_recvmsgs_default(netlink_sock) < 0) {
-			printf("Failing out of main loop\n");
+			thlog(LOG_DEBUG, "Failing out of main loop\n");
 			break;
 		}
 	}
 	thlog(LOG_INFO, "Closing TrustBase\n");
-	sqlite3_close(db);
 	nl_socket_free(netlink_sock);
 	return 0;
 }
