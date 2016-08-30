@@ -104,15 +104,17 @@ int main(int argc, char* argv[]) {
 	// Cleanup
 	keep_running = 0;
 	for (i = 0; i < context.plugin_count; i++) {
-		pthread_kill(plugin_threads[i], SIGTERM);
+		thlog(LOG_INFO, "cancelling plugin thread %d", i);
+		pthread_cancel(plugin_threads[i]);
 	}
 
-	pthread_kill(decider_thread, SIGTERM);
+	pthread_cancel(decider_thread);
 	for (i = 0; i < context.plugin_count; i++) {
 		pthread_join(plugin_threads[i], NULL);
 		free_queue(context.plugins[i].queue); // XXX relocate this
 	}
 
+	thlog(LOG_INFO, "attempting to join threads");
 	pthread_join(decider_thread, NULL);
 	free_queue(context.decider_queue);
 	list_free(context.timeout_list);
@@ -120,10 +122,9 @@ int main(int argc, char* argv[]) {
 	close_addons(context.addons, context.addon_count);
 	free(plugin_thread_params);
 	free(plugin_threads);
-	
 
-	pthread_kill(logging_thread, SIGTERM);
 	thlog(LOG_INFO, "\n\n### Closing Policy Engine ### Closing Logging ###\n");
+	pthread_kill(logging_thread, SIGTERM);
 	thlog_close();
 	return 0;
 }
@@ -155,6 +156,7 @@ void* plugin_thread_init(void* arg) {
 		plugin->init(idata);
 	}
 	thlog(LOG_DEBUG, "Plugin %s ready", plugin->name);
+	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	while (keep_running == 1) {
 		query = dequeue(queue);
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
@@ -175,7 +177,7 @@ void* plugin_thread_init(void* arg) {
 		}
 	}
 	if (idata != NULL) {
-		free(idata);
+		free(idata); // XXX this will not be called after a cancel
 	}
 	return NULL;
 }

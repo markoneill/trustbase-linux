@@ -88,7 +88,7 @@ int __init loader_start(void) {
 void __exit loader_end(void) {
 	// Kill policy engine before killing IPC because
 	// the IPC is needed for shutdown message
-	stop_task(policy_engine_task, SIGTERM);
+	stop_task(policy_engine_task, SIGINT);
 	// Send shutdown message to policy-engine
 	th_send_shutdown();
 	proxy_unregister();

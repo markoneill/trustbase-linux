@@ -142,7 +142,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			break;
 		case TRUSTHUB_C_SHUTDOWN:
 			/* Receiving this will exit the listen_for_queries loop, as long as keep_running is set to 0 first */
-			thlog(LOG_DEBUG, "Recieved a shutdown message");
+			thlog(LOG_DEBUG, "Received a shutdown message");
 			break;
 		default:
 			thlog(LOG_DEBUG, "Got something unusual...");
@@ -201,11 +201,6 @@ int prep_communication(const char* username) {
 		return -1;
 	}
 	
-
-	if (signal(SIGINT, int_handler) == SIG_ERR) {
-		thlog(LOG_ERROR, "Cannot listen for SIGINT");
-	}
-	
 	sqlite3_close(db);
 	// drop root permissions
 	//change_to_user(username);
@@ -213,8 +208,21 @@ int prep_communication(const char* username) {
 }
 	
 int listen_for_queries() {
+	struct sigaction new_action;
+	struct sigaction old_action;
+
 	int err;
 	keep_running = 1;
+	thlog(LOG_DEBUG, "listening for queries");
+
+	new_action.sa_handler = int_handler;
+	sigemptyset(&new_action.sa_mask);
+	new_action.sa_flags = 0;
+	sigaction(SIGINT, NULL, &old_action);
+	if (sigaction(SIGINT, &new_action, NULL) == -1) {
+		thlog(LOG_ERROR, "Cannot set handler for SIGINT");
+	}
+
 	while (keep_running == 1) {
 		err = nl_recvmsgs_default(netlink_sock);
 		if (err < 0) {
@@ -223,12 +231,14 @@ int listen_for_queries() {
 		}
 	}
 	nl_socket_free(netlink_sock);
+	thlog(LOG_DEBUG, "no longer listening for queries");
 	return 0;
 }
 
 void int_handler(int signal) {
 	if (signal == SIGINT) {
 		thlog(LOG_DEBUG, "Caught SIGINT");
+		printf("Caught SIGINT");
 		keep_running = 0;
 		// Wait for our netlink_message to break the loop
 	}

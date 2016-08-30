@@ -54,10 +54,10 @@ int initialize(int count, char *plugin_dir, int (*callback)(int,int,int), const 
 
 int finalize(void) {
 	int i;
-	PyObject* pValue;
+	/*PyObject* pValue;
 	PyObject* pFunc;
 	
-	// Call finalize functions
+	// Call finalize functions - no need for this, called previously for each one
 	for(i = 0; i < plugin_count; i++) {
 		pFunc = plugin_final_functions[i];
 		pValue = PyObject_CallObject(pFunc, NULL);
@@ -67,8 +67,8 @@ int finalize(void) {
 			}
 			fprintf(stderr, "Failed to call plugin finalize function\n");
 		}
-	}
-	
+	}*/
+
 	for(i = 0; i < plugin_count; i++) {
 		if (plugin_functions[i] != NULL) {
 			Py_DECREF(plugin_functions[i]);
