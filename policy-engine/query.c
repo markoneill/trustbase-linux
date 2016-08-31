@@ -78,7 +78,6 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 		free(query->responses);
 		free(query->data);
 		free(query);
-		//free(hostname_resolved[0]);
 		return NULL;
 	}
 	query->data->port = port;
@@ -92,7 +91,6 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 		free(query->data->hostname);
 		free(query->data);
 		free(query);
-		//free(hostname_resolved[0]);
 		return NULL;
 	}
 	query->data->raw_chain_len = len;
@@ -101,7 +99,6 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->state_pointer = stptr;
 	query->data->id = id;
 	
-	//free(hostname_resolved[0]);
 	return query;
 }
 
@@ -113,10 +110,10 @@ void free_query(query_t* query) {
 		free(query->responses);
 	}
 	if (pthread_mutex_destroy(&query->mutex) != 0) {
-		thlog(LOG_ERROR, "Failed to destroy query mutex\n");
+		thlog(LOG_ERROR, "Failed to destroy query mutex");
 	}
 	if (pthread_cond_destroy(&query->threshold_met) != 0) {
-		thlog(LOG_ERROR, "Failed to destroy query condvar\n");
+		thlog(LOG_ERROR, "Failed to destroy query condvar");
 	}
 	sk_X509_pop_free(query->data->chain, X509_free);
 	free(query->data->raw_chain);
@@ -137,21 +134,14 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 	current_pos = data;
 	STACK_OF(X509)* chain;
 
-
-	//printf("1st char of chain is %02x\n", data[0] & 0xff);
-	//printf("2nd char of chain is %02x\n", data[1] & 0xff);
-	//printf("3rd char of chain is %02x\n", data[2] & 0xff);
-
 	chain = sk_X509_new_null();
 	while ((current_pos - start_pos) < len) {
-		//printf("%02x%02x%02x", current_pos[0], current_pos[1], current_pos[2]);
 		cert_len = ntoh24(current_pos);
 		current_pos += CERT_LENGTH_FIELD_SIZE;
-		//printf("The next cert to parse is %d bytes\n", cert_len);
 		cert_ptr = current_pos;
 		cert = d2i_X509(NULL, &cert_ptr, cert_len);
 		if (!cert) {
-			thlog(LOG_ERROR,"unable to parse certificate\n");
+			thlog(LOG_ERROR,"unable to parse certificate");
 		}
 		//thlog_cert(cert);
 		

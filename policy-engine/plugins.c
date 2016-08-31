@@ -88,7 +88,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 							plugins[i].query_by_addon = addons[j].addon_query_plugin;
 						} else {
 							plugins[i].query_by_addon = NULL;
-							thlog(LOG_WARNING, "Could not load plugin %s\n", plugins[i].name);
+							thlog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
 						}
 					}
 					else {
@@ -96,7 +96,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 							plugins[i].query_by_addon = addons[j].addon_async_query_plugin;
 						} else {
 							plugins[i].query_by_addon = NULL;
-							thlog(LOG_WARNING, "Could not load plugin %s\n", plugins[i].name);
+							thlog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
 						}
 					}
 					break;
@@ -104,7 +104,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 			}
 		}
 		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
-			thlog(LOG_WARNING, "Unhandled plugin type for plugin %02d\n", i);
+			thlog(LOG_WARNING, "Unhandled plugin type for plugin %02d", i);
 		}
 	}
 	return;

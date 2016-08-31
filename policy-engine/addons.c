@@ -15,7 +15,7 @@ int load_addon(const char* path, addon_t* addon) {
 	// Load shared object
 	handle = dlopen(path, RTLD_LAZY);
 	if (handle == NULL) {
-		fprintf(stderr, "Failed to load addon '%s': %s\n", path, dlerror());
+		thlog(LOG_ERROR, "Failed to load addon '%s': %s", path, dlerror());
 		return 1;
 	}
 	addon->so_handle = handle;
@@ -23,27 +23,27 @@ int load_addon(const char* path, addon_t* addon) {
 	// Load functions within shared object
 	init_func = dlsym(handle, "initialize");
 	if (init_func == NULL) {
-		fprintf(stderr, "Failed to load initialize function for addon '%s': %s\n", path, dlerror());
+		thlog(LOG_ERROR, "Failed to load initialize function for addon '%s': %s", path, dlerror());
 		return 1;
 	}
 	fin_func = dlsym(handle, "finalize");
 	if (fin_func == NULL) {
-		fprintf(stderr, "Failed to load finalize function for addon '%s': %s\n", path, dlerror());
+		thlog(LOG_ERROR, "Failed to load finalize function for addon '%s': %s", path, dlerror());
 		return 1;
 	}
 	load_func = dlsym(handle, "load_plugin");
 	if (load_func == NULL) {
-		fprintf(stderr, "Failed to load load_plugin function for addon '%s': %s\n", path, dlerror());
+		thlog(LOG_ERROR, "Failed to load load_plugin function for addon '%s': %s", path, dlerror());
 		return 1;
 	}
 	query_func = dlsym(handle, "query_plugin");
 	if (query_func == NULL) {
-		fprintf(stderr, "Failed to load query_plugin function for addon '%s': %s\n", path, dlerror());
+		thlog(LOG_ERROR, "Failed to load query_plugin function for addon '%s': %s", path, dlerror());
 		return 1;
 	}
 	async_query_func = dlsym(handle, "query_plugin_async");
 	if (query_func == NULL) {
-		fprintf(stderr, "Failed to load async_query_plugin function for addon '%s': %s\n", path, dlerror());
+		thlog(LOG_ERROR, "Failed to load async_query_plugin function for addon '%s': %s", path, dlerror());
 		return 1;
 	}
 	addon->addon_initialize = init_func;
@@ -77,11 +77,11 @@ void close_addons(addon_t* addons, size_t addon_count) {
 
 void print_addons(addon_t* addons, size_t addon_count) {
 	int i;
-	printf("%zu loaded addons:\n", addon_count);
+	thlog(LOG_INFO, "%zu loaded addons:", addon_count);
 	for (i = 0; i < addon_count; i++) {
-		printf("\t[%02d] Addon Name: %s\n", i, addons[i].name);
-		printf("\t\tDescription: %s\n", addons[i].desc);
-		printf("\t\tVersion: %s\n", addons[i].ver);
+		thlog(LOG_INFO, "\t[%02d] Addon Name: %s", i, addons[i].name);
+		thlog(LOG_INFO, "\t\tDescription: %s", addons[i].desc);
+		thlog(LOG_INFO, "\t\tVersion: %s", addons[i].ver);
 	}
 	return;
 }

@@ -5,6 +5,7 @@
 #include "policy_engine.h"
 #include "configuration.h"
 #include "plugins.h"
+#include "th_logging.h"
 #include "addons.h"
 
 #define CONFIG_FILE_NAME	"policy-engine/trusthub.cfg"
@@ -36,7 +37,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	// Read config file and store data
 	config_init(&cfg);
 	if (config_read_file(&cfg, cat_path(path,CONFIG_FILE_NAME)) == 0) {
-		fprintf(stderr, "%s:%d - %s\n", 
+		thlog(LOG_ERROR, "%s:%d - %s", 
 			config_error_file(&cfg),
 			config_error_line(&cfg),
 			config_error_text(&cfg));	
@@ -47,7 +48,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	// Addon parsing
 	setting = config_lookup(&cfg, "addons");
 	if (setting == NULL) {
-		fprintf(stderr, "addons setting not found\n");	
+		thlog(LOG_ERROR, "addons setting not found");	
 		config_destroy(&cfg);
 		return 1;
 	}
@@ -61,7 +62,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	// Plugin parsing
 	setting = config_lookup(&cfg, "plugins");
 	if (setting == NULL) {
-		fprintf(stderr, "plugins setting not found\n");	
+		thlog(LOG_ERROR, "plugins setting not found");	
 		config_destroy(&cfg);
 		return 1;
 	}
@@ -75,7 +76,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	// Aggregation parsing
 	setting = config_lookup(&cfg, "aggregation");
 	if (setting == NULL) {
-		fprintf(stderr, "aggregation setting not found\n");
+		thlog(LOG_ERROR, "aggregation setting not found");
 		config_destroy(&cfg);
 		return 1;
 	}
@@ -84,7 +85,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	// Username parsing
 	setting = config_lookup(&cfg, "username");
 	if (setting == NULL) {
-		fprintf(stderr, "username setting not found\n");
+		thlog(LOG_ERROR, "username setting not found");
 	} else {
 		// Take the username and have the policy engine run as that user
 		config_username = config_setting_get_string(setting);
@@ -118,18 +119,18 @@ int parse_aggregation(config_setting_t* aggregation_data, double* congress_thres
 	int i;
 	int group_count;
 	if (!(config_setting_lookup_float(aggregation_data, "congress_threshold", congress_threshold))) {
-		fprintf(stderr, "Syntax error in configuration file: section aggregation\n");
+		thlog(LOG_ERROR, "Syntax error in configuration file: section aggregation");
 		return 1;
 	}
 	sufficient_groups = config_setting_get_member(aggregation_data, "sufficient");
 	if (sufficient_groups == NULL) {
-		fprintf(stderr, "aggregation->sufficient setting not found\n");
+		thlog(LOG_ERROR, "aggregation->sufficient setting not found");
 		return 1;
 	}
 	
 	group = config_setting_get_member(sufficient_groups, "congress_group");
 	if (group == NULL) {
-		fprintf(stderr, "aggregation->sufficient->congress_group setting not found\n");
+		thlog(LOG_ERROR, "aggregation->sufficient->congress_group setting not found");
 		return 1;
 	}
 	group_count = config_setting_length(group);
@@ -140,13 +141,13 @@ int parse_aggregation(config_setting_t* aggregation_data, double* congress_thres
 			plugins[plugin_id].aggregation = AGGREGATION_CONGRESS;
 		}
 		else {
-			fprintf(stderr, "Plugin %s in congress list does not exist\n", plugin_name);
+			thlog(LOG_ERROR, "Plugin %s in congress list does not exist", plugin_name);
 		}
 	}
 
 	group = config_setting_get_member(sufficient_groups, "necessary_group");
 	if (group == NULL) {
-		fprintf(stderr, "aggregation->sufficient->necessary_group setting not found\n");
+		thlog(LOG_ERROR, "aggregation->sufficient->necessary_group setting not found");
 		return 1;
 	}
 	group_count = config_setting_length(group);
@@ -157,7 +158,7 @@ int parse_aggregation(config_setting_t* aggregation_data, double* congress_thres
 			plugins[plugin_id].aggregation = AGGREGATION_NECESSARY;
 		}
 		else {
-			fprintf(stderr, "Plugin %s in necessary list does not exist\n", plugin_name);
+			thlog(LOG_ERROR, "Plugin %s in necessary list does not exist", plugin_name);
 		}
 	}
 	return 0;
@@ -185,7 +186,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) 
 	    config_setting_lookup_string(plugin_data, "version", &version) &&
 	    config_setting_lookup_string(plugin_data, "type", &type_handled) &&
 	    config_setting_lookup_string(plugin_data, "path", &path))) {
-		fprintf(stderr, "Syntax error in configuration file: section addons\n");
+		thlog(LOG_ERROR, "Syntax error in configuration file: section addons");
 		return 1;
 	}
 	addon->name = copy_string(name);
@@ -194,7 +195,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) 
 	addon->type_handled = copy_string(type_handled);
 	addon->so_path = cat_path(root_path, path);
 	if (load_addon(cat_path(root_path, path), addon) != 0) {
-		fprintf(stderr, "Syntax error in configuration file: section addons\n");
+		thlog(LOG_ERROR, "Syntax error in configuration file: section addons");
 		return 1;
 	}
 	return 0;
@@ -215,7 +216,7 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_pat
 	    config_setting_lookup_string(plugin_data, "handler", &handler) &&
 	    config_setting_lookup_int(plugin_data, "openssl", &openSSL) &&
 	    config_setting_lookup_string(plugin_data, "path", &path))) {
-		fprintf(stderr, "Syntax error in configuration file: section plugins\n");
+		thlog(LOG_ERROR, "Syntax error in configuration file: section plugins");
 		return 1;
 	}
 
@@ -233,7 +234,7 @@ int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_pat
 		plugin->type = PLUGIN_TYPE_ASYNCHRONOUS;
 	}
 	else {
-		fprintf(stderr, "Unknown plugin type in configuration file\n");
+		thlog(LOG_ERROR, "Unknown plugin type in configuration file");
 		return 1;
 	}
 
@@ -257,7 +258,7 @@ char* copy_string(const char* original) {
 	len = strlen(original);
 	copy = (char*)malloc(len+1); /* +1 for null terminator */
 	if (copy == NULL) {
-		fprintf(stderr, "Unable to allocate space for a string during configuration loading\n");
+		thlog(LOG_ERROR, "Unable to allocate space for a string during configuration loading");
 		return NULL;
 	}
 	memcpy(copy, original, len+1);
@@ -273,7 +274,7 @@ char* cat_path(char* a, const char* b) {
         len_b = strlen(b);
         concated = (char*)malloc(len_a + 1 + len_b + 1); 
         if (concated == NULL) {
-                fprintf(stderr, "Unable to allocate space for a string during configuration loading\n");
+                thlog(LOG_ERROR, "Unable to allocate space for a string during configuration loading");
                 return NULL;
         }
         memcpy(concated, a, len_a);

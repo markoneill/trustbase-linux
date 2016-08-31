@@ -44,9 +44,7 @@ int poll_schemes(uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, u
 	list_add(context.timeout_list, query);
 	enqueue(context.decider_queue, query);
 	for (i = 0; i < context.plugin_count; i++) {
-		//printf("Enqueuing query\n");
 		enqueue(context.plugins[i].queue, query);
-		//printf("query enqueued\n");
 	}
 	return 0;
 }
@@ -104,17 +102,17 @@ int main(int argc, char* argv[]) {
 	// Cleanup
 	keep_running = 0;
 	for (i = 0; i < context.plugin_count; i++) {
-		thlog(LOG_INFO, "cancelling plugin thread %d", i);
+		thlog(LOG_INFO, "canceling plugin thread %d", i);
 		pthread_cancel(plugin_threads[i]);
 	}
 
 	pthread_cancel(decider_thread);
+	thlog(LOG_INFO, "attempting to join threads");
 	for (i = 0; i < context.plugin_count; i++) {
 		pthread_join(plugin_threads[i], NULL);
 		free_queue(context.plugins[i].queue); // XXX relocate this
 	}
 
-	thlog(LOG_INFO, "attempting to join threads");
 	pthread_join(decider_thread, NULL);
 	free_queue(context.decider_queue);
 	list_free(context.timeout_list);
@@ -165,7 +163,6 @@ void* plugin_thread_init(void* arg) {
 			query->responses[plugin_id] = result;
 			pthread_mutex_lock(&query->mutex);
 			query->num_responses++;
-			//printf("%d plugins have submitted an answer\n", query->num_responses);
 			if (query->num_responses == context.plugin_count) {
 				pthread_cond_signal(&query->threshold_met);
 			}
@@ -197,7 +194,6 @@ void* decider_thread_init(void* arg) {
 	while (keep_running == 1) {
 		query = dequeue(queue);
 		ca_system_response =  query_store(query->data->hostname, query->data->chain, root_store);
-		//printf("CA System response is %d\n", ca_system_response);
 		gettimeofday(&now, NULL);
 		time_to_wait.tv_sec = now.tv_sec + TRUSTHUB_PLUGIN_TIMEOUT;
 		time_to_wait.tv_nsec = now.tv_usec*1000UL;
@@ -214,7 +210,6 @@ void* decider_thread_init(void* arg) {
  		 * either way, remove the query from the timeout storage */
 		list_remove(context.timeout_list, query->data->id);
 		
-		//printf("All plugins have submitted an answer\n");
 		final_response = aggregate_responses(query, ca_system_response);
 		free_query(query);
 		send_response(query->spid, query->state_pointer, final_response);
@@ -234,11 +229,9 @@ int async_callback(int plugin_id, int query_id, int result) {
 	pthread_mutex_lock(&query->mutex);
 	query->num_responses++;
 	if (query->num_responses == context.plugin_count) {
-		//printf("%d plugins have submitted an answer\n", query->num_responses);
 		pthread_cond_signal(&query->threshold_met);
 	}
 	pthread_mutex_unlock(&query->mutex);
-	//printf("Asynchronous callback invoked by plugin %d!\n", plugin_id);
 	return 1; /* let plugin know the callback was successful */
 }
 

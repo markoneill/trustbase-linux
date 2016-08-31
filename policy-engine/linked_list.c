@@ -1,7 +1,8 @@
 #include <assert.h>
 
-#include "linked_list.h"
 #include "query.h"
+#include "th_logging.h"
+#include "linked_list.h"
 
 static list_node_t* list_node_create(query_t* query);
 static query_t* list_node_remove(list_t* list, list_node_t* node);
@@ -146,7 +147,7 @@ list_t* list_create(void) {
 		return NULL;
 	}
 	if (pthread_mutex_init(&list->mutex, NULL) != 0) {
-		fprintf(stderr, "Failed to create mutex for list\n");
+		thlog(LOG_ERROR, "Failed to create mutex for list");
 		free(list); /* free allocated memory since this happened after malloc */
 		return NULL;
 	}
@@ -175,7 +176,7 @@ void list_free(list_t* list) {
 		list_node_free(tmp);
 	}
 	if (pthread_mutex_destroy(&list->mutex) != 0) {
-		fprintf(stderr, "Failed to destroy list mutex\n");
+		thlog(LOG_ERROR, "Failed to destroy list mutex");
 	}
 	free(list);
 	return;

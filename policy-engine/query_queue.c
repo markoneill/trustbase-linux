@@ -22,16 +22,16 @@ queue_t* make_queue(const char* name) {
 	sem_t* sem;
 	sem = sem_open(name, O_CREAT, S_IRWXU, 0);
 	if (sem == SEM_FAILED) {
-		thlog(LOG_ERROR, "Failed to create queue semaphore %s: %s\n", name, strerror(errno));
+		thlog(LOG_ERROR, "Failed to create queue semaphore %s: %s", name, strerror(errno));
 		return NULL;
 	}
 	queue = (queue_t*)malloc(sizeof(queue_t));
 	if (queue == NULL) {
-		thlog(LOG_ERROR, "Failed to allocate space for queue %s\n", name);
+		thlog(LOG_ERROR, "Failed to allocate space for queue %s", name);
 		return NULL;
 	}
 	if (pthread_mutex_init(&queue->mutex, NULL) != 0) {
-		thlog(LOG_ERROR, "Failed to create mutex for queue %s\n", name);
+		thlog(LOG_ERROR, "Failed to create mutex for queue %s", name);
 		free(queue); /* free allocated memory since this happened after malloc */
 		return NULL;
 	}
@@ -60,10 +60,10 @@ void free_queue(queue_t* queue) {
 		current = next;
 	}
 	if (sem_close(queue->fill_sem) == -1) {
-		thlog(LOG_ERROR, "Failed to close semaphore: %s\n", strerror(errno));
+		thlog(LOG_ERROR, "Failed to close semaphore: %s", strerror(errno));
 	}
 	if (pthread_mutex_destroy(&queue->mutex) != 0) {
-		thlog(LOG_ERROR, "Failed to destroy queue mutex\n");
+		thlog(LOG_ERROR, "Failed to destroy queue mutex");
 	}
 	free(queue);
 	return;

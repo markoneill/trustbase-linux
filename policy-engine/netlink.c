@@ -32,22 +32,22 @@ int send_response(uint32_t spid, uint64_t stptr, int result) {
 	void* msg_head;
 	msg = nlmsg_alloc();
 	if (msg == NULL) {
-		thlog(LOG_WARNING, "failed to allocate message buffer\n");
+		thlog(LOG_WARNING, "failed to allocate message buffer");
 		return -1;
 	}
 	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_RESPONSE, 1);
 	if (msg_head == NULL) {
-		thlog(LOG_WARNING, "failed in genlmsg_put\n");
+		thlog(LOG_WARNING, "failed in genlmsg_put");
 		return -1;
 	}
 	rc = nla_put_u64(msg, TRUSTHUB_A_STATE_PTR, stptr);
 	if (rc != 0) {
-		thlog(LOG_WARNING, "failed to insert state pointer\n");
+		thlog(LOG_WARNING, "failed to insert state pointer");
 		return -1;
 	}
 	rc = nla_put_u32(msg, TRUSTHUB_A_RESULT, result);
 	if (rc != 0) {
-		thlog(LOG_WARNING, "failed to insert result\n");
+		thlog(LOG_WARNING, "failed to insert result");
 		return -1;
 	}
 	pthread_mutex_lock(&nl_sock_mutex);
@@ -55,7 +55,7 @@ int send_response(uint32_t spid, uint64_t stptr, int result) {
 	rc = nl_send_auto(netlink_sock, msg);
 	pthread_mutex_unlock(&nl_sock_mutex);
 	if (rc < 0) {
-		thlog(LOG_WARNING, "failed in nl send with error code %d\n", rc);
+		thlog(LOG_WARNING, "failed in nl send with error code %d", rc);
 		return -1;
 	}
 	return 0;	

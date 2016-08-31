@@ -10,8 +10,9 @@
 #include <openssl/pem.h>
 #include <arpa/inet.h>
 
-#include "reverse_dns.h"
+#include "th_logging.h"
 #include "check_root_store.h"
+#include "reverse_dns.h"
 
 typedef struct sockaddrunion_t{
 	struct sockaddr_in6* sa6;
@@ -22,27 +23,6 @@ static int forward_lookup(char* hostname, uint16_t port, struct sockaddr* sa);
 static int comp_sockaddr(struct sockaddr* sa_1, struct sockaddr* sa_2);
 static int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname, uint16_t port);
 static int ip_to_hostname(struct sockaddr* sa, char** found_hostname);
-//static void print_ip(struct sockaddr* sa_in);
-
-/*
-void print_ip(struct sockaddr* sa_in) {
-	int i;
-	sockaddrunion_t sa;
-	if (sa_in->sa_family == AF_INET6) {
-		sa.sa6 = (struct sockaddr_in6*)sa_in;
-		printf("ipv6 address : ");
-		for (i=0; i<16; i++) {
-			printf("%02x%s", (sa.sa6->sin6_addr.s6_addr[i]), (i%2)?((i!=15)?":":"\n"):"");
-		}
-	}
-	if (sa_in->sa_family == AF_INET) {
-		sa.sa4 = (struct sockaddr_in*)sa_in;
-		printf("ipv4 address : ");
-		for (i=0; i<4; i++) {
-			printf("%d%s", (sa.sa4->sin_addr.s_addr >> (i * 8)) & 0xFF, (i!=3)?".":"\n");
-		}
-	}
-}*/
 
 int comp_sockaddr(struct sockaddr* sa_1, struct sockaddr* sa_2) {
 	sockaddrunion_t sau_1;
@@ -84,15 +64,15 @@ int ip_to_hostname(struct sockaddr* sa, char** found_hostname) {
 	found_hostname[0] = (char*)malloc(NI_MAXHOST);
 
 	if ((error = getnameinfo(sa, len, found_hostname[0], NI_MAXHOST, NULL, 0, NI_NAMEREQD))) {
-		printf("\tError getting hostname: %i\n", error);
-		printf("\tEAI_AGAIN: %i\n", EAI_AGAIN);
-		printf("\tEAI_BADFLAGS: %i\n", EAI_BADFLAGS);
-		printf("\tEAI_FAIL: %i\n", EAI_FAIL);
-		printf("\tEAI_FAMILY: %i\n", EAI_FAMILY);
-		printf("\tEAI_MEMORY: %i\n", EAI_MEMORY);
-		printf("\tEAI_NONAME: %i\n", EAI_NONAME);
-		printf("\tEAI_OVERFLOW: %i\n", EAI_OVERFLOW);
-		printf("\tEAI_SYSTEM: %i\n", EAI_SYSTEM);
+		thlog(LOG_DEBUG,"\tError getting hostname: %i\n", error);
+		thlog(LOG_DEBUG,"\tEAI_AGAIN: %i\n", EAI_AGAIN);
+		thlog(LOG_DEBUG,"\tEAI_BADFLAGS: %i\n", EAI_BADFLAGS);
+		thlog(LOG_DEBUG,"\tEAI_FAIL: %i\n", EAI_FAIL);
+		thlog(LOG_DEBUG,"\tEAI_FAMILY: %i\n", EAI_FAMILY);
+		thlog(LOG_DEBUG,"\tEAI_MEMORY: %i\n", EAI_MEMORY);
+		thlog(LOG_DEBUG,"\tEAI_NONAME: %i\n", EAI_NONAME);
+		thlog(LOG_DEBUG,"\tEAI_OVERFLOW: %i\n", EAI_OVERFLOW);
+		thlog(LOG_DEBUG,"\tEAI_SYSTEM: %i\n", EAI_SYSTEM);
 		free(found_hostname[0]);
 		return error;
 	}
@@ -216,9 +196,7 @@ int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname, ui
 			continue;
 		}
 		
-		//printf("Trying cert name %s\n", cn);
 		if (forward_lookup(cn, port, sa) == LOOKUP_VALID) {
-			//printf("\t%s works!\n", cn);
 			found_hostname[0] = (char*)malloc(strlen(cn)+1);
 			strncpy(found_hostname[0],cn,strlen(cn)+1);
 			return LOOKUP_VALID;
@@ -250,9 +228,7 @@ int lookup_cert_names(struct sockaddr* sa, X509* cert, char** found_hostname, ui
 				continue;
 			}
 			
-			//printf("Trying cert name %s\n", cn);
 			if (forward_lookup(cn, port, sa) == LOOKUP_VALID) {
-				//printf("\t%s works!\n", cn);
 				found_hostname[0] = (char*)malloc(strlen(cn)+1);
 				strncpy(found_hostname[0],cn,strlen(cn)+1);
 				result = LOOKUP_VALID;
@@ -277,14 +253,12 @@ int forward_lookup(char* hostname, uint16_t port, struct sockaddr* sa) {
 	
 	if ((result = getaddrinfo(hostname, port_string, &hints, &servinfo)) != 0) {
 		// we had a problem, and getaddrinfo didn't go well
-		//printf("getaddrinfo errored: %s\n", gai_strerror(result));
 		return LOOKUP_ERR; // error
 	}
 	
 	result = LOOKUP_FAIL;
 	// check if our address is in the results
 	for(p = servinfo; p != NULL; p = p->ai_next) {
-		//printf("\tFor %s got : ", hostname);
 		//print_ip(p->ai_addr);
 		if (comp_sockaddr(sa, p->ai_addr) == LOOKUP_VALID) {
 			result = LOOKUP_VALID;
