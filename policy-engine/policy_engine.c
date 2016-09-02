@@ -20,6 +20,7 @@
 #include "policy_engine.h"
 
 #include <unistd.h>
+#include <string.h>
 
 #define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
 
@@ -58,6 +59,7 @@ int main(int argc, char* argv[]) {
 	thread_param_t decider_thread_params;
 	thread_param_t* plugin_thread_params;
 	char username[MAX_USERNAME_LEN + 1];
+	char* plugin_name;
 	
 	keep_running = 1;
 	
@@ -102,14 +104,17 @@ int main(int argc, char* argv[]) {
 	// Cleanup
 	keep_running = 0;
 	for (i = context.plugin_count - 1; i >= 0; i--) {
+		plugin_name = (char*)calloc(strlen(context.plugins[i].name) + 1, 1);
+		strcpy(plugin_name, context.plugins[i].name);
 		thlog(LOG_INFO, "canceling plugin thread %d", i);
 		pthread_cancel(plugin_threads[i]);
 		pthread_join(plugin_threads[i], NULL);
-		free_queue(context.plugins[i].queue);
+		free_queue(context.plugins[i].queue, plugin_name);
+		free(plugin_name);
 	}
 	pthread_cancel(decider_thread);
 	pthread_join(decider_thread, NULL);
-	free_queue(context.decider_queue);
+	free_queue(context.decider_queue, "decider");
 	list_free(context.timeout_list);
 	free(context.plugins);
 	close_addons(context.addons, context.addon_count);

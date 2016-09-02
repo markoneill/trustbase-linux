@@ -45,7 +45,7 @@ queue_t* make_queue(const char* name) {
  * Empties queue and frees all nodes
  * and queue itself
  */
-void free_queue(queue_t* queue) {
+void free_queue(queue_t* queue, const char* name) {
 	queue_node_t* current;
 	queue_node_t* next;
 	if (queue == NULL) {
@@ -62,10 +62,15 @@ void free_queue(queue_t* queue) {
 	if (sem_close(queue->fill_sem) == -1) {
 		thlog(LOG_ERROR, "Failed to close semaphore: %s", strerror(errno));
 	}
+	if (sem_unlink(name) == -1) {
+		// This removes the semaphore from the system, perhaps it is unneeded
+		thlog(LOG_ERROR, "Failed to unlink semaphore %s: %s", name, strerror(errno));	
+	}
 	if (pthread_mutex_destroy(&queue->mutex) != 0) {
 		thlog(LOG_ERROR, "Failed to destroy queue mutex");
 	}
 	free(queue);
+	
 	return;
 }
 

@@ -40,7 +40,7 @@ typedef struct queue_t {
 } queue_t;
 
 queue_t* make_queue(const char*);
-void free_queue(queue_t* queue);
+void free_queue(queue_t* queue, const char* name);
 int enqueue(queue_t* queue, query_t* query);
 query_t* dequeue(queue_t* queue);
 queue_node_t* make_queue_node(query_t* query);
@@ -65,7 +65,7 @@ int initialize(init_data_t* idata) {
 int finalize(void) {
 	running = 0;
 	//pthread_join(worker_thread, NULL);
-	free_queue(queue);
+	free_queue(queue, "async_test");
 	return 0;
 }
 
@@ -144,7 +144,7 @@ queue_t* make_queue(const char* name) {
  * Empties queue and frees all nodes
  * and queue itself
  */
-void free_queue(queue_t* queue) {
+void free_queue(queue_t* queue, const char* name) {
 	queue_node_t* current;
 	queue_node_t* next;
 	if (queue == NULL) {
@@ -160,6 +160,9 @@ void free_queue(queue_t* queue) {
 	}
 	if (sem_close(queue->fill_sem) == -1) {
 		fprintf(stderr, "Failed to close semaphore: %s\n", strerror(errno));
+	}
+	if (sem_unlink(name) == -1) {
+		fprintf(stderr, "Failed to unlink semaphore %s: %s\n", name, strerror(errno));
 	}
 	if (pthread_mutex_destroy(&queue->mutex) != 0) {
 		fprintf(stderr, "Failed to destroy queue mutex\n");

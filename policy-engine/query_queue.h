@@ -19,7 +19,7 @@ typedef struct queue_t {
 } queue_t;
 
 queue_t* make_queue(const char*);
-void free_queue(queue_t* queue);
+void free_queue(queue_t* queue, const char*);
 int enqueue(queue_t* queue, query_t* query);
 query_t* dequeue(queue_t* queue);
 
