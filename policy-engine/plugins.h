@@ -30,6 +30,7 @@ enum {
 //typedef int (*query_func_openssl)(const char*, STACK_OF(X509)*);
 
 typedef struct plugin_t {
+	int id;
 	int type;
 	char* handler_str;
 	int handler_type;
@@ -54,14 +55,17 @@ typedef struct plugin_t {
 		/* used for asynchronous plugins that want an init stage (optional) */
 	};
 	/* used for plugins that want a finalize stage (optional) */
-	int (*finalize)(void);
+	union {
+		int (*finalize)(void);
+		int (*finalize_by_addon)(int);
+	};
 	char* path; // null-terminated path to plugin file
 	/* Aggregation group this plugin belongs to */
 	int aggregation;
 } plugin_t;
 
 void print_plugins(plugin_t* plugins, size_t plugin_count);
-void close_plugins(plugin_t* plugins, size_t plugin_count);
+void cleanup_plugin(void* arg); // plugin_t* 
 int load_plugin_functions(plugin_t* plugin);
 void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t plugin_count);
 int query_plugin(plugin_t* plugin, int id, query_t* query);

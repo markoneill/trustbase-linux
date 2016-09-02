@@ -101,22 +101,17 @@ int main(int argc, char* argv[]) {
 
 	// Cleanup
 	keep_running = 0;
-	for (i = 0; i < context.plugin_count; i++) {
+	for (i = context.plugin_count - 1; i >= 0; i--) {
 		thlog(LOG_INFO, "canceling plugin thread %d", i);
 		pthread_cancel(plugin_threads[i]);
-	}
-
-	pthread_cancel(decider_thread);
-	thlog(LOG_INFO, "attempting to join threads");
-	for (i = 0; i < context.plugin_count; i++) {
 		pthread_join(plugin_threads[i], NULL);
-		free_queue(context.plugins[i].queue); // XXX relocate this
+		free_queue(context.plugins[i].queue);
 	}
-
+	pthread_cancel(decider_thread);
 	pthread_join(decider_thread, NULL);
 	free_queue(context.decider_queue);
 	list_free(context.timeout_list);
-	close_plugins(context.plugins, context.plugin_count);
+	free(context.plugins);
 	close_addons(context.addons, context.addon_count);
 	free(plugin_thread_params);
 	free(plugin_threads);
@@ -153,6 +148,8 @@ void* plugin_thread_init(void* arg) {
 		idata->callback = (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) ? NULL : async_callback;
 		plugin->init(idata);
 	}
+	// Set up our cleanup
+	pthread_cleanup_push(cleanup_plugin, plugin);
 	thlog(LOG_DEBUG, "Plugin %s ready", plugin->name);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	while (keep_running == 1) {
@@ -167,8 +164,7 @@ void* plugin_thread_init(void* arg) {
 				pthread_cond_signal(&query->threshold_met);
 			}
 			pthread_mutex_unlock(&query->mutex);
-		}
-		else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
+		} else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
 			thlog(LOG_DEBUG, "Querying asynch plugin %s", plugin->name);
 			query_plugin(plugin, plugin_id, query);
 		}
@@ -176,6 +172,8 @@ void* plugin_thread_init(void* arg) {
 	if (idata != NULL) {
 		free(idata); // XXX this will not be called after a cancel
 	}
+	
+	pthread_cleanup_pop(1);
 	return NULL;
 }
 

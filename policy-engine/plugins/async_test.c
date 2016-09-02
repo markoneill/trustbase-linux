@@ -64,7 +64,7 @@ int initialize(init_data_t* idata) {
 
 int finalize(void) {
 	running = 0;
-	pthread_join(worker_thread, NULL);
+	//pthread_join(worker_thread, NULL);
 	free_queue(queue);
 	return 0;
 }

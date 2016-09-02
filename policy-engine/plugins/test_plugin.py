@@ -6,6 +6,7 @@ class testPlugin(TrustHubPlugin):
         pass
     
     def initialize(self):
+        print "Test Python Plugin initialized!"
         return INIT_SUCCESS
     
     def query(self, host, port, raw_certs):
@@ -13,6 +14,7 @@ class testPlugin(TrustHubPlugin):
         return RESPONSE_VALID
     
     def finalize():
+        print "Test Python Plugin finalized!"
         return
 
 myPlugin = testPlugin()

@@ -5,22 +5,24 @@
 #include <stdint.h>
 #include "trusthub_plugin.h"
 
-typedef int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*);
+typedef int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*, int(*plog)(thlog_level_t, const char*, ... ));
 typedef int (*addon_finalize)(void);
 typedef int (*addon_load_plugin)(int, char*, int);
 typedef int (*addon_query_plugin)(int, query_data_t*);
 typedef int (*addon_async_query_plugin)(int, query_data_t*);
+typedef int (*addon_finalize_plugin)(int);
 
 typedef struct addon_t {
 	char* name;
 	char* desc;
 	char* ver;
 	char* type_handled;
-	int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*);
+	int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*, int(*plog)(thlog_level_t, const char*, ... ));
 	int (*addon_finalize)(void);
 	int (*addon_load_plugin)(int, char*, int);
 	int (*addon_query_plugin)(int, query_data_t*);
 	int (*addon_async_query_plugin)(int, query_data_t*);
+	int (*addon_finalize_plugin)(int);
 	void* so_handle;
 	char* so_path;
 } addon_t;

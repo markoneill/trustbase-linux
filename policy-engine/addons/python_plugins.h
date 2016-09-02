@@ -24,7 +24,8 @@
 *						begin searching for modules
 *	returns EXIT_SUCCESS on success and EXIT_FAILURE on failure
 */
-int initialize(int plugin_count, char *plugin_directory, int (*callback_pointer)(int,int,int), const char *lib_file);
+//int initialize(int plugin_count, char *plugin_directory, int (*callback_pointer)(int,int,int), const char *lib_file);
+int initialize(int count, char *plugin_dir, int (*callback)(int,int,int), const char *lib_file, int (*log_func)(thlog_level_t level, const char* format, ... ));
 
 /*
 *	Finalizes the Python Interpreter and frees memory from plugin pointers.
@@ -86,6 +87,12 @@ int query_plugin_async(int id, query_data_t* data);
  */
 int callback(int result, int plugin_id, int query_id);
 
+/**	
+ *	id: a non-negative integer that is used as an index in an array
+ *		containing pointers to plugin functions; it is the identifier
+ *		for which plugin to query as assigned by the load_plugin() function
+ *
+ */ 
+int finalize_plugin(int id);
 
 #endif
-

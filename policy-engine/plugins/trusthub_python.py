@@ -94,13 +94,12 @@ def setPlugin(pluginobject):
     global _plugin
     _plugin = pluginobject
 def initialize(plugin_id=None, lib_file=None, callback=None):
-    #print "::Got callback address ", callback
-    #print "::Got lib_file ", lib_file
-    #print "::Got plugin_id ", plugin_id
     return _plugin._initialize(plugin_id, lib_file, callback)
 def query(host, port, cert_chain, query_id=None):
     return _plugin._query(host, port, cert_chain, query_id)
 def finalize():
-    _plugin._finalize()
+    if _plugin._finalize:
+        return _plugin._finalize()
+    return
 
 # vim: tabstop=8 expandtab shiftwidth=4 softtabstop=4

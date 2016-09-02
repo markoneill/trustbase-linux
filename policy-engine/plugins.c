@@ -76,6 +76,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 	int i;
 	int j;
 	for (i = 0; i < plugin_count; i++) {
+		plugins[i].id = i;
 		if (plugins[i].handler_type != PLUGIN_HANDLER_TYPE_UNKNOWN) {
 			load_plugin_functions(&plugins[i]);
 		}
@@ -99,6 +100,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 							thlog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
 						}
 					}
+					plugins[i].finalize_by_addon = addons[j].addon_finalize_plugin;
 					break;
 				}
 			}
@@ -110,26 +112,31 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 	return;
 }
 
-void close_plugins(plugin_t* plugins, size_t plugin_count) {
-	int i;
-	for (i = 0; i < plugin_count; i++) {
-		/* addon-handled plugins do not need to be closed */
-		/* addons themselves get closed instead in that case */
-		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_ADDON ||
-			plugins[i].handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
-			continue;
-		}
-		if (plugins[i].finalize != NULL) {
-			plugins[i].finalize();
-		}
-		dlclose(plugins[i].so_handle);
-		free(plugins[i].name);
-		free(plugins[i].desc);
-		free(plugins[i].ver);
-		free(plugins[i].handler_str);
-		free(plugins[i].path);
+void cleanup_plugin(void* arg) {
+	plugin_t* plugin;
+	
+	plugin = arg;
+	
+	if (plugin->handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
+		return;
 	}
-	free(plugins);
+	if (plugin->handler_type == PLUGIN_HANDLER_TYPE_ADDON) {
+		if (plugin->finalize_by_addon != NULL) {
+			//plugin->finalize_by_addon(plugin->id);
+		}
+	} else {
+		if (plugin->finalize != NULL) {
+			plugin->finalize();
+		}
+		// When we finalize the addons, it closes the handle
+		dlclose(plugin->so_handle);
+	}
+	thlog(LOG_DEBUG, "Finalized plugin %s", plugin->name);
+	free(plugin->name);
+	free(plugin->desc);
+	free(plugin->ver);
+	free(plugin->handler_str);
+	free(plugin->path);
 	return;
 }
 
