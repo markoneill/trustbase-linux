@@ -1,6 +1,9 @@
 #include <linux/module.h>
 #include <linux/kernel.h>
 
+#include <linux/pid.h>
+#include <linux/delay.h>
+
 #include "interceptor/interceptor.h" // For registering/unregistering proxy functions
 #include "handshake-handler/communications.h" // For registering/unregistering netlink family
 #include "handshake-handler/handshake_handler.h" // For referencing proxy functions
@@ -86,12 +89,24 @@ int __init loader_start(void) {
  * @post TrustHub unregistered and stopped
  */
 void __exit loader_end(void) {
+	int i;
 	// Kill policy engine before killing IPC because
 	// the IPC is needed for shutdown message
-	kthlog(LOG_INFO, "Shutting down the policy engine");
 	stop_task(policy_engine_task, SIGINT);
-	// Send shutdown message to policy-engine
+	// Send shutdown message to policy_engine
 	th_send_shutdown();
+	
+	// Wait until the policy_engine is done until we shut down the netlink socket
+	
+	i = 0;
+	while (i < 300) {
+		if (policy_engine_task->state > 0) {
+			break;
+		}
+		msleep(10);
+		i++;
+	}
+		
 	proxy_unregister();
 	nat_ops_unregister();
 
