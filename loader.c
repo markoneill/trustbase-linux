@@ -74,9 +74,9 @@ int __init loader_start(void) {
 	start_mitm_proxy(th_path);
 	nat_ops_register();
 	proxy_register(&trusthub_ops);
-	start_policy_engine(th_path);
 	kthlog(LOG_DEBUG, "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
-	//kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
+	start_policy_engine(th_path);
+	kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
 
 	return 0;
 }
@@ -88,6 +88,7 @@ int __init loader_start(void) {
 void __exit loader_end(void) {
 	// Kill policy engine before killing IPC because
 	// the IPC is needed for shutdown message
+	kthlog(LOG_INFO, "Shutting down the policy engine");
 	stop_task(policy_engine_task, SIGINT);
 	// Send shutdown message to policy-engine
 	th_send_shutdown();

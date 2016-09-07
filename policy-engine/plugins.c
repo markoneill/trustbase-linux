@@ -114,15 +114,16 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 
 void cleanup_plugin(void* arg) {
 	plugin_t* plugin;
-	
 	plugin = arg;
+	
+	thlog(LOG_DEBUG, "Cleaning up plugin %s", plugin->name);
 	
 	if (plugin->handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
 		return;
 	}
 	if (plugin->handler_type == PLUGIN_HANDLER_TYPE_ADDON) {
 		if (plugin->finalize_by_addon != NULL) {
-			//plugin->finalize_by_addon(plugin->id);
+			plugin->finalize_by_addon(plugin->id);
 		}
 	} else {
 		if (plugin->finalize != NULL) {

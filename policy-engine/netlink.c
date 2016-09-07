@@ -229,6 +229,7 @@ int listen_for_queries() {
 			thlog(LOG_DEBUG, "nl_recv failed with code %i", err);
 			break;
 		}
+		thlog(LOG_DEBUG, ".");
 	}
 	nl_socket_free(netlink_sock);
 	thlog(LOG_DEBUG, "no longer listening for queries");
@@ -236,6 +237,7 @@ int listen_for_queries() {
 }
 
 void int_handler(int signal) {
+	thlog(LOG_DEBUG, "Caught signal");
 	if (signal == SIGINT) {
 		thlog(LOG_DEBUG, "Caught SIGINT");
 		printf("Caught SIGINT");

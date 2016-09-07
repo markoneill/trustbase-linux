@@ -33,13 +33,15 @@ static struct genl_ops th_ops[] = {
 	{
 		.cmd = TRUSTHUB_C_QUERY,
 		.flags = GENL_ADMIN_PERM,
+		.flags = 0,
 		.policy= th_policy,
 		.doit = th_query,
 		.dumpit = NULL,
 	},
 	{
 		.cmd = TRUSTHUB_C_RESPONSE,
-		.flags = GENL_ADMIN_PERM,
+		//.flags = GENL_ADMIN_PERM,
+		.flags = 0,
 		.policy = th_policy,
 		.doit = th_response,
 		.dumpit = NULL,

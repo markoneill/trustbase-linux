@@ -109,6 +109,7 @@ int main(int argc, char* argv[]) {
 		thlog(LOG_INFO, "canceling plugin thread %d", i);
 		pthread_cancel(plugin_threads[i]);
 		pthread_join(plugin_threads[i], NULL);
+		thlog(LOG_DEBUG, "freeing queue %s", plugin_name);
 		free_queue(context.plugins[i].queue, plugin_name);
 		free(plugin_name);
 	}
