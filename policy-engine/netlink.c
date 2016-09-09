@@ -86,6 +86,7 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
 	switch (gnlh->cmd) {
 		case TRUSTHUB_C_QUERY_NATIVE:
+			thlog(LOG_DEBUG, "Got a native call");
 			hostname = nla_get_string(attrs[TRUSTHUB_A_HOSTNAME]);
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
@@ -203,7 +204,7 @@ int prep_communication(const char* username) {
 	
 	sqlite3_close(db);
 	// drop root permissions
-	change_to_user(username);
+	//change_to_user(username);
 	return 0;
 }
 	
@@ -237,7 +238,6 @@ int listen_for_queries() {
 }
 
 void int_handler(int signal) {
-	thlog(LOG_DEBUG, "Caught signal");
 	if (signal == SIGINT) {
 		thlog(LOG_DEBUG, "Caught SIGINT");
 		printf("Caught SIGINT");

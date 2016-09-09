@@ -135,9 +135,6 @@ int recv_response_cb(struct nl_msg *msg, void *arg) {
 			result = nla_get_u32(attrs[TRUSTHUB_A_RESULT]);
 			last_response = result;
 			break;
-		case TRUSTHUB_C_SHUTDOWN:
-			// Do cleanup and exit
-			break;
 		default:
 			printf("Received unanticipated response\n");
 			break;

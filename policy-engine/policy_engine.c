@@ -215,8 +215,8 @@ void* decider_thread_init(void* arg) {
 		list_remove(context.timeout_list, query->data->id);
 		
 		final_response = aggregate_responses(query, ca_system_response);
-		free_query(query);
 		send_response(query->spid, query->state_pointer, final_response);
+		free_query(query);
 	}
 	return NULL;
 }
