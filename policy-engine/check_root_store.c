@@ -5,11 +5,15 @@
 #include <string.h>
 #include <fnmatch.h>
 #include <openssl/evp.h>
+#include <sys/utsname.h>
 #include "trusthub_plugin.h"
 #include "th_logging.h"
 #include "check_root_store.h"
 
 #define MAX_LENGTH 1024
+
+static char* ca_filename_redhat = "ca-bundle.crt";
+static char* ca_filename_debian = "ca-certificates.crt";
 
 static int cmp_names(const char* hostname, char* cn);
 static void print_certificate(X509* cert);
@@ -22,10 +26,11 @@ static const char* get_validation_errstr(long e);
  * @return a X509_STORE pointer containing the root CA system store.
  */
 X509_STORE* make_new_root_store() {
+	struct utsname info;
 	size_t ca_path_len;
 	const char* store_path;
 	char* full_path;
-	char ca_filename[] = "ca-bundle.crt";
+	char* ca_filename;
 	size_t ca_filename_len;
 	X509_STORE* store;
 	
@@ -34,6 +39,18 @@ X509_STORE* make_new_root_store() {
 	if (store == NULL) {
 		thlog(LOG_ERROR, "Unable to create new X509 store");
 		return NULL;
+	}
+	
+	/* get proper ca_filename */
+	if (uname(&info) < 0) {
+		thlog(LOG_ERROR, "Could not get the uname information, defaulting to redhat");
+		ca_filename = ca_filename_redhat;
+	} else {
+		if (strstr(info.release, ".fc") != NULL) {
+			ca_filename = ca_filename_redhat;
+		} else {
+			ca_filename = ca_filename_debian;
+		}
 	}
 	
 	/* build the root store path */
