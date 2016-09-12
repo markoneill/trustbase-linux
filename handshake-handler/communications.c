@@ -32,8 +32,7 @@ static struct genl_family th_family = {
 static struct genl_ops th_ops[] = {
 	{
 		.cmd = TRUSTHUB_C_QUERY,
-		//.flags = GENL_ADMIN_PERM,
-		.flags = 0,
+		.flags = GENL_ADMIN_PERM,
 		.policy= th_policy,
 		.doit = th_query,
 		.dumpit = NULL,

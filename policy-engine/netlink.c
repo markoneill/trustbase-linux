@@ -204,7 +204,7 @@ int prep_communication(const char* username) {
 	
 	sqlite3_close(db);
 	// drop root permissions
-	//change_to_user(username);
+	change_to_user(username);
 	return 0;
 }
 	
