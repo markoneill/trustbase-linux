@@ -8,7 +8,7 @@
 #include "th_logging.h"
 #include "addons.h"
 
-#define CONFIG_FILE_NAME	"policy-engine/trusthub.cfg"
+#define CONFIG_FILE_NAME	"/etc/trusthub.cfg"
 
 static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_path);
 static int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path);
@@ -36,7 +36,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	
 	// Read config file and store data
 	config_init(&cfg);
-	if (config_read_file(&cfg, cat_path(path,CONFIG_FILE_NAME)) == 0) {
+	if (config_read_file(&cfg, CONFIG_FILE_NAME) == 0) {
 		thlog(LOG_ERROR, "%s:%d - %s", 
 			config_error_file(&cfg),
 			config_error_line(&cfg),

@@ -79,6 +79,7 @@ CERT_TEST_SRC = userspace_tests/cert_sandbox.c
 CERT_TEST_OBJ = $(CERT_TEST_SRC:%.c=%.o)
 CERT_TEST_EXE = cert_test
 
+
 all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
@@ -121,3 +122,25 @@ $(CERT_TEST_EXE) : $(CERT_TEST_OBJ)
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(NATIVE_LIB_EXE) 
+
+PREFIX = /usr/lib/trusthub-linux
+
+
+INSTALL_FILES = $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO)
+
+.PHONY: install
+install: all
+	mkdir -p $(PREFIX)
+	for FILE in $(INSTALL_FILES); do \
+		mkdir -p "`dirname "$(PREFIX)/$$FILE"`"; \
+		cp $$FILE $(PREFIX)/$$FILE; \
+	done
+	find policy-engine/plugins -name "*.py" -print0 | xargs -0 -n 1 dirname | xargs -n 1 -I {} mkdir -p $(PREFIX)/{}
+	find policy-engine/plugins -name "*.py" -print0 | xargs -0 -I {} echo cp {} $(PREFIX)/{}
+	
+	cp trusthub_linux.ko $(PREFIX)/
+	cp Module.symvers $(PREFIX)/
+	cp modules.order $(PREFIX)/
+	cp policy-engine/trusthub.cfg $(PREFIX)/policy-engine/trusthub.cfg
+	ln -sf $(PREFIX)/policy-engine/trusthub.cfg /etc/trusthub.cfg
+	
