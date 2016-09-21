@@ -25,6 +25,8 @@ static STACK_OF(X509)* get_whitelist();
 
 static int pem_append(char* filename, STACK_OF(X509)* chain);
 
+static int verify_hostname(const char* hostname, X509* cert);
+
 int initialize(init_data_t* idata) {
 	plugin_path = idata->plugin_path;
 	plog = idata->thlog;
@@ -70,6 +72,11 @@ int query(query_data_t* data) {
 	plog(LOG_DEBUG, "running through whitelist");
 	for (i = 0; i < sk_X509_num(whitelist); i++) {
 		cert = sk_X509_value(whitelist, i);
+		
+		if (verify_hostname(data->hostname, cert) != 1) {
+			continue;
+		}
+		
 		white_fingerprint_len = sizeof(white_fingerprint);
 		if (!get_cert_fingerprint(cert, digest, white_fingerprint, &white_fingerprint_len)) {
 			// Couldn't get a fingerprint
@@ -164,3 +171,96 @@ static int pem_append(char* filename, STACK_OF(X509)* chain) {
 
 	return 1;
 }
+
+/** This does the actual string manipulation and comparison for hostnames
+ *
+ */
+static int cmp_names(const char* hostname, char* cn) {
+	int i;
+	int count;
+	int len;
+	char* tempstr;
+	int result;
+
+	result = 0;
+	tempstr = NULL;
+	
+	/* Note, if the hostname starts with a dot, it should be valid for any subdomain */
+	if (hostname[0] == '.') {
+		count = 0;
+		len = strlen(cn);
+		for (i=0; cn[i]; i++) {
+			if (cn[i] == '.') {
+				count++;
+			}
+		}
+		if (count > 1) {
+			/* remove up to the first '.' */
+			for (i=0; cn[i]; i++) {
+				if (cn[i] == '.') {
+					count = i;
+					break;
+				}
+			}
+			tempstr = (char *) malloc(len - (count));
+			memcpy(tempstr, cn+count+1, len - (count));
+			cn = tempstr;
+		}
+		/* add *. to the front of the cn */
+		len = strlen(cn);
+		tempstr = (char *) malloc(len+3);
+		memcpy(tempstr, "*.", 2);
+		memcpy(tempstr+2, cn, len+1);
+		free(cn);
+		cn = tempstr;
+	}
+	if (fnmatch(cn, hostname, 0) == 0) {
+		result = 1;
+	}
+	if (tempstr != NULL) {
+		free(tempstr);
+	}
+	return result;
+}
+
+/** This function tests a hostname against all CNs in the cert
+ *
+ */
+static int verify_hostname(const char* hostname, X509* cert) {
+	X509_NAME *subj;
+	int lastpos;
+	X509_NAME_ENTRY* entry;
+	ASN1_STRING* data;
+	char* cn;
+	int result;
+	
+	/* Get the Common Name from the certificate */
+		
+	subj = X509_get_subject_name(cert);
+	result = 0;
+	
+	lastpos = -1;
+	for (;;) {
+		lastpos = X509_NAME_get_index_by_NID(subj, NID_commonName, lastpos);
+		if (lastpos == -1) {
+			break;
+		}
+		entry = X509_NAME_get_entry(subj, lastpos);
+		data = X509_NAME_ENTRY_get_data(entry);
+		cn = (char*)ASN1_STRING_data(data);
+		
+		/* check for null characters */
+		if (ASN1_STRING_length(data) != strlen(cn)) {
+			thlog(LOG_DEBUG, "Parsing a malformed certificate");
+			continue;
+		}
+
+		if (cmp_names(hostname, cn) > 0) {
+			result = 1;
+		}
+	}
+	
+	
+	return result;
+}
+
