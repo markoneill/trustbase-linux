@@ -40,30 +40,38 @@ static int verify_hostname(const char* hostname, X509* cert);
 static time_t ASN1_GetTimeT(ASN1_TIME* time);
 
 int initialize(init_data_t* idata) {
+	char* plugin_path_cpy;
+	
 	plog = idata->thlog;
 	
 	// Whitelist Init
 	plugin_path = idata->plugin_path;
-	plog(LOG_DEBUG, "Whitelist initilized");
+	plog(LOG_DEBUG, "WHITELIST: Initilized");
 	//////////////////////////////////////////////////
 	
 	// Pinning Init
+	plugin_path_cpy = (char*)malloc(strlen(idata->plugin_path) + 1);
+	strncpy(plugin_path_cpy, idata->plugin_path, strlen(idata->plugin_path));
+	
 	database_path = NULL;
-	database_path = (char*)malloc(strlen(idata->plugin_path) + 2 + strlen(PINNING_DATABASE));
+	database_path = (char*)malloc(strlen(plugin_path_cpy) + 2 + strlen(PINNING_DATABASE));
 	if (database_path == NULL) {
+		free(plugin_path_cpy);
 		return -1;
 	}
-	strncpy(database_path, dirname(idata->plugin_path), strlen(idata->plugin_path));
+	strncpy(database_path, dirname(plugin_path_cpy), strlen(plugin_path_cpy));
 	strcat(database_path, "/");
 	strcat(database_path, PINNING_DATABASE);
-	plog(LOG_DEBUG, "CERT PINNING: Trying to use database at %s", database_path);
+	free(plugin_path_cpy);
+	plog(LOG_DEBUG, "CERT PINNING: Initialized, using database at %s", database_path);
 	//////////////////////////////////////////////////
 	
 	return 0;
 }
 
 int query(query_data_t* data) {
-	X509* cert, matchingCert;
+	X509* cert;
+	X509* matchingCert;
 	STACK_OF(X509)* whitelist;
 	EVP_MD* digest;
 	unsigned char fingerprint[EVP_MAX_MD_SIZE];
@@ -71,7 +79,7 @@ int query(query_data_t* data) {
 	int i;
 	unsigned char white_fingerprint[EVP_MAX_MD_SIZE];
 	unsigned int white_fingerprint_len;
-	
+
 	int rval;
 	unsigned char* hash;
 	unsigned char* stored_hash;
@@ -81,7 +89,8 @@ int query(query_data_t* data) {
 	sqlite3_stmt* statement;
 	time_t ptime;
 	time_t exptime;
-
+	
+	
 	/* Only check the leaf certificate */
 	cert = sk_X509_value(data->chain, 0);
 	//print_certificate(cert);
@@ -100,7 +109,7 @@ int query(query_data_t* data) {
 		return PLUGIN_RESPONSE_ERROR;
 	}
 	
-	plog(LOG_DEBUG, "Got fingerprint");
+	plog(LOG_DEBUG, "Got fingerprint of incoming cert");
 
 	/* Get whitelist */
 	whitelist = get_whitelist();
@@ -110,22 +119,27 @@ int query(query_data_t* data) {
 	
 	// Right now this is going over every whitelisted cert, and taking a hash of them, then comparing
 	// TODO: For quicker results, switch to storing only hashes of the whitelisted certificates
-	plog(LOG_DEBUG, "running through whitelist");
+	plog(LOG_DEBUG, "Running through whitelist, size=%d", sk_X509_num(whitelist));
 	for (i = 0; i < sk_X509_num(whitelist); i++) {
 		matchingCert = sk_X509_value(whitelist, i);
 		
+		plog(LOG_DEBUG, "Verifying hostname...");
 		if (verify_hostname(data->hostname, matchingCert) != 1) {
+			plog(LOG_DEBUG, "Not a match");
 			continue;
 		}
+		plog(LOG_DEBUG, "Hostname match found");
 		
 		white_fingerprint_len = sizeof(white_fingerprint);
 		if (!get_cert_fingerprint(matchingCert, digest, white_fingerprint, &white_fingerprint_len)) {
 			// Couldn't get a fingerprint
+			plog(LOG_DEBUG, "Unable to get fingerprint for whitelist cert");
 			sk_X509_pop_free(whitelist, X509_free);
 			return PLUGIN_RESPONSE_ERROR;
 		}
 		if (compare_fingerprint(fingerprint, fingerprint_len, white_fingerprint, white_fingerprint_len)) {
 			// We found a good certificate
+			plog(LOG_DEBUG, "Cert fingerprint match found in whitelist");
 			sk_X509_pop_free(whitelist, X509_free);
 			return PLUGIN_RESPONSE_VALID;
 		}
@@ -138,6 +152,8 @@ int query(query_data_t* data) {
 	////////////////////////////////////////////////////////////////////////////////////////
 	/* No match in whitelist, so go to Pinning */
 	////////////////////////////////////////////////////////////////////////////////////////
+	
+	plog(LOG_DEBUG, "Not found in whitelist, defaulting to pinning");
 	
 	rval = PLUGIN_RESPONSE_VALID;
 	
@@ -180,8 +196,7 @@ int query(query_data_t* data) {
 		return PLUGIN_RESPONSE_INVALID;
 	}
 	// Get cert expire time as a time_t
-	exptime = ASN1_GetTimeT(X509_get_notAfter(cert)); 
-	
+	exptime = ASN1_GetTimeT(X509_get_notAfter(cert));
 	
 	/* There should be a table named 'pinned'
 	 * CREATE TABLE pinned (hostname TEXT PRIMARY KEY, hash TEXT, exptime INTEGER);
@@ -193,12 +208,18 @@ int query(query_data_t* data) {
 	} else if (sqlite3_bind_int64(statement, 2, (sqlite_uint64)ptime) != SQLITE_OK) {
 		rval = PLUGIN_RESPONSE_ERROR;
 	} else if (sqlite3_step(statement) == SQLITE_ROW) {
+		plog(LOG_DEBUG, "Found a hit in pinning table");
+		
 		// There was a result, compare the stored hash with the new one
 		stored_hash = (unsigned char*)sqlite3_column_blob(statement, 0);
 		if (strcmp((char*)hash, (char*)stored_hash) != 0) {
+			plog(LOG_DEBUG, "Pinned cert does not match");
 			rval = PLUGIN_RESPONSE_INVALID;
 		}
+		plog(LOG_DEBUG, "Pinned cert matches");
 	} else {
+		plog(LOG_DEBUG, "Not found in pinning table. Now pinning new cert.");
+		
 		// There were no results, do an insert.
 		sqlite3_finalize(statement);
 		if (sqlite3_prepare_v2(database, "INSERT OR REPLACE INTO pinned VALUES(?1,?2,?3);", -1, &statement, NULL) != SQLITE_OK) {
@@ -211,6 +232,10 @@ int query(query_data_t* data) {
 			rval = PLUGIN_RESPONSE_ERROR;
 		} else if (sqlite3_step(statement) != SQLITE_DONE) {
 			rval = PLUGIN_RESPONSE_ERROR;
+		}
+		
+		if (rval == PLUGIN_RESPONSE_VALID) {
+			plog(LOG_DEBUG, "Pinned cert successfully");
 		}
 	}
 
@@ -431,4 +456,3 @@ static time_t ASN1_GetTimeT(ASN1_TIME* time){
 	/* Note: we did not adjust the time based on time zone information */
 	return mktime(&t);
 }
-
