@@ -264,6 +264,7 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
+	kthlog(LOG_DEBUG, "We got a tcp_v4_connect");
 	if (uaddr->sa_family == AF_INET) {
 		//print_call_info("Calling connect (v4) to addres %pI4:%d", 
 		//	&((struct sockaddr_in*)uaddr)->sin_addr,
@@ -285,6 +286,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
+	kthlog(LOG_DEBUG, "We got a tcp_v6_connect");
 	if (start_conn_state(current->pid, current->tgid, uaddr, 1, addr_len, sock)) {
 	}
 	return ret;
@@ -348,7 +350,6 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		return ref_tcp_sendmsg(iocb, sk, msg, size);
 		#endif
 	}
-
 
 	// Copy attributes of existing message into our custom one
 	kmsg = *msg;
@@ -416,7 +417,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// acknowledge the existence of dumb programmers, it seems like they
 		// would get what they deserve in this case.
 	}
-
+	
 	// 3) Have handler tell us what we should forward
 	//    This will be the same as last time if an error occurred
 	ops->fill_send_buffer(conn_state->state, &iov.iov_base, &iov.iov_len);
@@ -470,7 +471,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 	// If handler doesn't care about connection anymore then delete it
 	if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
-		//print_call_info(sock, "No longer interested in socket, ceasing monitoring");
+		kthlog(LOG_DEBUG, "No longer interested in socket, ceasing monitoring");
 		stop_conn_state(conn_state); 
         }
 	// Just tell the user we sent everything he wanted

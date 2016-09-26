@@ -274,6 +274,7 @@ int th_get_bytes_to_read_recv(void* state) {
 void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
+			kthlog(LOG_DEBUG, "case UNKNOWN");
 			handle_state_unknown(state, buf_state);
 			break;
 		case RECORD_LAYER:
@@ -344,7 +345,6 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 	// connections.
 	//buf_state->bytes_read += buf_state->bytes_to_read;
 	if (buf_state->buf[0] == TH_TLS_HANDSHAKE_IDENTIFIER) {
-		//print_call_info("May be initiating an SSL/TLS connection");
 		buf_state->state = RECORD_LAYER;
 		buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 		//kthlog(LOG_DEBUG, "set bytes to read from TH_TLS_RECORD_HEADER_SIZE of %i", TH_TLS_RECORD_HEADER_SIZE); 
@@ -360,6 +360,8 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 		//kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
 	}
 	else {
+		kthlog(LOG_DEBUG, "Read an unknown 0x%x at buf[0]", buf_state->buf[0]);
+		kthlog_buffer(buf_state->buf, buf_state->buf_length);
 		buf_state->bytes_to_read = 0;
 		//kthlog(LOG_DEBUG, "set bytes to read to 0"); 
 		buf_state->state = IRRELEVANT;
@@ -555,11 +557,12 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	tls_record_bytes = buf_state->bytes_to_read;
 	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
+	kthlog(LOG_DEBUG, "Watching handshake layer");
 	while (tls_record_bytes > 0) {
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
 		tls_record_bytes -= handshake_message_length;
 		if (cs_buf[0] == TYPE_CLIENT_HELLO) {
-			//kthlog(LOG_DEBUG, "Sent a Client Hello");
+			kthlog(LOG_DEBUG, "Sent a Client Hello");
 			buf_state->bytes_to_read = 0;
 			buf_state->state = CLIENT_HELLO_SENT;
 			set_state_client_hello(state, cs_buf, handshake_message_length);
@@ -574,7 +577,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			//BUG_ON(1);
 		}
 		else if (cs_buf[0] == TYPE_SERVER_HELLO) {
-			//kthlog(LOG_DEBUG, "Received a Server Hello");
+			kthlog(LOG_DEBUG, "Received a Server Hello");
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
 			cs_buf += handshake_message_length;
