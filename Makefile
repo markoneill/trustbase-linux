@@ -138,6 +138,7 @@ INSTALL_FILES = $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLU
 .PHONY: install
 install: all
 	mkdir -p $(PREFIX)
+	mkdir -p $(PREFIX)/sslsplit
 	for FILE in $(INSTALL_FILES); do \
 		mkdir -p "`dirname "$(PREFIX)/$$FILE"`"; \
 		cp $$FILE $(PREFIX)/$$FILE; \
@@ -149,6 +150,7 @@ install: all
 	cp Module.symvers $(PREFIX)/
 	cp modules.order $(PREFIX)/
 	cp -r certs $(PREFIX)/
+	cp sslsplit/sslsplit $(PREFIX)/sslsplit/
 	cp policy-engine/trusthub.cfg $(PREFIX)/policy-engine/trusthub.cfg
 	ln -sf $(PREFIX)/policy-engine/trusthub.cfg /etc/trusthub.cfg
 	
