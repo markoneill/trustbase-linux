@@ -12,6 +12,10 @@ then
 	exit -1
 fi
 
+# Git submodules
+git submodule init
+git submodule update
+
 # Required build libraries
 $PM install openssl-devel libconfig-devel libnl3-devel libsqlite3x-devel libcap-devel python-devel kernel-devel kernel-headers
 

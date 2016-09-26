@@ -141,6 +141,7 @@ install: all
 	cp trusthub_linux.ko $(PREFIX)/
 	cp Module.symvers $(PREFIX)/
 	cp modules.order $(PREFIX)/
+	cp -r certs $(PREFIX)/
 	cp policy-engine/trusthub.cfg $(PREFIX)/policy-engine/trusthub.cfg
 	ln -sf $(PREFIX)/policy-engine/trusthub.cfg /etc/trusthub.cfg
 	
