@@ -84,6 +84,11 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	int i;
 	int valid;
 
+	if (sk_X509_num(certs) <= 0) {
+		thlog(LOG_WARNING, "Got a stack of certs that was empty");
+		return PLUGIN_RESPONSE_ERROR;	
+	}
+
 	/* Check the hostname against the leaf certificate */
 	
 	if (verify_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
