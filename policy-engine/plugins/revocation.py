@@ -9,6 +9,7 @@ from cryptography.hazmat.backends.openssl import backend
 from cryptography.x509.oid import AuthorityInformationAccessOID as authorityOID
 from cryptography.x509.oid import ExtensionOID as extensionOID
 
+import sys
 import subprocess
 
 class testPlugin(TrustHubPlugin):
@@ -16,6 +17,7 @@ class testPlugin(TrustHubPlugin):
         pass
     
     def initialize(self):
+        sys.stdout = Python_Plugin_Logger()
         print "Revocation plugin initialized"
         return INIT_SUCCESS
     
@@ -25,7 +27,7 @@ class testPlugin(TrustHubPlugin):
         certs = convert_tls_certificates_to_x509_list(cert_chain)
         self.write_to_files(certs)
         uri = self.check_for_OCSP(certs[0])
-        print uri
+        print uri        
         if not uri:
             print "No OCSP"
             return RESPONSE_ABSTAIN
@@ -100,6 +102,8 @@ class testPlugin(TrustHubPlugin):
                 if fields[1] == "good":
                     print "OK"
                     return RESPONSE_VALID;
+                else:
+                    print "response from ocsp: " + text
         print "BAD"
         return RESPONSE_INVALID;
 
