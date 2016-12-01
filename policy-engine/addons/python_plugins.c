@@ -576,7 +576,7 @@ int finalize_plugin(int id) {
 }
 
 void log_PyErr() {
-	return;
+
 	PyObject *ptype, *pvalue, *ptraceback;
 	PyErr_Fetch(&ptype, &pvalue, &ptraceback);
 	//pvalue contains error message
