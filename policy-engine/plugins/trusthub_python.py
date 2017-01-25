@@ -10,6 +10,16 @@ RESPONSE_ABSTAIN = int(2)
 INIT_SUCCESS = int(0)
 INIT_FAIL = int(1)
 
+class Python_Plugin_Logger:
+    def __init__(self, logfile = None):
+        if logfile is None:
+            self.logfile = '/tmp/trusthub_python_plugin.log'
+        else:
+            self.logfile = logfile
+    def write(self, text) :
+        with open(self.logfile,"a") as f:
+            f.write(text)
+
 class TrustHubPlugin(object):
     async = False
     

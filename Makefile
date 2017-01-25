@@ -71,6 +71,9 @@ WHITELIST_PINNING_HYBRID_PLUGIN_SRC = policy-engine/plugins/whitelist_pinning_hy
 WHITELIST_PINNING_HYBRID_PLUGIN_OBJ = $(WHITELIST_PINNING_HYBRID_PLUGIN_SRC:%.c=%.o)
 WHITELIST_PINNING_HYBRID_PLUGIN_SO = policy-engine/plugins/whitelist_pinning_hybrid/whitelist_pinning_hybrid.so
 
+CRLSET_H = policy-engine/plugins/crlset.h
+CRLSET_SO = policy-engine/plugins/crlset.so
+
 SIMPLE_SERVER_SRC = userspace_tests/simple_server.c
 SIMPLE_SERVER_OBJ = $(SIMPLE_SERVER_SRC:%.c=%.o)
 SIMPLE_SERVER_EXE = simple_server
@@ -83,6 +86,7 @@ CERT_TEST_SRC = userspace_tests/cert_sandbox.c
 CERT_TEST_OBJ = $(CERT_TEST_SRC:%.c=%.o)
 CERT_TEST_EXE = cert_test
 
+ALL_PYTHON_PLUGIN_SRC = $(wildcard policy-engine/plugins/*.py)
 
 all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(WHITELIST_PINNING_HYBRID_PLUGIN_SO)
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
@@ -128,16 +132,17 @@ $(CERT_TEST_EXE) : $(CERT_TEST_OBJ)
 
 clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
-	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(NATIVE_LIB_EXE) 
+	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(CRLSET_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(NATIVE_LIB_EXE)  
 
 PREFIX = /usr/lib/trusthub-linux
 
 
-INSTALL_FILES = $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO)
+INSTALL_FILES = $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(ALL_PYTHON_PLUGIN_SRC) $(CRLSET_H) $(CRLSET_SO)
 
 .PHONY: install
 install: all
 	mkdir -p $(PREFIX)
+	mkdir -p $(PREFIX)/sslsplit
 	for FILE in $(INSTALL_FILES); do \
 		mkdir -p "`dirname "$(PREFIX)/$$FILE"`"; \
 		cp $$FILE $(PREFIX)/$$FILE; \
@@ -149,6 +154,7 @@ install: all
 	cp Module.symvers $(PREFIX)/
 	cp modules.order $(PREFIX)/
 	cp -r certs $(PREFIX)/
+	cp sslsplit/sslsplit $(PREFIX)/sslsplit/
 	cp policy-engine/trusthub.cfg $(PREFIX)/policy-engine/trusthub.cfg
 	ln -sf $(PREFIX)/policy-engine/trusthub.cfg /etc/trusthub.cfg
 	
