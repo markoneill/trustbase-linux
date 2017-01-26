@@ -26,6 +26,8 @@ class CRLSetPlugin(TrustHubPlugin):
     crlsetCertFilePath = '/tmp/crlset_cert.pem'
     crlsetChainFilePath = '/tmp/crlset_chain.pem'
 
+    crlsetBadCertFilePath = '/tmp/crlset_badCert.pem'
+
     crlsetLibraryPath = os.path.dirname(os.path.realpath(__file__))+'/crlset.so'
 
     #this counter will invoke an CRLSet update after UPDATE_AT_COUNT number of TLS Connections
@@ -54,7 +56,7 @@ class CRLSetPlugin(TrustHubPlugin):
         returnValue = self.isCertInCrlSet(crlset_tools, self.crlsetCertFilePath)
         print returnValue
         print "out"
-        return RESPONSE_VALID
+        return returnValue
 
     def updateCrlSet(self, crlset_tools):
         doesFileExist = os.path.isfile(self.crlsetFilePath)
@@ -83,7 +85,12 @@ class CRLSetPlugin(TrustHubPlugin):
         return verisonNumber
 
     def isCertInCrlSet(self, crlset_tools, certFilename):
-        successfulRead = crlset_tools.dumpFromPython(self.crlsetFilePath, certFilename)
+        badFilePath = ""
+        doesBadFileExist = os.path.isfile(self.crlsetBadCertFilePath)
+        if doesBadFileExist :
+            badFilePath = self.crlsetBadCertFilePath
+
+        successfulRead = crlset_tools.dumpFromPython(self.crlsetFilePath, certFilename, badFilePath)
         if successfulRead == False:
             print("Error: dumpFromPython failed")
             return RESPONSE_ABSTAIN

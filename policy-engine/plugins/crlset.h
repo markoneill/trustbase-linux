@@ -56,7 +56,7 @@ extern GoUint8 getCurrentVersionFromPython();
 
 extern GoUint8 fetchFromPython();
 
-extern GoUint8 dumpFromPython(char* p0, char* p1);
+extern GoUint8 dumpFromPython(char* p0, char* p1, char* p2);
 
 extern GoUint8 dumpSPKIFromPython(char* p0);
 

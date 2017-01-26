@@ -290,18 +290,20 @@ type crlSetHeader struct {
 }
 
 //export dumpFromPython
-func dumpFromPython(cFilename, cCertificateFilename *C.char) bool {
+func dumpFromPython(cFilename, cCertificateFilename *C.char, cBadCertificateFilename *C.char) bool {
 	var buffer bytes.Buffer
 	
 	filename := C.GoString(cFilename)
 	certificateFilename := C.GoString(cCertificateFilename)
-	returnValue := dump(filename, certificateFilename, &buffer)
+	badCertificateFilename := C.GoString(cBadCertificateFilename)
+
+	returnValue := dump(filename, certificateFilename, badCertificateFilename, &buffer)
 
 	writeBufferToFile("/tmp/crlset-dump", buffer)
 	return returnValue
 }
 
-func dump(filename, certificateFilename string, writer io.Writer) bool {
+func dump(filename, certificateFilename string, badCertFilename string, writer io.Writer) bool {
 
 	header, c, ok := getHeader(filename)
 	if !ok {
@@ -309,6 +311,7 @@ func dump(filename, certificateFilename string, writer io.Writer) bool {
 	}
 
 	var spki []byte
+
 	if len(certificateFilename) > 0 {
 		certBytes, err := ioutil.ReadFile(certificateFilename)
 		if err != nil {
@@ -334,6 +337,33 @@ func dump(filename, certificateFilename string, writer io.Writer) bool {
 		spki = h.Sum(nil)
 	}
 
+	var badSpki []byte
+
+	if len(badCertFilename) > 0 {
+		badCertBytes, err := ioutil.ReadFile(badCertFilename)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read bad certificate \n")
+			return false
+		}
+
+		var badDerBytes []byte
+		if block, _ := pem.Decode(badCertBytes); block == nil {
+			badDerBytes = badCertBytes
+		} else {
+			badDerBytes = block.Bytes
+		}
+
+		badCert, err := x509.ParseCertificate(badDerBytes)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to parse certificate \n")
+			return false
+		}
+		
+		badH := sha256.New()
+		badH.Write(badCert.RawSubjectPublicKeyInfo)
+		badSpki = badH.Sum(nil)
+	}
+
 	if len(spki) == 0 {
 		fmt.Fprintf(writer, "Sequence: %d\n", header.Sequence)
 		fmt.Fprintf(writer, "Parents: %d\n", header.NumParents)
@@ -347,6 +377,8 @@ func dump(filename, certificateFilename string, writer io.Writer) bool {
 			return false
 		}
 		spkiMatches := bytes.Equal(spki, c[:spkiHashLen])
+		badMatches := bytes.Equal(spki, badSpki)
+
 		if len(spki) == 0 {
 			fmt.Fprintf(writer, "%x\n", c[:spkiHashLen])
 		}
@@ -376,6 +408,9 @@ func dump(filename, certificateFilename string, writer io.Writer) bool {
 				fmt.Fprintf(writer, "  %x\n", c[:serialLen])
 			} else if spkiMatches {
 				fmt.Fprintf(writer, "%x\n", c[:serialLen])
+			} else if badMatches {
+				fmt.Fprintf(writer, "%x\n", badSpki)
+				return true
 			}
 			c = c[serialLen:]
 		}
@@ -477,10 +512,13 @@ func main() {
 	case "dump":
 		if len(os.Args) == 3 {
 			needUsage = false
-			result = dump(os.Args[2], "", os.Stdout)
+			result = dump(os.Args[2], "", "", os.Stdout)
 		} else if len(os.Args) == 4 {
 			needUsage = false
-			result = dump(os.Args[2], os.Args[3], os.Stdout)
+			result = dump(os.Args[2], os.Args[3], "", os.Stdout)
+		} else if len(os.Args) == 5 {
+			needUsage = false
+			result = dump(os.Args[2], os.Args[3], os.Args[4], os.Stdout)
 		}
 	case "dumpSPKIs":
 		if len(os.Args) == 3 {
