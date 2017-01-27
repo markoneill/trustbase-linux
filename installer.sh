@@ -15,13 +15,13 @@ fi
 
 # Required build libraries
 
-# Added build libraries that I needed for Fedora
-#dnf install redhat-rpm-config
-#$PM install libffi libffi-devel
-#pip install pyopenssl
-# end Added build libaries
 
-$PM install openssl-devel libconfig-devel libnl3-devel libsqlite3x-devel libcap-devel python-devel kernel-devel-$(uname -r) kernel-headers-$(uname -r) libevent-devel
+
+
+
+
+
+$PM install openssl-devel libconfig-devel libnl3-devel libsqlite3x-devel libcap-devel python-devel kernel-devel-$(uname -r) kernel-headers-$(uname -r) libevent-devel pyOpenSSL
 
 
 # Git submodules
