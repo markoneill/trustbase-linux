@@ -36,12 +36,12 @@ static volatile int keep_running;
 typedef struct { unsigned char b[3]; } be24, le24;
 
 
-int poll_schemes(uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
+int poll_schemes(uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len, char* client_hello, size_t client_hello_len, char* server_hello, size_t server_hello_len) {
 	static int id = 0;
 	int i;
 	query_t* query;
 	/* Validation */
-	query = create_query(context.plugin_count, id++, spid, stptr, hostname, port, cert_data, len);
+	query = create_query(context.plugin_count, id++, spid, stptr, hostname, port, cert_data, len, client_hello, client_hello_len, server_hello, server_hello_len);
 	list_add(context.timeout_list, query);
 	enqueue(context.decider_queue, query);
 	for (i = 0; i < context.plugin_count; i++) {
@@ -109,7 +109,6 @@ int main(int argc, char* argv[]) {
 		thlog(LOG_INFO, "canceling plugin thread %d", i);
 		pthread_cancel(plugin_threads[i]);
 		pthread_join(plugin_threads[i], NULL);
-		thlog(LOG_DEBUG, "freeing queue %s", plugin_name);
 		free_queue(context.plugins[i].queue, plugin_name);
 		free(plugin_name);
 	}

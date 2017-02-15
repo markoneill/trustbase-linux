@@ -15,7 +15,7 @@ static STACK_OF(X509)* parse_chain(unsigned char* data, size_t len);
 static unsigned int ntoh24(const unsigned char* data);
 //static void hton24(int x, unsigned char* buf);
 
-query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len) {
+query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, char* hostname, uint16_t port, unsigned char* cert_data, size_t len, char* client_hello, size_t client_hello_len, char* server_hello, size_t server_hello_len) {
 	char* hostname_resolved[1];
 	int hostname_len;
 	int i;
@@ -94,6 +94,32 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 		return NULL;
 	}
 	query->data->raw_chain_len = len;
+	query->data->client_hello = (char*)malloc(sizeof(unsigned char) * client_hello_len);
+	if (query->data->client_hello == NULL) {
+		thlog(LOG_ERROR, "Failed to allocate client_hello for query");
+		pthread_mutex_destroy(&query->mutex);
+		pthread_cond_destroy(&query->threshold_met);
+		free(query->responses);
+		free(query->data->raw_chain);
+		free(query->data->hostname);
+		free(query->data);
+		free(query);
+		return NULL;
+	}
+	query->data->client_hello_len = client_hello_len;
+	query->data->server_hello = (char*)malloc(sizeof(unsigned char) * server_hello_len);
+	if (query->data->server_hello == NULL) {
+		thlog(LOG_ERROR, "Failed to allocate server_hello for query");
+		pthread_mutex_destroy(&query->mutex);
+		pthread_cond_destroy(&query->threshold_met);
+		free(query->responses);
+		free(query->data->raw_chain);
+		free(query->data->hostname);
+		free(query->data);
+		free(query);
+		return NULL;
+	}
+	query->data->server_hello_len = server_hello_len;
 	memcpy(query->data->hostname, hostname_resolved[0], hostname_len);
 	memcpy(query->data->raw_chain, cert_data, len);
 	query->state_pointer = stptr;

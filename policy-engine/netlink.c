@@ -73,6 +73,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	int chain_length;
 	char* client_hello;
 	int client_hello_len;
+	char* server_hello;
+	int server_hello_len;
 	uint64_t stptr;
 	uint16_t port;
 
@@ -80,7 +82,6 @@ int recv_query(struct nl_msg *msg, void *arg) {
 	ip_str = NULL;
 
 	// Get Message
-	thlog(LOG_DEBUG, "Received a message");
 	nlh = nlmsg_hdr(msg);
 	gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
 	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
@@ -91,8 +92,13 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			chain_length = nla_len(attrs[TRUSTHUB_A_CERTCHAIN]);
 			cert_chain = nla_data(attrs[TRUSTHUB_A_CERTCHAIN]);
 			port = nla_get_u16(attrs[TRUSTHUB_A_PORTNUMBER]);
+			// XXX we need to have the client and server hello somehow
+			client_hello_len = 0;
+			client_hello = NULL;
+			server_hello_len = 0;
+			server_hello = NULL;
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
-			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length);
+			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length, client_hello, client_hello_len, server_hello, server_hello_len);
 			break;
 		case TRUSTHUB_C_QUERY:
 			thlog(LOG_DEBUG, "Received a query from PID %u", nlh->nlmsg_pid);
@@ -104,10 +110,12 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			client_hello_len = nla_len(attrs[TRUSTHUB_A_CLIENT_HELLO]);
 			client_hello = nla_data(attrs[TRUSTHUB_A_CLIENT_HELLO]);
+			server_hello_len = nla_len(attrs[TRUSTHUB_A_CLIENT_HELLO]);
+			server_hello = nla_data(attrs[TRUSTHUB_A_CLIENT_HELLO]);
 			hostname = sni_get_hostname(client_hello, client_hello_len);
 			ip_str = nla_get_string(attrs[TRUSTHUB_A_IP]);
 			/* Query registered schemes */
-			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length);
+			poll_schemes(nlh->nlmsg_pid, stptr, hostname, port, cert_chain, chain_length, client_hello, client_hello_len, server_hello, server_hello_len);
 			sprintf(query, "INSERT OR IGNORE INTO Pins VALUES ('%s', %d)", ip_str, port);
 			if (sqlite3_prepare_v2(db, query, 256, &res, 0) != SQLITE_OK) {
 				thlog(LOG_ERROR, "TLS Pin insert failed %s", sqlite3_errmsg(db));

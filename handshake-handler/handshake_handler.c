@@ -80,6 +80,7 @@ static void handle_state_server_hello_done_sent(handler_state_t* state, buf_stat
 static void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state);
 static unsigned int handle_certificates(handler_state_t* state, unsigned char* buf);
 static void set_state_client_hello(handler_state_t* state, char* buf, unsigned int message_length);
+static void set_state_server_hello(handler_state_t* state, char* buf, unsigned int message_length);
 
 // SMTP state machine handling
 void handle_state_smtp_potential(handler_state_t* state, buf_state_t* buf_state);
@@ -274,7 +275,6 @@ int th_get_bytes_to_read_recv(void* state) {
 void update_buf_state_send(handler_state_t* state, buf_state_t* buf_state) {
 	switch (buf_state->state) {
 		case UNKNOWN:
-			kthlog(LOG_DEBUG, "case UNKNOWN");
 			handle_state_unknown(state, buf_state);
 			break;
 		case RECORD_LAYER:
@@ -360,8 +360,8 @@ void handle_state_unknown(handler_state_t* state, buf_state_t* buf_state) {
 		//kthlog(LOG_DEBUG, "set bytes to read to %i for SMTP", TH_SMTP_READ_SIZE);
 	}
 	else {
-		kthlog(LOG_DEBUG, "Read an unknown 0x%x at buf[0]", buf_state->buf[0]);
-		kthlog_buffer(buf_state->buf, buf_state->buf_length);
+		//kthlog(LOG_DEBUG, "Read an unknown 0x%x at buf[0]", buf_state->buf[0]);
+		//kthlog_buffer(buf_state->buf, buf_state->buf_length);
 		buf_state->bytes_to_read = 0;
 		//kthlog(LOG_DEBUG, "set bytes to read to 0"); 
 		buf_state->state = IRRELEVANT;
@@ -557,7 +557,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 	tls_record_bytes = buf_state->bytes_to_read;
 	// We're going to read everything to just let it be known now
 	buf_state->bytes_read += buf_state->bytes_to_read;
-	kthlog(LOG_DEBUG, "Watching handshake layer");
+	//kthlog(LOG_DEBUG, "Watching handshake layer");
 	while (tls_record_bytes > 0) {
 		handshake_message_length = be24_to_cpu(*(__be24*)(cs_buf+1)) + 4;
 		tls_record_bytes -= handshake_message_length;
@@ -580,6 +580,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 			kthlog(LOG_DEBUG, "Received a Server Hello");
 			buf_state->bytes_to_read = TH_TLS_RECORD_HEADER_SIZE;
 			buf_state->state = RECORD_LAYER;
+			set_state_server_hello(state, cs_buf, handshake_message_length);
 			cs_buf += handshake_message_length;
 		}
 		else if (cs_buf[0] == TYPE_CERTIFICATE) { 
@@ -693,6 +694,13 @@ void set_state_client_hello(handler_state_t* state, char* buf, unsigned int mess
 	state->client_hello = (char*)kmalloc(message_len, GFP_KERNEL); 
 	memcpy(state->client_hello, buf, message_len);
 	state->client_hello_len = message_len;
+	return;
+}
+
+void set_state_server_hello(handler_state_t* state, char* buf, unsigned int message_len) {
+	state->server_hello = (char*)kmalloc(message_len, GFP_KERNEL); 
+	memcpy(state->server_hello, buf, message_len);
+	state->server_hello_len = message_len;
 	return;
 }
 
