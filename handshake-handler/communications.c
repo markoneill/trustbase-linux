@@ -15,6 +15,7 @@ int th_query(struct sk_buff* skb, struct genl_info* info);
 static const struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
 	[TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_CLIENT_HELLO] = { .type = NLA_UNSPEC },
+	[TRUSTHUB_A_SERVER_HELLO] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_IP] = { .type = NLA_NUL_STRING },
 	[TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
@@ -106,7 +107,7 @@ int th_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	int rc;
 	void* msg_head;
 	uint16_t port;
-	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+250, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
+	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+state->server_hello_len+250, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
 	//kthlog(LOG_DEBUG, "Trying to send a cert query");
 	if (skb == NULL) {
 		kthlog(LOG_ERROR, "failed in genlmsg for sending the query");
@@ -123,6 +124,12 @@ int th_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	rc = nla_put(skb, TRUSTHUB_A_CLIENT_HELLO, state->client_hello_len, state->client_hello);
 	if (rc != 0) {
 		kthlog(LOG_ERROR, "failed in nla_put for Client Hello");
+		nlmsg_free(skb);
+		return -1;
+	}
+	rc = nla_put(skb, TRUSTHUB_A_SERVER_HELLO, state->server_hello_len, state->server_hello);
+	if (rc != 0) {
+		kthlog(LOG_ERROR, "failed in nla_put for Server Hello");
 		nlmsg_free(skb);
 		return -1;
 	}

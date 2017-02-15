@@ -73,6 +73,8 @@ typedef struct handler_state_t {
 	unsigned int orig_leaf_cert_len;
 	char* client_hello;
 	unsigned int client_hello_len;
+	char* server_hello;
+	unsigned int server_hello_len;
 } handler_state_t;
 
 void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
