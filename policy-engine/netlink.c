@@ -12,6 +12,7 @@ static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
         [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
 	[TRUSTHUB_A_CLIENT_HELLO] = { .type = NLA_UNSPEC },
+	[TRUSTHUB_A_SERVER_HELLO] = { .type = NLA_UNSPEC },
 	[TRUSTHUB_A_IP] = { .type = NLA_STRING },
         [TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },

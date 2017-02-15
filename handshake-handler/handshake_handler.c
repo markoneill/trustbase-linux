@@ -625,6 +625,7 @@ void handle_state_handshake_layer(handler_state_t* state, buf_state_t* buf_state
 		else if (cs_buf[0] == TYPE_SERVER_HELLO_DONE) {	
 			buf_state->bytes_to_read = 0;
 			buf_state->state = SERVER_HELLO_DONE_SENT;
+			set_state_server_hello(state, cs_buf, handshake_message_length);
 			buf_state->user_cur_max = buf_state->buf_length;
 			state->interest = UNINTERESTED;
 			//kthlog(LOG_DEBUG, "Received a Server Hello Done Exchange");
@@ -694,6 +695,12 @@ void set_state_client_hello(handler_state_t* state, char* buf, unsigned int mess
 	state->client_hello = (char*)kmalloc(message_len, GFP_KERNEL); 
 	memcpy(state->client_hello, buf, message_len);
 	state->client_hello_len = message_len;
+	return;
+}
+void set_state_server_hello(handler_state_t* state, char* buf, unsigned int message_len) {
+	state->server_hello = (char*)kmalloc(message_len, GFP_KERNEL); 
+	memcpy(state->server_hello, buf, message_len);
+	state->server_hello_len = message_len;
 	return;
 }
 
