@@ -697,12 +697,6 @@ void set_state_client_hello(handler_state_t* state, char* buf, unsigned int mess
 	state->client_hello_len = message_len;
 	return;
 }
-void set_state_server_hello(handler_state_t* state, char* buf, unsigned int message_len) {
-	state->server_hello = (char*)kmalloc(message_len, GFP_KERNEL); 
-	memcpy(state->server_hello, buf, message_len);
-	state->server_hello_len = message_len;
-	return;
-}
 
 void set_state_server_hello(handler_state_t* state, char* buf, unsigned int message_len) {
 	state->server_hello = (char*)kmalloc(message_len, GFP_KERNEL); 

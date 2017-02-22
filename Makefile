@@ -120,7 +120,7 @@ $(CERT_PIN_PLUGIN_SO) : $(CERT_PIN_PLUGIN_OBJ)
 	$(CC) -shared -lsqlite3 $^ -o $@
 
 $(CIPHER_SUITE_PLUGIN_SO) : $(CIPHER_SUITE_PLUGIN_OBJ)
-	$(CC) -shared $^ -o $@
+	$(CC) -shared $(LIBS) $^ -o $@
 
 $(WHITELIST_PINNING_HYBRID_PLUGIN_SO) : $(WHITELIST_PINNING_HYBRID_PLUGIN_OBJ)
 	$(CC) -shared $^ -o $@
@@ -157,6 +157,7 @@ install: all
 	cp trusthub_linux.ko $(PREFIX)/
 	cp Module.symvers $(PREFIX)/
 	cp modules.order $(PREFIX)/
+	cp -r policy-engine/plugin-config $(PREFIX)/policy-engine/
 	cp -r certs $(PREFIX)/
 	cp sslsplit/sslsplit $(PREFIX)/sslsplit/
 	cp policy-engine/trusthub.cfg $(PREFIX)/policy-engine/trusthub.cfg

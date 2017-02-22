@@ -111,8 +111,8 @@ int recv_query(struct nl_msg *msg, void *arg) {
 			stptr = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
 			client_hello_len = nla_len(attrs[TRUSTHUB_A_CLIENT_HELLO]);
 			client_hello = nla_data(attrs[TRUSTHUB_A_CLIENT_HELLO]);
-			server_hello_len = nla_len(attrs[TRUSTHUB_A_CLIENT_HELLO]);
-			server_hello = nla_data(attrs[TRUSTHUB_A_CLIENT_HELLO]);
+			server_hello_len = nla_len(attrs[TRUSTHUB_A_SERVER_HELLO]);
+			server_hello = nla_data(attrs[TRUSTHUB_A_SERVER_HELLO]);
 			hostname = sni_get_hostname(client_hello, client_hello_len);
 			ip_str = nla_get_string(attrs[TRUSTHUB_A_IP]);
 			/* Query registered schemes */

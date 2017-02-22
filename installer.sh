@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Init
 PM="/bin/yum" # Package Manager

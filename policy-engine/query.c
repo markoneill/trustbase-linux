@@ -122,6 +122,8 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->data->server_hello_len = server_hello_len;
 	memcpy(query->data->hostname, hostname_resolved[0], hostname_len);
 	memcpy(query->data->raw_chain, cert_data, len);
+	memcpy(query->data->client_hello, client_hello, client_hello_len);
+	memcpy(query->data->server_hello, server_hello, server_hello_len);
 	query->state_pointer = stptr;
 	query->data->id = id;
 	
