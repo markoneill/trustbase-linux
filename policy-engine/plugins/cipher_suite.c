@@ -9,11 +9,17 @@
 #define CONFIG_FILE "/../plugin-config/cipher_suite.cfg"
 #define PLUGIN_INIT_ERROR -1
 
-#define SERVER_HELLO_CIPHER_OFF 0x47
-#define SERVER_HELLO_CIPHER_SIZE 2
-#define SERVER_HELLO_EXT_OFF 0x4c
-#define SERVER_HELLO_EXT_SIZE 2
-#define SERVER_HELLO_EXT_LEN_SIZE 2
+#define CLIENT_HELLO_CIPHER_LEN_OFF	0x27
+#define CLIENT_HELLO_CIPHER_LEN_SIZE	2
+#define CLIENT_HELLO_COMPRESS_LEN_SIZE	1
+#define CLIENT_HELLO_EXT_LEN_SIZE	2
+
+#define SERVER_HELLO_CIPHER_OFF		0x47
+#define SERVER_HELLO_CIPHER_SIZE	2
+
+#define EXT_OFF				0x4c
+#define EXT_SIZE			2
+#define EXT_LEN_SIZE			2
 
 int initialize(init_data_t* idata);
 int query(query_data_t* data);
@@ -25,6 +31,8 @@ static void hexdump(char* data, size_t len);
 static void loadconfig(const char* config_path);
 static unsigned int get_int_from_net(char* buf, int len);
 static int verify_server_hello(char* server_hello, size_t server_hello_len);
+static int verify_client_hello(char* client_hello, size_t client_hello_len);
+static int processExtList(char* inbuf, int offset, int buf_len, int* req_exts, size_t req_exts_len, int* rej_exts, size_t rej_exts_len);
 
 // global settings structure
 typedef struct cipher_settings_t {
@@ -35,6 +43,10 @@ typedef struct cipher_settings_t {
 	size_t requiredServerExtListSize;
 	int* rejectedServerExtList;
 	size_t rejectedServerExtListSize;
+	int* requiredClientExtList;
+	size_t requiredClientExtListSize;
+	int* rejectedClientExtList;
+	size_t rejectedClientExtListSize;
 } cipher_settings_t;
 
 cipher_settings_t cipher_settings;
@@ -76,12 +88,22 @@ int query(query_data_t* data) {
 	}
 	rval = PLUGIN_RESPONSE_VALID;
 	
+	if (data->client_hello == NULL) {
+		plog(LOG_DEBUG, "Bad data");
+		return PLUGIN_RESPONSE_ERROR;
+	}
+	hexdump(data->client_hello, data->client_hello_len);
 	if (data->server_hello == NULL) {
 		plog(LOG_DEBUG, "Bad data");
 		return PLUGIN_RESPONSE_ERROR;
 	}
 	//hexdump(data->server_hello, data->server_hello_len);
 	
+	rval = verify_client_hello(data->client_hello, data->client_hello_len);
+	if (rval != PLUGIN_RESPONSE_VALID) {
+		return rval;
+	}
+
 	rval = verify_server_hello(data->server_hello, data->server_hello_len);
 	
 	return rval;
@@ -92,17 +114,42 @@ int finalize() {
 	free(cipher_settings.cipherList);
 	free(cipher_settings.requiredServerExtList);
 	free(cipher_settings.rejectedServerExtList);
+	free(cipher_settings.requiredClientExtList);
+	free(cipher_settings.rejectedClientExtList);
 	return 0;
+}
+
+int verify_client_hello(char* client_hello, size_t client_hello_len) {
+	unsigned int offset;
+	unsigned int size;
+	
+	offset = CLIENT_HELLO_CIPHER_LEN_OFF;
+	if (offset+CLIENT_HELLO_CIPHER_LEN_SIZE > client_hello_len) {
+		plog(LOG_ERROR, "Cipher Suite Plugin: Got a truncated Client Hello.");
+		return PLUGIN_RESPONSE_ERROR;
+	}
+	size = get_int_from_net(&(client_hello[offset]), CLIENT_HELLO_CIPHER_LEN_SIZE);
+	offset += CLIENT_HELLO_CIPHER_LEN_SIZE;
+	offset += size;
+	
+	if (offset+CLIENT_HELLO_COMPRESS_LEN_SIZE > client_hello_len) {
+		plog(LOG_ERROR, "Cipher Suite Plugin: Recieved a truncated Client Hello");
+		return PLUGIN_RESPONSE_ERROR;
+	}
+	size = get_int_from_net(&(client_hello[offset]), CLIENT_HELLO_COMPRESS_LEN_SIZE);
+	offset += CLIENT_HELLO_COMPRESS_LEN_SIZE;
+	offset += size;	
+	
+	offset += CLIENT_HELLO_EXT_LEN_SIZE;
+	
+	return processExtList(client_hello, offset, client_hello_len, cipher_settings.requiredClientExtList, cipher_settings.requiredClientExtListSize, cipher_settings.rejectedClientExtList, cipher_settings.rejectedClientExtListSize);
 }
 
 int verify_server_hello(char* server_hello, size_t server_hello_len) {
 	unsigned int offset;
 	unsigned int cipher;
-	unsigned int ext;
-	unsigned int ext_len;
 	int i;
 	char found;
-	int num_req_found;
 	
 	// extract the choosen cipher
 	offset = SERVER_HELLO_CIPHER_OFF;
@@ -133,38 +180,47 @@ int verify_server_hello(char* server_hello, size_t server_hello_len) {
 		return PLUGIN_RESPONSE_INVALID;
 	}
 	
-	
+	offset = EXT_OFF;
+	return processExtList(server_hello, offset, server_hello_len, cipher_settings.requiredServerExtList, cipher_settings.requiredServerExtListSize, cipher_settings.rejectedServerExtList, cipher_settings.rejectedServerExtListSize);
+}
+
+int processExtList(char* inbuf, int offset, int buf_len, int* req_exts, size_t req_exts_len, int* rej_exts, size_t rej_exts_len) {
+	int num_req_found;
+	int i;
+	unsigned int ext;
+	unsigned int ext_len;
+
 	num_req_found = 0;
-	offset = SERVER_HELLO_EXT_OFF;
-	while (offset+SERVER_HELLO_EXT_SIZE+SERVER_HELLO_EXT_LEN_SIZE <= server_hello_len) {
+
+	while (offset+EXT_SIZE+EXT_LEN_SIZE <= buf_len) {
 		// get the ext id
-		ext = get_int_from_net(&(server_hello[offset]), SERVER_HELLO_EXT_SIZE);
-		for (i=0; i<cipher_settings.requiredServerExtListSize; i++) {
-			if (ext == cipher_settings.requiredServerExtList[i]) {
+		ext = get_int_from_net(&(inbuf[offset]), EXT_SIZE);
+		//plog(LOG_DEBUG, "We see an ext of %04x", ext);
+		for (i=0; i<req_exts_len; i++) {
+			if (ext == req_exts[i]) {
 				num_req_found++;
-				// TODO doesn't account for duplicate extentions, to get by this
+				// TODO doesn't account for duplicate extentions
 				break;
 			}
 		}
-		for (i=0; i<cipher_settings.rejectedServerExtListSize; i++) {
-			if (ext == cipher_settings.rejectedServerExtList[i]) {
-				plog(LOG_INFO, "Cipher Suite Plugin: Found a rejected server extention");
-				return PLUGIN_RESPONSE_INVALID;
+		for (i=0; i<rej_exts_len; i++) {
+			if (ext == rej_exts[i]) {
+				plog(LOG_INFO, "Cipher Suite Plugin: Found a rejected extention");
+				//return PLUGIN_RESPONSE_INVALID;
 			}
 		}
 		
 		// check the ext
 		// get the size
-		offset += SERVER_HELLO_EXT_SIZE;
-		ext_len = get_int_from_net(&(server_hello[offset]), SERVER_HELLO_EXT_LEN_SIZE);
-		//plog(LOG_DEBUG, "We see an ext_len of %x", ext_len);
+		offset += EXT_SIZE;
+		ext_len = get_int_from_net(&(inbuf[offset]), EXT_LEN_SIZE);
 
 		// offset to the next one
-		offset += SERVER_HELLO_EXT_LEN_SIZE;
+		offset += EXT_LEN_SIZE;
 		offset += ext_len;
 	}
-	if (num_req_found < cipher_settings.requiredServerExtListSize) {
-		plog(LOG_INFO, "Cipher Suite Plugin: Did not find a required server extention");
+	if (num_req_found < req_exts_len) {
+		plog(LOG_INFO, "Cipher Suite Plugin: Did not find a required extention");
 		return PLUGIN_RESPONSE_INVALID;
 	}
 	return PLUGIN_RESPONSE_VALID;
@@ -273,7 +329,48 @@ void loadconfig(const char* config_path) {
 		cipher_settings.rejectedServerExtList[i] = config_setting_get_int_elem(setting, i);
 	}
 	
-	return;
+
+
+
+	setting = config_lookup(&cfg, "required_client_extentions");
+	if (setting == NULL) {
+		plog(LOG_ERROR, "Broken config file for cipher suite plugin, no 'required_client_extentions'");
+		cipher_settings.isApproved = PLUGIN_INIT_ERROR;
+		config_destroy(&cfg);
+		return;
+	}
+	count = config_setting_length(setting);
+	cipher_settings.requiredClientExtListSize = count;
+	cipher_settings.requiredClientExtList = (int*)malloc(sizeof(int) * count);
+	if (cipher_settings.requiredClientExtList == NULL && count > 0) {
+		plog(LOG_ERROR, "Could not allocate space for settings");
+		cipher_settings.isApproved = PLUGIN_INIT_ERROR;
+		config_destroy(&cfg);
+		return;
+	}
+	for (i=0; i<count; i++) {
+		cipher_settings.requiredClientExtList[i] = config_setting_get_int_elem(setting, i);
+	}
+
+	setting = config_lookup(&cfg, "rejected_client_extentions");
+	if (setting == NULL) {
+		plog(LOG_ERROR, "Broken config file for cipher suite plugin, no 'rejected_client_extentions'");
+		cipher_settings.isApproved = PLUGIN_INIT_ERROR;
+		config_destroy(&cfg);
+		return;
+	}
+	count = config_setting_length(setting);
+	cipher_settings.rejectedClientExtListSize = count;
+	cipher_settings.rejectedClientExtList = (int*)malloc(sizeof(int) * count);
+	if (cipher_settings.rejectedClientExtList == NULL && count > 0) {
+		plog(LOG_ERROR, "Could not allocate space for settings");
+		cipher_settings.isApproved = PLUGIN_INIT_ERROR;
+		config_destroy(&cfg);
+		return;
+	}
+	for (i=0; i<count; i++) {
+		cipher_settings.rejectedClientExtList[i] = config_setting_get_int_elem(setting, i);
+	}
 }
 
 void hexdump(char* data, size_t len) {
