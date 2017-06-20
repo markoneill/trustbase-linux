@@ -4,54 +4,54 @@
 #include <string.h>
 #include "query_queue.h"
 #include "addons.h"
-#include "trusthub_plugin.h"
-#include "th_logging.h"
+#include "trustbase_plugin.h"
+#include "tb_logging.h"
 #include "plugins.h"
 
 void print_plugins(plugin_t* plugins, size_t plugin_count) {
 	int i;
-	thlog(LOG_INFO, "%zu loaded plugins:", plugin_count);
+	tblog(LOG_INFO, "%zu loaded plugins:", plugin_count);
 	for (i = 0; i < plugin_count; i++) {
-		thlog(LOG_INFO, "\t[%02d] Plugin Name: %s", i, plugins[i].name);
-		thlog(LOG_INFO, "\t\tDescription: %s", plugins[i].desc);
+		tblog(LOG_INFO, "\t[%02d] Plugin Name: %s", i, plugins[i].name);
+		tblog(LOG_INFO, "\t\tDescription: %s", plugins[i].desc);
 		if (plugins[i].aggregation == AGGREGATION_NONE) {
-			thlog(LOG_INFO, "\t\tAggregation Group: None");
+			tblog(LOG_INFO, "\t\tAggregation Group: None");
 		}
 		else if (plugins[i].aggregation == AGGREGATION_CONGRESS) {
-			thlog(LOG_INFO, "\t\tAggregation Group: Congress");
+			tblog(LOG_INFO, "\t\tAggregation Group: Congress");
 		}
 		else if (plugins[i].aggregation == AGGREGATION_NECESSARY) {
-			thlog(LOG_INFO, "\t\tAggregation Group: Necessary");
+			tblog(LOG_INFO, "\t\tAggregation Group: Necessary");
 		}
 		else {
-			thlog(LOG_INFO, "\t\tAggregation Group: Unknown");
+			tblog(LOG_INFO, "\t\tAggregation Group: Unknown");
 		}
-		thlog(LOG_INFO, "\t\tVersion: %s", plugins[i].ver);
-		thlog(LOG_INFO, "\t\tPath: %s", plugins[i].path);
+		tblog(LOG_INFO, "\t\tVersion: %s", plugins[i].ver);
+		tblog(LOG_INFO, "\t\tPath: %s", plugins[i].path);
 		if (plugins[i].type == PLUGIN_TYPE_ASYNCHRONOUS) {
-			thlog(LOG_INFO, "\t\tType: Asynchronous");
+			tblog(LOG_INFO, "\t\tType: Asynchronous");
 		}
 		else if (plugins[i].type == PLUGIN_TYPE_SYNCHRONOUS) {
-			thlog(LOG_INFO,	"\t\tType: Synchronous");
+			tblog(LOG_INFO,	"\t\tType: Synchronous");
 		}
 		else {
-			thlog(LOG_INFO, "\t\tType: Unknown");
+			tblog(LOG_INFO, "\t\tType: Unknown");
 		}
 
 		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_RAW) {
-			thlog(LOG_INFO, "\t\tHandler Type: Raw Data");
-			thlog(LOG_INFO, "\t\tFunction: %p", plugins[i].generic_query_func);
+			tblog(LOG_INFO, "\t\tHandler Type: Raw Data");
+			tblog(LOG_INFO, "\t\tFunction: %p", plugins[i].generic_query_func);
 		}
 		else if(plugins[i].handler_type == PLUGIN_HANDLER_TYPE_OPENSSL) {
-			thlog(LOG_INFO, "\t\tHandler Type: OpenSSL Data");
-			thlog(LOG_INFO, "\t\tFunction: %p", plugins[i].generic_query_func);
+			tblog(LOG_INFO, "\t\tHandler Type: OpenSSL Data");
+			tblog(LOG_INFO, "\t\tFunction: %p", plugins[i].generic_query_func);
 		}
 		else if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_ADDON) {
-			thlog(LOG_INFO, "\t\tHandler Type: Addon-handled (%s)", plugins[i].handler_str);
-			thlog(LOG_INFO, "\t\tAddon-supplied query function: %p", plugins[i].generic_query_func);
+			tblog(LOG_INFO, "\t\tHandler Type: Addon-handled (%s)", plugins[i].handler_str);
+			tblog(LOG_INFO, "\t\tAddon-supplied query function: %p", plugins[i].generic_query_func);
 		}
 		else {
-			thlog(LOG_INFO, "\t\tType: Unknown");
+			tblog(LOG_INFO, "\t\tType: Unknown");
 		}
 	}
 	return;
@@ -89,7 +89,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 							plugins[i].query_by_addon = addons[j].addon_query_plugin;
 						} else {
 							plugins[i].query_by_addon = NULL;
-							thlog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
+							tblog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
 						}
 					}
 					else {
@@ -97,7 +97,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 							plugins[i].query_by_addon = addons[j].addon_async_query_plugin;
 						} else {
 							plugins[i].query_by_addon = NULL;
-							thlog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
+							tblog(LOG_WARNING, "Could not load plugin %s", plugins[i].name);
 						}
 					}
 					plugins[i].finalize_by_addon = addons[j].addon_finalize_plugin;
@@ -106,7 +106,7 @@ void init_plugins(addon_t* addons, size_t addon_count, plugin_t* plugins, size_t
 			}
 		}
 		if (plugins[i].handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
-			thlog(LOG_WARNING, "Unhandled plugin type for plugin %02d", i);
+			tblog(LOG_WARNING, "Unhandled plugin type for plugin %02d", i);
 		}
 	}
 	return;
@@ -116,7 +116,7 @@ void cleanup_plugin(void* arg) {
 	plugin_t* plugin;
 	plugin = arg;
 	
-	thlog(LOG_DEBUG, "Cleaning up plugin %s", plugin->name);
+	tblog(LOG_DEBUG, "Cleaning up plugin %s", plugin->name);
 	
 	if (plugin->handler_type == PLUGIN_HANDLER_TYPE_UNKNOWN) {
 		return;
@@ -132,7 +132,7 @@ void cleanup_plugin(void* arg) {
 		// When we finalize the addons, it closes the handle
 		dlclose(plugin->so_handle);
 	}
-	thlog(LOG_DEBUG, "Finalized plugin %s", plugin->name);
+	tblog(LOG_DEBUG, "Finalized plugin %s", plugin->name);
 	free(plugin->name);
 	free(plugin->desc);
 	free(plugin->ver);

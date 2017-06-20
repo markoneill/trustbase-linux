@@ -8,7 +8,7 @@
 #include <sys/stat.h> /* S_IRWXU constant */
 #include <semaphore.h>
 #include "query.h"
-#include "th_logging.h"
+#include "tb_logging.h"
 #include "query_queue.h"
 
 static queue_node_t* make_queue_node(query_t* query);
@@ -22,16 +22,16 @@ queue_t* make_queue(const char* name) {
 	sem_t* sem;
 	sem = sem_open(name, O_CREAT, S_IRWXU, 0);
 	if (sem == SEM_FAILED) {
-		thlog(LOG_ERROR, "Failed to create queue semaphore %s: %s", name, strerror(errno));
+		tblog(LOG_ERROR, "Failed to create queue semaphore %s: %s", name, strerror(errno));
 		return NULL;
 	}
 	queue = (queue_t*)malloc(sizeof(queue_t));
 	if (queue == NULL) {
-		thlog(LOG_ERROR, "Failed to allocate space for queue %s", name);
+		tblog(LOG_ERROR, "Failed to allocate space for queue %s", name);
 		return NULL;
 	}
 	if (pthread_mutex_init(&queue->mutex, NULL) != 0) {
-		thlog(LOG_ERROR, "Failed to create mutex for queue %s", name);
+		tblog(LOG_ERROR, "Failed to create mutex for queue %s", name);
 		free(queue); /* free allocated memory since this happened after malloc */
 		return NULL;
 	}
@@ -60,14 +60,14 @@ void free_queue(queue_t* queue, const char* name) {
 		current = next;
 	}
 	if (sem_close(queue->fill_sem) == -1) {
-		thlog(LOG_ERROR, "Failed to close semaphore: %s", strerror(errno));
+		tblog(LOG_ERROR, "Failed to close semaphore: %s", strerror(errno));
 	}
 	if (sem_unlink(name) == -1) {
 		// This removes the semaphore from the system, perhaps it is unneeded
-		thlog(LOG_ERROR, "Failed to unlink semaphore %s: %s", name, strerror(errno));	
+		tblog(LOG_ERROR, "Failed to unlink semaphore %s: %s", name, strerror(errno));	
 	}
 	if (pthread_mutex_destroy(&queue->mutex) != 0) {
-		thlog(LOG_ERROR, "Failed to destroy queue mutex");
+		tblog(LOG_ERROR, "Failed to destroy queue mutex");
 	}
 	free(queue);
 	

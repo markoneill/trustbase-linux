@@ -7,8 +7,8 @@
 #include <openssl/x509v3.h>
 #include "../handshake-handler/communications.h"
 
-int trusthub_connect(void);
-int trusthub_disconnect(void);
+int trustbase_connect(void);
+int trustbase_disconnect(void);
 int send_query_openssl(uint64_t id, char* host, int port, STACK_OF(X509)* chain);
 int send_query(uint64_t id, char* host, int port, unsigned char* chain, int length);
 int recv_response(void);

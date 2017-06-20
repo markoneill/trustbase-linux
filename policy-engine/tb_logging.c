@@ -6,7 +6,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <openssl/x509.h>
-#include "th_logging.h"
+#include "tb_logging.h"
 
 /* Useful trick for windows */
 #ifdef WIN32
@@ -16,9 +16,9 @@
 #endif
 
 FILE *log_file = NULL;
-thlog_level_t minimum_level = LOG_WARNING;
+tblog_level_t minimum_level = LOG_WARNING;
 
-int thlog_init(const char *log_file_name, thlog_level_t min_level) {
+int tblog_init(const char *log_file_name, tblog_level_t min_level) {
 	// Write log
 	log_file = fopen(log_file_name, "a");
 	if (log_file == NULL) {
@@ -29,7 +29,7 @@ int thlog_init(const char *log_file_name, thlog_level_t min_level) {
 	return 0;
 }
 
-int thlog(thlog_level_t level, const char* format, ... ) {
+int tblog(tblog_level_t level, const char* format, ... ) {
 	char* extended_format;
 	va_list args;
 	time_t current_time;
@@ -81,7 +81,7 @@ int thlog(thlog_level_t level, const char* format, ... ) {
 	return 0;
 } 
 
-int thlog_bytes(char* seq, int num) {
+int tblog_bytes(char* seq, int num) {
 	int i;
 	char* output_str;
 	
@@ -90,23 +90,23 @@ int thlog_bytes(char* seq, int num) {
 	for (i=0; i<num; i++) {
 		sprintf(output_str, "%s%02x%s", output_str, seq[i] & 0xff, ((i+1)%16==0 || i==num-1)?"\n":((i+1)%2==0)?" ":"");
 	}
-	thlog(LOG_NONE, output_str);
+	tblog(LOG_NONE, output_str);
 	free(output_str);
 	return 0;
 }
 
-int thlog_cert(X509* cert) {
+int tblog_cert(X509* cert) {
 	static const int MAX_LENGTH = 1024;
 	char subj[MAX_LENGTH+1];
 	char issuer[MAX_LENGTH+1];
 	X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
 	X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-	thlog(LOG_DEBUG, "subject: %s", subj);
-	thlog(LOG_DEBUG, "issuer: %s", issuer);
+	tblog(LOG_DEBUG, "subject: %s", subj);
+	tblog(LOG_DEBUG, "issuer: %s", issuer);
 	return 0;
 }
 
-void thlog_close() {	
+void tblog_close() {	
 	if (log_file == NULL) {
 		return;
 	}
@@ -115,16 +115,16 @@ void thlog_close() {
 	fclose(log_file);
 }
 
-void* read_kthlog(void* arg) {
+void* read_ktblog(void* arg) {
 	while (1) {
 		sleep(1);
 		FILE * fp;
 		char * line = NULL;
 		size_t len = 0;
 		ssize_t read;
-		fp = fopen("/proc/trusthub_klog", "r");
+		fp = fopen("/proc/trustbase_klog", "r");
 		if (fp == NULL) {
-			thlog(LOG_ERROR, "Failed to open kernel log");
+			tblog(LOG_ERROR, "Failed to open kernel log");
 			return NULL;
 		}
 	
@@ -154,7 +154,7 @@ void* read_kthlog(void* arg) {
 			case LOG_NONE:
 				break;
 			}
-			thlog(LOG_NONE, line);
+			tblog(LOG_NONE, line);
 		}
 		
 		fclose(fp);

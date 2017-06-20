@@ -6,7 +6,7 @@
 #include "query_queue.h"
 #include "query.h"
 #include "addons.h"
-#include "trusthub_plugin.h"
+#include "trustbase_plugin.h"
 
 enum {
 	PLUGIN_HANDLER_TYPE_UNKNOWN,

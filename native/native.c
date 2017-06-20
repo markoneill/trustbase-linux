@@ -41,10 +41,10 @@ int main(int argc, char* argv[]) {
 
 	// Test a single query using given certificate
 	query_id = 1;
-	trusthub_connect();
+	trustbase_connect();
 	send_query_openssl(query_id, "google.com", 443, chain);
 	response = recv_response();
-	trusthub_disconnect();
+	trustbase_disconnect();
 
 	// Response checking
 	if (response < 0) {

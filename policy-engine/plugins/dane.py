@@ -1,7 +1,7 @@
 #!/usr/bin/python
 import dns.resolver
 import hashlib
-from trusthub_python import *
+from trustbase_python import *
 
 '''
 +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -15,7 +15,7 @@ https://tools.ietf.org/html/rfc6698
 '''
 
 
-class danePlugin(TrustHubPlugin):
+class danePlugin(TrustbasePlugin):
     def _init_(self):
         pass
     

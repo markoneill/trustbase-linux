@@ -3,10 +3,10 @@
 #include <string.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
-#include "trusthub_plugin.h"
+#include "trustbase_plugin.h"
 #include "reverse_dns.h"
 #include "query.h"
-#include "th_logging.h"
+#include "tb_logging.h"
 
 #define MAX_LENGTH	1024
 #define CERT_LENGTH_FIELD_SIZE	3
@@ -22,7 +22,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query_t* query;
 	query = (query_t*)malloc(sizeof(query_t));
 	if (query == NULL) {
-		thlog(LOG_WARNING, "Could not create query");
+		tblog(LOG_WARNING, "Could not create query");
 		return NULL;
 	}
 	query->num_plugins = num_plugins;
@@ -30,7 +30,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 
 	query->responses = (int*)malloc(sizeof(int) * num_plugins);
 	if (query->responses == NULL) {
-		thlog(LOG_WARNING, "Could not create response array for query");
+		tblog(LOG_WARNING, "Could not create response array for query");
 		free(query);
 		return NULL;
 	}
@@ -41,13 +41,13 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->num_responses = 0;
 	
 	if (pthread_mutex_init(&query->mutex, NULL) != 0) {
-		thlog(LOG_WARNING, "Failed to create mutex for query");
+		tblog(LOG_WARNING, "Failed to create mutex for query");
 		free(query->responses);
 		free(query);
 		return NULL;
 	}
 	if (pthread_cond_init(&query->threshold_met, NULL) != 0) {
-		thlog(LOG_WARNING, "Failed to create condvar for query");
+		tblog(LOG_WARNING, "Failed to create condvar for query");
 		pthread_mutex_destroy(&query->mutex);
 		free(query->responses);
 		free(query);
@@ -56,7 +56,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	
 	query->data = (query_data_t*)malloc(sizeof(query_data_t));
 	if (query->data == NULL) {
-		thlog(LOG_WARNING, "Could not allocate query_data_t");
+		tblog(LOG_WARNING, "Could not allocate query_data_t");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -72,7 +72,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	hostname_len = strlen(hostname_resolved[0])+1;
 	query->data->hostname = (char*)malloc(sizeof(char) * hostname_len);
 	if (query->data->hostname == NULL) {
-		thlog(LOG_ERROR, "Failed to allocate hostname for query");
+		tblog(LOG_ERROR, "Failed to allocate hostname for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -84,7 +84,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 
 	query->data->raw_chain = (unsigned char*)malloc(sizeof(unsigned char) * len);
 	if (query->data->raw_chain == NULL) {
-		thlog(LOG_ERROR, "Failed to allocate cert chain for query");
+		tblog(LOG_ERROR, "Failed to allocate cert chain for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -96,7 +96,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->data->raw_chain_len = len;
 	query->data->client_hello = (char*)malloc(sizeof(unsigned char) * client_hello_len);
 	if (query->data->client_hello == NULL) {
-		thlog(LOG_ERROR, "Failed to allocate client_hello for query");
+		tblog(LOG_ERROR, "Failed to allocate client_hello for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -109,7 +109,7 @@ query_t* create_query(int num_plugins, int id, uint32_t spid, uint64_t stptr, ch
 	query->data->client_hello_len = client_hello_len;
 	query->data->server_hello = (char*)malloc(sizeof(unsigned char) * server_hello_len);
 	if (query->data->server_hello == NULL) {
-		thlog(LOG_ERROR, "Failed to allocate server_hello for query");
+		tblog(LOG_ERROR, "Failed to allocate server_hello for query");
 		pthread_mutex_destroy(&query->mutex);
 		pthread_cond_destroy(&query->threshold_met);
 		free(query->responses);
@@ -138,10 +138,10 @@ void free_query(query_t* query) {
 		free(query->responses);
 	}
 	if (pthread_mutex_destroy(&query->mutex) != 0) {
-		thlog(LOG_ERROR, "Failed to destroy query mutex");
+		tblog(LOG_ERROR, "Failed to destroy query mutex");
 	}
 	if (pthread_cond_destroy(&query->threshold_met) != 0) {
-		thlog(LOG_ERROR, "Failed to destroy query condvar");
+		tblog(LOG_ERROR, "Failed to destroy query condvar");
 	}
 	sk_X509_pop_free(query->data->chain, X509_free);
 	free(query->data->raw_chain);
@@ -169,9 +169,9 @@ STACK_OF(X509)* parse_chain(unsigned char* data, size_t len) {
 		cert_ptr = current_pos;
 		cert = d2i_X509(NULL, &cert_ptr, cert_len);
 		if (!cert) {
-			thlog(LOG_ERROR,"unable to parse certificate");
+			tblog(LOG_ERROR,"unable to parse certificate");
 		}
-		//thlog_cert(cert);
+		//tblog_cert(cert);
 		
 		sk_X509_push(chain, cert);
 		current_pos += cert_len;

@@ -4,7 +4,7 @@
 #include <linux/seq_file.h>
 #include <linux/string.h>
 #include <linux/slab.h>
-#include "kth_logging.h"
+#include "ktb_logging.h"
 
 // Magic Numbers
 #define PROCESS_INFO_LENGTH	64
@@ -13,7 +13,7 @@
 /* FIFO linked list, to store log entries */
 typedef struct log_msg_t {
 	char* message;
-	thlog_level_t level;
+	tblog_level_t level;
 	struct log_msg_t* next;
 	char sent;
 }log_msg_t;
@@ -21,55 +21,55 @@ typedef struct log_msg_t {
 static log_msg_t* log_head;
 static log_msg_t* log_tail;
 
-static int log_new(thlog_level_t level, char* msg);
+static int log_new(tblog_level_t level, char* msg);
 static void log_remove(log_msg_t* entry);
 
 /* Proc File with Sequence File for communication */
-static void * kth_seq_start(struct seq_file *m, loff_t *pos);
-static int kth_seq_show(struct seq_file *m, void *v);
-static void * kth_seq_next(struct seq_file *m, void *v, loff_t *pos);
-static void kth_seq_stop(struct seq_file *m, void *v);
+static void * ktb_seq_start(struct seq_file *m, loff_t *pos);
+static int ktb_seq_show(struct seq_file *m, void *v);
+static void * ktb_seq_next(struct seq_file *m, void *v, loff_t *pos);
+static void ktb_seq_stop(struct seq_file *m, void *v);
 
 static void get_call_info(char* info);
 
-static struct seq_operations kth_seq_ops = {
-	.start = kth_seq_start,
-	.show = kth_seq_show,
-	.next = kth_seq_next,
-	.stop = kth_seq_stop,
+static struct seq_operations ktb_seq_ops = {
+	.start = ktb_seq_start,
+	.show = ktb_seq_show,
+	.next = ktb_seq_next,
+	.stop = ktb_seq_stop,
 }; 
 
-static int kthlog_open(struct inode *inode, struct file *file);
+static int ktblog_open(struct inode *inode, struct file *file);
 
-static const struct file_operations kth_file_ops = {
+static const struct file_operations ktb_file_ops = {
 	.owner = THIS_MODULE,
-	.open = kthlog_open,
+	.open = ktblog_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
 	.release = seq_release,
 };
 
 // Tells the proc file how to handle being opened
-int kthlog_open(struct inode *inode, struct file *file) {
-	return seq_open(file, &kth_seq_ops);
+int ktblog_open(struct inode *inode, struct file *file) {
+	return seq_open(file, &ktb_seq_ops);
 }
 
-int kthlog_init() {
+int ktblog_init() {
 	struct proc_dir_entry *entry;
 
 	log_head = NULL;
 	log_tail = NULL;
 
 
-	entry = proc_create(KTHLOG_FILENAME, 00444, NULL, &kth_file_ops);
+	entry = proc_create(KTBLOG_FILENAME, 00444, NULL, &ktb_file_ops);
 	return 0;
 }
 
-void kthlog_exit() {
-	remove_proc_entry(KTHLOG_FILENAME, NULL);
+void ktblog_exit() {
+	remove_proc_entry(KTBLOG_FILENAME, NULL);
 }
 
-void kthlog(thlog_level_t level, const char* fmt, ...) {
+void ktblog(tblog_level_t level, const char* fmt, ...) {
 	va_list args;
 	char* log_message;
 
@@ -92,7 +92,7 @@ void kthlog(thlog_level_t level, const char* fmt, ...) {
 	return;
 }
 
-void kthlog_buffer(void* buffer, int length) {
+void ktblog_buffer(void* buffer, int length) {
 	unsigned char* msg;
 	unsigned char* end;
 	int i;
@@ -103,7 +103,7 @@ void kthlog_buffer(void* buffer, int length) {
 	}
 	msg = (unsigned char*)kmalloc((length * 3) + 1, GFP_KERNEL | __GFP_NOFAIL);
 	if (msg == NULL) {
-		kthlog(LOG_DEBUG, "Could not allocate memory to print the buffer");
+		ktblog(LOG_DEBUG, "Could not allocate memory to print the buffer");
 		return;
 	}
 	msg[0] = '\0';
@@ -117,7 +117,7 @@ void kthlog_buffer(void* buffer, int length) {
 	log_new(LOG_HEX, msg);
 }
 
-int log_new(thlog_level_t level, char* msg) {
+int log_new(tblog_level_t level, char* msg) {
 	log_msg_t* entry;
 	// Allocate new entry
 	entry = (log_msg_t*)kmalloc(sizeof(*entry), GFP_KERNEL);
@@ -153,10 +153,10 @@ void log_remove(log_msg_t* entry) {
 	kfree(entry);
 }
 
-void * kth_seq_start(struct seq_file *m, loff_t *pos) {
+void * ktb_seq_start(struct seq_file *m, loff_t *pos) {
 	return log_head;
 }
-int kth_seq_show(struct seq_file *m, void *v) {
+int ktb_seq_show(struct seq_file *m, void *v) {
 	log_msg_t* entry;
 	char* level;
 	if (v == NULL) {
@@ -188,14 +188,14 @@ int kth_seq_show(struct seq_file *m, void *v) {
 	entry->sent = 1;
 	return 0;
 }
-void * kth_seq_next(struct seq_file *m, void *v, loff_t *pos) {
+void * ktb_seq_next(struct seq_file *m, void *v, loff_t *pos) {
 	log_msg_t* entry;
 	// Inc the offset, just because
 	(*pos)++;
 	entry = (log_msg_t*)v;
 	return entry->next;
 }
-void kth_seq_stop(struct seq_file *m, void *v) {
+void ktb_seq_stop(struct seq_file *m, void *v) {
 	while(log_head != NULL && log_head->sent == 1) {
 		log_remove(log_head);
 	}

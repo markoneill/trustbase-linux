@@ -9,7 +9,7 @@
 #include <sys/stat.h> /* S_IRWXU constant */
 #include <semaphore.h>
 #include <openssl/x509.h>
-#include "../trusthub_plugin.h"
+#include "../trustbase_plugin.h"
 
 #define MAX_LENGTH	1024
 
@@ -88,7 +88,7 @@ void* worker(void* arg) {
 	return NULL;
 }
 
-/* TrustHub will not delete the data pointed to by these parameters until 
+/* Trustbase will not delete the data pointed to by these parameters until 
  * all plugins have reported or there is a timeout. In a real plugin you
  * should copy the source data to avoid bad dereferences in the case of a
  * timeout. */

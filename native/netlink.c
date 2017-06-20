@@ -5,12 +5,12 @@
 #include "../handshake-handler/communications.h"
 #include "netlink.h"
 
-static struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
-        [TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
-	[TRUSTHUB_A_HOSTNAME] = { .type = NLA_STRING },
-        [TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
-	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
-        [TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
+static struct nla_policy tb_policy[TRUSTBASE_A_MAX + 1] = {
+        [TRUSTBASE_A_CERTCHAIN] = { .type = NLA_UNSPEC },
+	[TRUSTBASE_A_HOSTNAME] = { .type = NLA_STRING },
+        [TRUSTBASE_A_PORTNUMBER] = { .type = NLA_U16 },
+	[TRUSTBASE_A_RESULT] = { .type = NLA_U32 },
+        [TRUSTBASE_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
 static int family;
@@ -74,27 +74,27 @@ int send_query(uint64_t id, char* host, int port, unsigned char* chain, int leng
 		fprintf(stderr, "failed to allocate message buffer\n");
 		return -1;
 	}
-	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTHUB_C_QUERY_NATIVE, 1);
+	msg_head = genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, 0, TRUSTBASE_C_QUERY_NATIVE, 1);
 	if (msg_head == NULL) {
 		fprintf(stderr, "failed in genlmsg_put\n");
 		return -1;
 	}
-	rc = nla_put_u64(msg, TRUSTHUB_A_STATE_PTR, id);
+	rc = nla_put_u64(msg, TRUSTBASE_A_STATE_PTR, id);
 	if (rc != 0) {
 		fprintf(stderr, "failed to insert request ID\n");
 		return -1;
 	}
-	rc = nla_put(msg, TRUSTHUB_A_CERTCHAIN, length, chain);
+	rc = nla_put(msg, TRUSTBASE_A_CERTCHAIN, length, chain);
 	if (rc != 0) {
 		fprintf(stderr, "failed to insert chain data\n");
 		return -1;
 	}
-	rc = nla_put_u16(msg, TRUSTHUB_A_PORTNUMBER, port);
+	rc = nla_put_u16(msg, TRUSTBASE_A_PORTNUMBER, port);
 	if (rc != 0) {
 		fprintf(stderr, "failed in nla_put_u16 (port number)\n");
 		return -1;
 	}
-	rc = nla_put_string(msg, TRUSTHUB_A_HOSTNAME, host);
+	rc = nla_put_string(msg, TRUSTBASE_A_HOSTNAME, host);
 	if (rc != 0) {
 		fprintf(stderr, "failed in nla_put_string (host)\n");
 		return -1;
@@ -118,7 +118,7 @@ int recv_response(void) {
 int recv_response_cb(struct nl_msg *msg, void *arg) {
 	struct nlmsghdr* nlh;
 	struct genlmsghdr* gnlh;
-	struct nlattr* attrs[TRUSTHUB_A_MAX + 1];
+	struct nlattr* attrs[TRUSTBASE_A_MAX + 1];
 	uint64_t id;
 	uint32_t result;
 	
@@ -126,13 +126,13 @@ int recv_response_cb(struct nl_msg *msg, void *arg) {
 	// Get Message
 	nlh = nlmsg_hdr(msg);
 	gnlh = (struct genlmsghdr*)nlmsg_data(nlh);
-	genlmsg_parse(nlh, 0, attrs, TRUSTHUB_A_MAX, th_policy);
+	genlmsg_parse(nlh, 0, attrs, TRUSTBASE_A_MAX, tb_policy);
 	switch (gnlh->cmd) {
-		case TRUSTHUB_C_RESPONSE:
+		case TRUSTBASE_C_RESPONSE:
 			printf("Received a response from the policy engine\n");
 			/* Get message fields */
-			id = nla_get_u64(attrs[TRUSTHUB_A_STATE_PTR]);
-			result = nla_get_u32(attrs[TRUSTHUB_A_RESULT]);
+			id = nla_get_u64(attrs[TRUSTBASE_A_STATE_PTR]);
+			result = nla_get_u32(attrs[TRUSTBASE_A_RESULT]);
 			last_response = result;
 			break;
 		default:
@@ -142,7 +142,7 @@ int recv_response_cb(struct nl_msg *msg, void *arg) {
 	return 0;
 }
 
-int trusthub_connect(void) {
+int trustbase_connect(void) {
 	int group;
 	netlink_sock = nl_socket_alloc();
 	nl_socket_set_local_port(netlink_sock, 0);
@@ -159,12 +159,12 @@ int trusthub_connect(void) {
 		return -1;
 	}
 	
-	if ((family = genl_ctrl_resolve(netlink_sock, "TRUSTHUB")) < 0) {
-		fprintf(stderr, "Failed to resolve TRUSTHUB family identifier\n");
+	if ((family = genl_ctrl_resolve(netlink_sock, "TRUSTBASE")) < 0) {
+		fprintf(stderr, "Failed to resolve TRUSTBASE family identifier\n");
 		return -1;
 	}
 
-	if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTHUB", "query")) < 0) {
+	if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTBASE", "query")) < 0) {
 		fprintf(stderr, "Failed to resolve group identifier\n");
 		return -1;
 	}
@@ -176,7 +176,7 @@ int trusthub_connect(void) {
 	return 0;
 }
 
-int trusthub_disconnect(void) {
+int trustbase_disconnect(void) {
 	nl_socket_free(netlink_sock);
 	return 0;
 }

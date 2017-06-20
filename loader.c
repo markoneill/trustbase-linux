@@ -7,15 +7,15 @@
 #include "interceptor/interceptor.h" // For registering/unregistering proxy functions
 #include "handshake-handler/communications.h" // For registering/unregistering netlink family
 #include "handshake-handler/handshake_handler.h" // For referencing proxy functions
-#include "util/kth_logging.h" // For logging
+#include "util/ktb_logging.h" // For logging
 
 // Kernel module parameters
-static char* th_path = "/usr/bin";
-module_param(th_path, charp, 0000);
-MODULE_PARM_DESC(th_path, "An absolute path to the TrustHub install location");
+static char* tb_path = "/usr/bin";
+module_param(tb_path, charp, 0000);
+MODULE_PARM_DESC(tb_path, "An absolute path to the Trustbase install location");
 
-// TrustHub interception operations
-proxy_handler_ops_t trusthub_ops;
+// Trustbase interception operations
+proxy_handler_ops_t trustbase_ops;
 // Userspace daemon pointers
 struct task_struct* mitm_proxy_task;
 struct task_struct* policy_engine_task;
@@ -39,54 +39,54 @@ void stop_task(struct task_struct* task, int signal);
 /**
  * the initial function that sets up the MITM proxy and handler
  * @see handshake-handler/handshake_handler.h
- * @post MITM proxy ready, and TCP function pointers point to TrustHub functions
+ * @post MITM proxy ready, and TCP function pointers point to Trustbase functions
  * @return an error code
  */
 int __init loader_start(void) {
 	// Register the proc file
-	if (kthlog_init() != 0) {
+	if (ktblog_init() != 0) {
 		printk(KERN_ALERT "Unable to allocate memory for the proc file");
 	}
 
 	// Set up IPC module-policyengine interaction
-	if (th_register_netlink() != 0) {
-		kthlog(LOG_ERROR, "Unable to register generic netlink family and ops for Trusthub");
+	if (tb_register_netlink() != 0) {
+		ktblog(LOG_ERROR, "Unable to register generic netlink family and ops for Trusthub");
 		return -1;
 	}
 
-	trusthub_ops = (proxy_handler_ops_t) {
-		.state_init = th_state_init,
-		.state_free = th_state_free,
-		.get_state = th_get_state,
-		.give_to_handler_send = th_give_to_handler_send,
-		.give_to_handler_recv = th_give_to_handler_recv,
-		.update_send_state = th_update_state_send,
-		.update_recv_state = th_update_state_recv,
-		.fill_send_buffer = th_fill_send_buffer, // XXX rename this
-		.copy_to_user = th_copy_to_user_buffer, // XXX rename this
-		.num_send_bytes_to_forward = th_num_bytes_to_forward_send,
-		.num_recv_bytes_to_forward = th_num_bytes_to_forward_recv,
-		.inc_send_bytes_forwarded = th_update_bytes_forwarded_send,
-		.inc_recv_bytes_forwarded = th_update_bytes_forwarded_recv,
-		.bytes_to_read_send = th_get_bytes_to_read_send,
-		.bytes_to_read_recv = th_get_bytes_to_read_recv,
-		.get_mitm_sock = th_get_mitm_sock,
+	trustbase_ops = (proxy_handler_ops_t) {
+		.state_init = tb_state_init,
+		.state_free = tb_state_free,
+		.get_state = tb_get_state,
+		.give_to_handler_send = tb_give_to_handler_send,
+		.give_to_handler_recv = tb_give_to_handler_recv,
+		.update_send_state = tb_update_state_send,
+		.update_recv_state = tb_update_state_recv,
+		.fill_send_buffer = tb_fill_send_buffer, // XXX rename this
+		.copy_to_user = tb_copy_to_user_buffer, // XXX rename this
+		.num_send_bytes_to_forward = tb_num_bytes_to_forward_send,
+		.num_recv_bytes_to_forward = tb_num_bytes_to_forward_recv,
+		.inc_send_bytes_forwarded = tb_update_bytes_forwarded_send,
+		.inc_recv_bytes_forwarded = tb_update_bytes_forwarded_recv,
+		.bytes_to_read_send = tb_get_bytes_to_read_send,
+		.bytes_to_read_recv = tb_get_bytes_to_read_recv,
+		.get_mitm_sock = tb_get_mitm_sock,
 	};
 	
-	kthlog(LOG_DEBUG, "Looking for TrustHub binaries in %s", th_path);
-	start_mitm_proxy(th_path);
+	ktblog(LOG_DEBUG, "Looking for Trustbase binaries in %s", tb_path);
+	start_mitm_proxy(tb_path);
 	nat_ops_register();
-	proxy_register(&trusthub_ops);
-	kthlog(LOG_DEBUG, "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
-	start_policy_engine(th_path);
-	kthlog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
+	proxy_register(&trustbase_ops);
+	ktblog(LOG_DEBUG, "SSL/TLS MITM Proxy started (PID: %d)", mitm_proxy_task->pid);
+	start_policy_engine(tb_path);
+	ktblog(LOG_DEBUG, "Policy Engine started (PID: %d)(GID: %d)", policy_engine_task->pid, policy_engine_task->tgid);
 
 	return 0;
 }
 
 /**
- * The end function that calls the functions to unregister and stop TrustHub
- * @post TrustHub unregistered and stopped
+ * The end function that calls the functions to unregister and stop Trustbase
+ * @post Trustbase unregistered and stopped
  */
 void __exit loader_end(void) {
 	int i;
@@ -94,7 +94,7 @@ void __exit loader_end(void) {
 	// the IPC is needed for shutdown message
 	stop_task(policy_engine_task, SIGINT);
 	// Send shutdown message to policy_engine
-	th_send_shutdown();
+	tb_send_shutdown();
 	
 	// Wait until the policy_engine is done until we shut down the netlink socket
 	
@@ -112,12 +112,12 @@ void __exit loader_end(void) {
 
 
 	// Unregister the IPC
-	th_unregister_netlink();
+	tb_unregister_netlink();
 
 	stop_task(mitm_proxy_task, SIGTERM);
 
 	// Remove the Proc File
-	kthlog_exit();
+	ktblog_exit();
 	return;
 }
 
@@ -145,7 +145,7 @@ int start_policy_engine(char* path) {
         };
         char* argv[3];
         snprintf(prog_path, 64, "%s/policy_engine", path);
-	kthlog(LOG_INFO, "Starting policy engine at %s", prog_path);
+	ktblog(LOG_INFO, "Starting policy engine at %s", prog_path);
         argv[0] = prog_path;
         argv[1] = path;
 	argv[2] = NULL;
@@ -164,7 +164,7 @@ int start_mitm_proxy(char* path) {
         };
         char* argv[10];
         snprintf(prog_path, 64, "%s/sslsplit/sslsplit", path);
-	kthlog(LOG_INFO, "Starting SSLSplit at %s", prog_path);
+	ktblog(LOG_INFO, "Starting SSLSplit at %s", prog_path);
         snprintf(cert_path, 64, "%s/certs/ca.crt", path);
         snprintf(key_path, 64, "%s/certs/ca.key", path);
         argv[0] = prog_path;
@@ -175,7 +175,7 @@ int start_mitm_proxy(char* path) {
         argv[5] = "ssl";
         argv[6] = "0.0.0.0";
         argv[7] = "8888";
-        argv[8] = "trusthub";
+        argv[8] = "trustbase";
         argv[9] = NULL;
         alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, mitm_proxy_init);
         return 0;

@@ -6,8 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <pwd.h>
-#include "th_logging.h"
-#include "th_user.h"
+#include "tb_logging.h"
+#include "tb_user.h"
 
 static int set_uid_with_cap(uid_t u_uid);
 static int create_user(const char* username);
@@ -18,7 +18,7 @@ int change_to_user(const char* username) {
 	gid_t user_gid;
 	
 	if (get_uid(username, &user_uid, &user_gid) != 0) {
-		thlog(LOG_INFO, "Didn't find user %s\nCreating system user %s\n", username, username);
+		tblog(LOG_INFO, "Didn't find user %s\nCreating system user %s\n", username, username);
 		if (create_user(username) == 0) {
 			if (get_uid(username, &user_uid, &user_gid) != 0) {
 				return -1;
@@ -30,14 +30,14 @@ int change_to_user(const char* username) {
 	// setgid then set uid
 	// setuid change to that user
 	if (setgid(user_gid) != 0) {
-		thlog(LOG_ERROR, "Could not take the gid of %s", username);
+		tblog(LOG_ERROR, "Could not take the gid of %s", username);
 	}
 	
 	if (set_uid_with_cap(user_uid) != 0) {
-		thlog(LOG_ERROR, "Could not take the uid of %s", username);
+		tblog(LOG_ERROR, "Could not take the uid of %s", username);
 		return -1;
 	}
-	thlog(LOG_DEBUG, "Falling from admin to system user %s", username);
+	tblog(LOG_DEBUG, "Falling from admin to system user %s", username);
 	return 0;
 }
 
@@ -51,43 +51,43 @@ int set_uid_with_cap(uid_t u_uid) {
 	// Set permitted and effective capabilities in the structure, not inherited
 	if (cap_set_flag(capabilities, CAP_PERMITTED, sizeof root_caps / sizeof root_caps[0], root_caps, CAP_SET) ||
 			cap_set_flag(capabilities, CAP_EFFECTIVE, sizeof root_caps / sizeof root_caps[0], root_caps, CAP_SET)) {
-		thlog(LOG_ERROR, "Could not set the capabilities flag when changeing user: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Could not set the capabilities flag when changeing user: %s.\n", strerror(errno));
 		return -1;
 	}
 
 	// Set the capabilities
 	if (cap_set_proc(capabilities)) {
-		thlog(LOG_ERROR, "Can not set current process's capabilities: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Can not set current process's capabilities: %s.\n", strerror(errno));
 		return -1;
 	}
 
 	// Save these capabilites after the setuid
 	if (prctl(PR_SET_KEEPCAPS, 1L)) {
-		thlog(LOG_ERROR, "Cannot keep capabilities after dropping privileges: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Cannot keep capabilities after dropping privileges: %s.\n", strerror(errno));
 		return -1;
 	}
 
 	// Change user
 	if (setuid(u_uid)) {
-		thlog(LOG_ERROR, "Cannot drop to user: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Cannot drop to user: %s.\n", strerror(errno));
 		return -1;
 	}
 
 	// Remove the extra capability of SETUID
 	if (cap_clear(capabilities)) {
-		thlog(LOG_ERROR, "Cannot clear capabilities: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Cannot clear capabilities: %s.\n", strerror(errno));
 		return -1;
 	}
 
 	if (cap_set_flag(capabilities, CAP_PERMITTED, sizeof user_caps / sizeof user_caps[0], user_caps, CAP_SET) ||
 			cap_set_flag(capabilities, CAP_EFFECTIVE, sizeof user_caps / sizeof user_caps[0], user_caps, CAP_SET)) {
-		thlog(LOG_ERROR, "Cannot change capabilites: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Cannot change capabilites: %s.\n", strerror(errno));
 		return -1;
 	}
 
 	// Apply our capabilities
 	if (cap_set_proc(capabilities)) {
-		thlog(LOG_ERROR, "Cannot set our capabilites as user: %s.\n", strerror(errno));
+		tblog(LOG_ERROR, "Cannot set our capabilites as user: %s.\n", strerror(errno));
 		return -1;
 	}
 

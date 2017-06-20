@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from trusthub_python import *
+from trustbase_python import *
 
 from OpenSSL import SSL,crypto
 
@@ -12,7 +12,7 @@ from cryptography.x509.oid import ExtensionOID as extensionOID
 import sys
 import subprocess
 
-class testPlugin(TrustHubPlugin):
+class testPlugin(TrustbasePlugin):
     def _init_(self):
         pass
     

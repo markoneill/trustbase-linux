@@ -15,14 +15,14 @@
 #include <openssl/sha.h>
 #include <openssl/asn1.h>
 
-#include "../../trusthub_plugin.h"
-#include "../../th_logging.h"
+#include "../../trustbase_plugin.h"
+#include "../../tb_logging.h"
 
 
 #define MAX_LENGTH	1024
 #define PINNING_DATABASE "pinned_certs.db"
 
-int (*plog)(thlog_level_t level, const char* format, ...);
+int (*plog)(tblog_level_t level, const char* format, ...);
 char* plugin_path;
 char* database_path;
 
@@ -42,7 +42,7 @@ static time_t ASN1_GetTimeT(ASN1_TIME* time);
 int initialize(init_data_t* idata) {
 	char* plugin_path_cpy;
 	
-	plog = idata->thlog;
+	plog = idata->tblog;
 	
 	// Whitelist Init
 	plugin_path = idata->plugin_path;
@@ -409,7 +409,7 @@ static int verify_hostname(const char* hostname, X509* cert) {
 		
 		/* check for null characters */
 		if (ASN1_STRING_length(data) != strlen(cn)) {
-			thlog(LOG_DEBUG, "Parsing a malformed certificate");
+			tblog(LOG_DEBUG, "Parsing a malformed certificate");
 			continue;
 		}
 

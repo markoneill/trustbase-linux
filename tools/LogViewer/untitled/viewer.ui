@@ -210,7 +210,7 @@ p, li { white-space: pre-wrap; }
             <string/>
            </property>
            <property name="placeholderText">
-            <string>/var/log/trusthub.log</string>
+            <string>/var/log/trustbase.log</string>
            </property>
           </widget>
          </item>

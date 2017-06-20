@@ -1,10 +1,10 @@
 /**
  * @file interceptor/interceptor.c
- * @brief The TrustHub TCP middle functions.
+ * @brief The Trustbase TCP middle functions.
  */
 
 #ifndef KBUILD_MODNAME
-#	define KBUILD_MODNAME KBUILD_STR(trusthub_linux)
+#	define KBUILD_MODNAME KBUILD_STR(trustbase_linux)
 #endif
 #include <linux/kernel.h>
 #include <linux/version.h>
@@ -18,7 +18,7 @@
 #include <linux/netfilter_ipv4.h> // For nat_ops registration	
 #include <linux/delay.h>
 
-#include "../util/kth_logging.h" // For logging
+#include "../util/ktb_logging.h" // For logging
 #include "interceptor.h"
 #include "connection_state.h" // For accessing handler functions
 
@@ -96,7 +96,7 @@ struct proto * tcpv6_prot_ptr;
  * Register the proxy by storing the old TCP function pointers, and replacing them with custom functions.
  * @param reg_ops the struct containg the custom operation functions.
  * @pre System TCP pointers point to the original tcp_prot functions.
- * @post System TCP pointers point to custom functions and ops has pointers to the correct TrustHub operation functions.
+ * @post System TCP pointers point to custom functions and ops has pointers to the correct Trustbase operation functions.
  * @return 0
  */
 int proxy_register(proxy_handler_ops_t* reg_ops) {
@@ -106,7 +106,7 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	ops = reg_ops;
 
 	// Save all references to original TCP functionality and override them with wrappers
-	kthlog(LOG_INFO, "address of tcp_prot is %p", &tcp_prot);
+	ktblog(LOG_INFO, "address of tcp_prot is %p", &tcp_prot);
 	ref_tcp_v4_connect = (void *)tcp_prot.connect;
 	ref_tcp_disconnect = (void *)tcp_prot.disconnect;
 	ref_tcp_close = (void *)tcp_prot.close;
@@ -120,10 +120,10 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	tcp_prot.recvmsg = new_tcp_recvmsg;
 	tcp_prot.accept = new_inet_csk_accept;
 	if ((tcpv6_prot_ptr = (void *)kallsyms_lookup_name("tcpv6_prot")) == 0) {
-		kthlog(LOG_WARNING, "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
+		ktblog(LOG_WARNING, "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
 	}
 	else {
-		kthlog(LOG_INFO, "tcpv6_prot lookup succeeded, address is %p", tcpv6_prot_ptr);
+		ktblog(LOG_INFO, "tcpv6_prot lookup succeeded, address is %p", tcpv6_prot_ptr);
 		ref_tcp_v6_connect = (void *)tcpv6_prot_ptr->connect;
 		tcpv6_prot_ptr->connect = new_tcp_v6_connect;
 		tcpv6_prot_ptr->disconnect = new_tcp_disconnect;
@@ -167,7 +167,7 @@ int nat_ops_register(void) {
 	INIT_LIST_HEAD(&proxy_accept_list.list);
 	err = nf_register_sockopt(&nat_ops);
 	if (err != 0) {
-		kthlog(LOG_ERROR, "Failed to register new sock opts with kernel, locally proxied connections will fail");
+		ktblog(LOG_ERROR, "Failed to register new sock opts with kernel, locally proxied connections will fail");
 	}
 	nat_ops_registered = 1;
 	return 0;
@@ -193,12 +193,12 @@ int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6
 		return 1;
 	}
 	if (addr == NULL) {
-		kthlog(LOG_ERROR, "addr in proxy original destination info is NULL");
+		ktblog(LOG_ERROR, "addr in proxy original destination info is NULL");
 		return 1;
 	}
 	tmp = (proxy_accept_list_t*)kmalloc(sizeof(proxy_accept_list_t), GFP_KERNEL);
 	if (tmp == NULL) {
-		kthlog(LOG_ERROR, "Failed to allocate space for proxy original destination info");
+		ktblog(LOG_ERROR, "Failed to allocate space for proxy original destination info");
 		return 1;
 	}
 	if (is_ipv6) {
@@ -214,7 +214,7 @@ int add_to_proxy_accept_list(__be16 src_port, struct sockaddr* addr, int is_ipv6
 
 /**
  * Creates a new connection state.
- * @see handshake-handler/handshake_handler.c:th_state_init
+ * @see handshake-handler/handshake_handler.c:tb_state_init
  * @see interceptor/connection_state.c:conn_state_create
  * @param pid The process id for the connection.
  * @param uaddr A pointer to the stuct for the userspace address for the task.
@@ -238,7 +238,7 @@ conn_state_t* start_conn_state(pid_t pid, pid_t tgid, struct sockaddr *uaddr, in
 
 /**
  * Stops and frees a connection state.
- * @see handshake-handler/handshake_handler.c:th_state_free
+ * @see handshake-handler/handshake_handler.c:tb_state_free
  * @see interceptor/connection_state.c:conn_state_delete
  * @param conn_state A pointer to a connection to be freed.
  * @return 1 if found and freed, 0 if not
@@ -264,7 +264,7 @@ int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v4_connect(sk, uaddr, addr_len);
-	//kthlog(LOG_DEBUG, "We got a tcp_v4_connect");
+	//ktblog(LOG_DEBUG, "We got a tcp_v4_connect");
 	if (uaddr->sa_family == AF_INET) {
 		//print_call_info("Calling connect (v4) to addres %pI4:%d", 
 		//	&((struct sockaddr_in*)uaddr)->sin_addr,
@@ -286,7 +286,7 @@ int new_tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len) {
 	struct socket* sock;
 	sock = sk->sk_socket;
 	ret = ref_tcp_v6_connect(sk, uaddr, addr_len);
-	//kthlog(LOG_DEBUG, "We got a tcp_v6_connect");
+	//ktblog(LOG_DEBUG, "We got a tcp_v6_connect");
 	if (start_conn_state(current->pid, current->tgid, uaddr, 1, addr_len, sock)) {
 	}
 	return ret;
@@ -305,7 +305,7 @@ int new_tcp_disconnect(struct sock *sk, int flags) {
 }
 
 /**
- * Runs a TCP close, and closes TrustHub conneciton monitoring for that connection.
+ * Runs a TCP close, and closes Trustbase conneciton monitoring for that connection.
  * @see interceptor/connection_state.c:stop_conn_state
  * @param sk A pointer to a sock struct for the connection.
  * @param timeout TCP timeout time.
@@ -324,7 +324,7 @@ void new_tcp_close(struct sock *sk, long timeout) {
 
 /**
  * Manages TCP sending through the connection handler, according to the connection's handler.
- * @see handshaker-handler/handshake_handler.c:th_fill_send_buffer 
+ * @see handshaker-handler/handshake_handler.c:tb_fill_send_buffer 
  * @return the amount of bytes the user wanted to send, or an error code
  */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
@@ -379,7 +379,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if (conn_state->queued_send_ret > 0) {
 		// 1) Copy data from user to our connection state buffer
 		if (ops->give_to_handler_send(conn_state->state, new_data, size) != 0) {
-			kthlog(LOG_ERROR, "Traffic interceptor failed to copy to send state");
+			ktblog(LOG_ERROR, "Traffic interceptor failed to copy to send state");
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
@@ -391,7 +391,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		}
 		// 2) Update handler's state now that it has new data
 		if (ops->update_send_state(conn_state->state) != 0) {
-			kthlog(LOG_ERROR, "Handler failed to update send state");
+			ktblog(LOG_ERROR, "Handler failed to update send state");
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
@@ -446,7 +446,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		ops->inc_send_bytes_forwarded(conn_state->state, real_ret);
 	}
 	if (real_ret != iov.iov_len) {
-		kthlog(LOG_WARNING, "Traffic interceptor couldn't forward all the bytes desired to destination");
+		ktblog(LOG_WARNING, "Traffic interceptor couldn't forward all the bytes desired to destination");
 		if (msg->msg_flags & MSG_DONTWAIT) { // nonblocking IO
 			// This forces a resend (dont need to delete here because we're
 			// still interested in socket, clearly)
@@ -471,7 +471,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	}
 	// If handler doesn't care about connection anymore then delete it
 	if (ops->num_send_bytes_to_forward(conn_state->state) == 0 && ops->get_state(conn_state->state) == 0) {
-		//kthlog(LOG_DEBUG, "No longer interested in socket, ceasing monitoring");
+		//ktblog(LOG_DEBUG, "No longer interested in socket, ceasing monitoring");
 		stop_conn_state(conn_state); 
         }
 	// Just tell the user we sent everything he wanted
@@ -481,7 +481,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 /**
  * Manages TCP receiving through the connection handler, according to the connection's handler, and data marked to be forwarded.
- * @see handshaker-handler/handshake_handler.c:th_copy_to_user_buffer
+ * @see handshaker-handler/handshake_handler.c:tb_copy_to_user_buffer
  * @return the amount of bytes the user wanted to send, or an error code
  */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
@@ -539,7 +539,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	if (b_to_forward > 0) {
 		bytes_to_copy = b_to_forward > len ? len : b_to_forward;
 		if (ops->copy_to_user(conn_state->state, user_buffer, bytes_to_copy) != 0) {
-			kthlog(LOG_ERROR, "Traffic interceptor copy_to_user() failed");
+			ktblog(LOG_ERROR, "Traffic interceptor copy_to_user() failed");
 			// XXX how do we fail here?
 		}
 		bytes_sent += bytes_to_copy;
@@ -554,12 +554,12 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// If we've not sent anything yet and the socket was closed last time
 	// we actually read, then delete state and return
 	if (bytes_sent == 0 && conn_state->queued_recv_ret == 0) {
-		//kthlog(LOG_DEBUG, "tcp_rcv: reading then deleting");
+		//ktblog(LOG_DEBUG, "tcp_rcv: reading then deleting");
 		stop_conn_state(conn_state);
 		return 0;
 	}
 	if (bytes_sent == 0 && conn_state->queued_recv_ret < 0) {
-		//kthlog(LOG_DEBUG, "tcp_rcv: received an error, but gonna pass for a round");
+		//ktblog(LOG_DEBUG, "tcp_rcv: received an error, but gonna pass for a round");
 		ret = conn_state->queued_recv_ret;
 		conn_state->queued_recv_ret = 1; // pretend no error for next time
 		return ret;
@@ -587,7 +587,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	
 	
 	// 3) Attempt to get more data from external sources
-	//kthlog(LOG_DEBUG, "tcp_rcv: going to get more data");
+	//ktblog(LOG_DEBUG, "tcp_rcv: going to get more data");
 	while (ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
 		kmsg = *msg;
 		#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 19, 0)
@@ -621,7 +621,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		//    or the error code
 		conn_state->queued_recv_ret = ret;
 		if (ret <= 0) {
-			//kthlog(LOG_DEBUG, "tcp_rcv: failed on reading");
+			//ktblog(LOG_DEBUG, "tcp_rcv: failed on reading");
 			if (bytes_sent > 0) {
 				// error code is cached for next time
 				return bytes_sent; 
@@ -636,18 +636,18 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 		// 5) If operation succeeded then copy to state and update state
 		if (ops->give_to_handler_recv(conn_state->state, buffer, ret) != 0) {
-			//kthlog(LOG_ERROR, "tcp_rcv: Traffic interceptor failed to copy to recv state");
+			//ktblog(LOG_ERROR, "tcp_rcv: Traffic interceptor failed to copy to recv state");
 			// XXX how do we fail here?
 		}
 		kfree(buffer);
 		if (ops->update_recv_state(conn_state->state) != 0) {
-			//kthlog(LOG_ERROR, "tcp_rcv: Handler failed to update recv state");
+			//ktblog(LOG_ERROR, "tcp_rcv: Handler failed to update recv state");
 			// XXX how do we fail here?
 		}
 
 		// XXX Enum this	
 		if (ops->get_state(conn_state->state) == 2) {
-			//kthlog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
+			//ktblog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
 			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 			return ref_tcp_recvmsg(sk, msg, len, nonblock, flags, addr_len);
 			#else
@@ -658,7 +658,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		// 6) If this was a nonblocking call and we still don't have any
 		//    additional bytes to forward, break out early
 		if (nonblock && ops->num_recv_bytes_to_forward(conn_state->state) == 0) {
-			//kthlog(LOG_DEBUG, "tcp_rcv: breakout early");
+			//ktblog(LOG_DEBUG, "tcp_rcv: breakout early");
 			return bytes_sent > 0 ? bytes_sent : -EAGAIN;
 		}
 
@@ -670,7 +670,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	b_to_forward = ops->num_recv_bytes_to_forward(conn_state->state);
 	bytes_to_copy = b_to_forward > len - bytes_sent ? len - bytes_sent : b_to_forward;
 	if (ops->copy_to_user(conn_state->state, user_buffer + bytes_sent, bytes_to_copy) != 0) {
-		kthlog(LOG_ERROR, "tcp_rcv: Traffic interceptor copy_to_user() failed");
+		ktblog(LOG_ERROR, "tcp_rcv: Traffic interceptor copy_to_user() failed");
 		// XXX how do we fail here?
 	}
 	ops->inc_recv_bytes_forwarded(conn_state->state, bytes_to_copy);
@@ -702,7 +702,7 @@ int get_orig_dst(struct sock *sk, int cmd, void __user *user, int *len) {
 	list_for_each_safe(cur, q, &proxy_accept_list.list) {
 		tmp = list_entry(cur, proxy_accept_list_t, list);
 		if (tmp->src_port == src_port) {
-			kthlog(LOG_INFO, "Identified original destination info for local proxy");
+			ktblog(LOG_INFO, "Identified original destination info for local proxy");
 			if (tmp->addr.sa_family == AF_INET) {
 				*len = sizeof(struct sockaddr_in);
 				ret = copy_to_user(user, &tmp->addr, sizeof(struct sockaddr_in));

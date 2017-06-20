@@ -50,7 +50,7 @@ void Viewer::loadFile()
     // Get file from the ui
     QString path = ui->Path->text();
     if (path.isEmpty()) {
-        path = "/var/log/trusthub.log";
+        path = "/var/log/trustbase.log";
     }
     QFile logfile(path);
     if (!logfile.open(QFile::ReadOnly | QFile::Text)) {

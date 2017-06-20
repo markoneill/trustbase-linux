@@ -10,7 +10,7 @@
 #include <openssl/pem.h>
 #include <arpa/inet.h>
 
-#include "th_logging.h"
+#include "tb_logging.h"
 #include "check_root_store.h"
 #include "reverse_dns.h"
 
@@ -64,15 +64,15 @@ int ip_to_hostname(struct sockaddr* sa, char** found_hostname) {
 	found_hostname[0] = (char*)malloc(NI_MAXHOST);
 
 	if ((error = getnameinfo(sa, len, found_hostname[0], NI_MAXHOST, NULL, 0, NI_NAMEREQD))) {
-		thlog(LOG_DEBUG,"\tError getting hostname: %i\n", error);
-		thlog(LOG_DEBUG,"\tEAI_AGAIN: %i\n", EAI_AGAIN);
-		thlog(LOG_DEBUG,"\tEAI_BADFLAGS: %i\n", EAI_BADFLAGS);
-		thlog(LOG_DEBUG,"\tEAI_FAIL: %i\n", EAI_FAIL);
-		thlog(LOG_DEBUG,"\tEAI_FAMILY: %i\n", EAI_FAMILY);
-		thlog(LOG_DEBUG,"\tEAI_MEMORY: %i\n", EAI_MEMORY);
-		thlog(LOG_DEBUG,"\tEAI_NONAME: %i\n", EAI_NONAME);
-		thlog(LOG_DEBUG,"\tEAI_OVERFLOW: %i\n", EAI_OVERFLOW);
-		thlog(LOG_DEBUG,"\tEAI_SYSTEM: %i\n", EAI_SYSTEM);
+		tblog(LOG_DEBUG,"\tError getting hostname: %i\n", error);
+		tblog(LOG_DEBUG,"\tEAI_AGAIN: %i\n", EAI_AGAIN);
+		tblog(LOG_DEBUG,"\tEAI_BADFLAGS: %i\n", EAI_BADFLAGS);
+		tblog(LOG_DEBUG,"\tEAI_FAIL: %i\n", EAI_FAIL);
+		tblog(LOG_DEBUG,"\tEAI_FAMILY: %i\n", EAI_FAMILY);
+		tblog(LOG_DEBUG,"\tEAI_MEMORY: %i\n", EAI_MEMORY);
+		tblog(LOG_DEBUG,"\tEAI_NONAME: %i\n", EAI_NONAME);
+		tblog(LOG_DEBUG,"\tEAI_OVERFLOW: %i\n", EAI_OVERFLOW);
+		tblog(LOG_DEBUG,"\tEAI_SYSTEM: %i\n", EAI_SYSTEM);
 		free(found_hostname[0]);
 		return error;
 	}

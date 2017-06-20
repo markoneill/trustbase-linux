@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <openssl/x509.h>
-#include "../trusthub_plugin.h"
+#include "../trustbase_plugin.h"
 
 #define MAX_LENGTH	1024
 

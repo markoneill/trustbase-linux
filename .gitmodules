@@ -1,4 +1,4 @@
 [submodule "sslsplit"]
 	path = sslsplit
 	url = https://github.com/mathflair/sslsplit.git
-	branch = trusthub
+	branch = trustbase

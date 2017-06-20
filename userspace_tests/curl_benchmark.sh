@@ -33,32 +33,32 @@ fi
 
 OLD_DIR=$( /bin/pwd )
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-TRUSTHUB_DIR=/home/jordan/trusthub-linux
+TRUSTBASE_DIR=/home/jordan/trustbase-linux
 
 #run a base test to google
-#echo -e "\nTESTING WITHOUT TRUSTHUB:\n"
+#echo -e "\nTESTING WITHOUT TRUSTBASE:\n"
 #many_sizes linux-vanilla.txt 4440
 
-#insert trusthub
-#cd $TRUSTHUB_DIR
-#insmod $TRUSTHUB_DIR/trusthub_linux.ko th_path=\"$TRUSTHUB_DIR\"
+#insert trustbase
+#cd $TRUSTBASE_DIR
+#insmod $TRUSTBASE_DIR/trustbase_linux.ko tb_path=\"$TRUSTBASE_DIR\"
 #cd $OLD_DIR
 #echo -e "\nMake sure sslsplit and the policy_engine are running:"
 #echo `ps aux | grep sslsplit`
 #echo `ps aux | grep policy_engine`
 
 #run a test to accepted cert
-#echo -e "\nTESTING GOOD CERT WITH TRUSHUB:\n"
+#echo -e "\nTESTING GOOD CERT WITH TRUSTBASE:\n"
 many_sizes linux-vanilla.txt 4440
 
 #run a test to proxied cert
-#echo -e "\nTESTING BAD CERT WITH TRUSTHUB:\n"
+#echo -e "\nTESTING BAD CERT WITH TRUSTBASE:\n"
 #many_sizes linux-proxied.txt 4441
 
-#remove trusthub
+#remove trustbase
 #echo -e "\nMake sure sslsplit and the policy_engine are still running:"
 #echo `ps aux | grep sslsplit`
 #echo `ps aux | grep policy_engine`
 
-#rmmod trusthub_linux
-#echo -e "\nREMOVED TRUSTHUB\n"
+#rmmod trustbase_linux
+#echo -e "\nREMOVED TRUSTBASE\n"

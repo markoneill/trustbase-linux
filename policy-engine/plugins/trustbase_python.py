@@ -13,14 +13,14 @@ INIT_FAIL = int(1)
 class Python_Plugin_Logger:
     def __init__(self, logfile = None):
         if logfile is None:
-            self.logfile = '/tmp/trusthub_python_plugin.log'
+            self.logfile = '/tmp/trustbase_python_plugin.log'
         else:
             self.logfile = logfile
     def write(self, text) :
         with open(self.logfile,"a") as f:
             f.write(text)
 
-class TrustHubPlugin(object):
+class TrustbasePlugin(object):
     async = False
     
     def is_async(self):
@@ -99,7 +99,7 @@ def get_cert_length_from_bytes(in_bytes):
 # (for example with from <this file> import *)
 # That way they can be run directly from the plugin script
 # NOTE, consider putting this in a Trusthub.start() function, to get rid of import *
-_plugin = TrustHubPlugin()
+_plugin = TrustbasePlugin()
 def setPlugin(pluginobject):
     global _plugin
     _plugin = pluginobject

@@ -9,8 +9,8 @@
 #include <openssl/x509v3.h>
 #include <openssl/sha.h>
 #include <openssl/asn1.h>
-#include "../../trusthub_plugin.h"
-#include "../../th_logging.h"
+#include "../../trustbase_plugin.h"
+#include "../../tb_logging.h"
 
 #define PINNING_DATABASE "pinned_certs.db"
 
@@ -20,12 +20,12 @@ int finalize(void);
 
 char* database_path;
 
-int (*plog)(thlog_level_t level, const char* format, ...);
+int (*plog)(tblog_level_t level, const char* format, ...);
 
 static time_t ASN1_GetTimeT(ASN1_TIME* time);
 
 int initialize(init_data_t* idata) {
-	plog = idata->thlog;
+	plog = idata->tblog;
 	database_path = NULL;
 	database_path = (char*)malloc(strlen(idata->plugin_path) + 2 + strlen(PINNING_DATABASE));
 	if (database_path == NULL) {

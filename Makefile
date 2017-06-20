@@ -1,10 +1,10 @@
-trusthub_linux-objs := loader.o \
+trustbase_linux-objs := loader.o \
 		       interceptor/interceptor.o \
 		       interceptor/connection_state.o \
 		       handshake-handler/handshake_handler.o \
 		       handshake-handler/communications.o \
 		       util/utils.o \
-		       util/kth_logging.o
+		       util/ktb_logging.o
 
 test_interceptor-objs := interceptor/test/test_loader.o \
 		         interceptor/interceptor.o \
@@ -13,7 +13,7 @@ test_interceptor-objs := interceptor/test/test_loader.o \
 			 util/utils.o
 
 obj-m += test_interceptor.o
-obj-m += trusthub_linux.o
+obj-m += trustbase_linux.o
 
 CC = gcc
 CCFLAGS = -Wall -O3 -fpic -g
@@ -29,10 +29,10 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/linked_list.c \
 		    policy-engine/check_root_store.c \
 		    policy-engine/reverse_dns.c \
-		    policy-engine/th_logging.c \
+		    policy-engine/tb_logging.c \
 		    policy-engine/notifications.c \
 		    policy-engine/sni_parser.c \
-		    policy-engine/th_user.c \
+		    policy-engine/tb_user.c \
 		    policy-engine/policy_engine.c
 
 POLICY_ENGINE_OBJ = $(POLICY_ENGINE_SRC:%.c=%.o)
@@ -141,7 +141,7 @@ clean:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
 	rm -rf *.o *.so $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(CRLSET_SO) $(POLICY_ENGINE_EXE) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(NATIVE_LIB_EXE)  
 
-PREFIX = /usr/lib/trusthub-linux
+PREFIX = /usr/lib/trustbase-linux
 
 
 INSTALL_FILES = $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(CIPHER_SUITE_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(ALL_PYTHON_PLUGIN_SRC)
@@ -154,12 +154,12 @@ install: all
 		mkdir -p "`dirname "$(PREFIX)/$$FILE"`"; \
 		cp $$FILE $(PREFIX)/$$FILE; \
 	done
-	cp trusthub_linux.ko $(PREFIX)/
+	cp trustbase_linux.ko $(PREFIX)/
 	cp Module.symvers $(PREFIX)/
 	cp modules.order $(PREFIX)/
 	cp -r policy-engine/plugin-config $(PREFIX)/policy-engine/
 	cp -r certs $(PREFIX)/
 	cp sslsplit/sslsplit $(PREFIX)/sslsplit/
-	cp policy-engine/trusthub.cfg $(PREFIX)/policy-engine/trusthub.cfg
-	ln -sf $(PREFIX)/policy-engine/trusthub.cfg /etc/trusthub.cfg
+	cp policy-engine/trustbase.cfg $(PREFIX)/policy-engine/trustbase.cfg
+	ln -sf $(PREFIX)/policy-engine/trustbase.cfg /etc/trustbase.cfg
 	

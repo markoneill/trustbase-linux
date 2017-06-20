@@ -1,7 +1,7 @@
 #!/usr/bin/python
-from trusthub_python import *
+from trustbase_python import *
 
-class testPlugin(TrustHubPlugin):
+class testPlugin(TrustbasePlugin):
     def _init_(self):
         pass
     

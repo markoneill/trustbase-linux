@@ -4,12 +4,12 @@
 #include <unistd.h>
 #include <utmp.h>
 #include <fcntl.h>
-#include "th_logging.h"
+#include "tb_logging.h"
 #include "notifications.h"
 
 #define TERM_COL 60
 #define TERM_ROW 9
-#define TERM_HEADER "~TrustHub Message~"
+#define TERM_HEADER "~Trustbase Message~"
 #define MAX_USERNAME 32
 #define MAX_TERMS 16
 #define TERM_DIR "/dev/"
@@ -27,7 +27,7 @@ int notify_user(char* username, char* message) {
 		break;
 	default:
 		// Write to the log
-		thlog(LOG_WARNING, "Failed to notify %s: %s", username, message);
+		tblog(LOG_WARNING, "Failed to notify %s: %s", username, message);
 	}
 	return 0; // Success
 }

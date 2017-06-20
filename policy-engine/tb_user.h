@@ -1,5 +1,5 @@
-#ifndef TH_USER_H_
-#define TH_USER_H_
+#ifndef TB_USER_H_
+#define TB_USER_H_
 
 int change_to_user(const char* username);
 

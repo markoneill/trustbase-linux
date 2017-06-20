@@ -6,8 +6,8 @@
 #include <fnmatch.h>
 #include <openssl/evp.h>
 #include <sys/utsname.h>
-#include "trusthub_plugin.h"
-#include "th_logging.h"
+#include "trustbase_plugin.h"
+#include "tb_logging.h"
 #include "check_root_store.h"
 
 #define MAX_LENGTH 1024
@@ -37,13 +37,13 @@ X509_STORE* make_new_root_store() {
 	/* create a new store */
 	store = X509_STORE_new();
 	if (store == NULL) {
-		thlog(LOG_ERROR, "Unable to create new X509 store");
+		tblog(LOG_ERROR, "Unable to create new X509 store");
 		return NULL;
 	}
 	
 	/* get proper ca_filename */
 	if (uname(&info) < 0) {
-		thlog(LOG_ERROR, "Could not get the uname information, defaulting to redhat");
+		tblog(LOG_ERROR, "Could not get the uname information, defaulting to redhat");
 		ca_filename = ca_filename_redhat;
 	} else {
 		if (strstr(info.release, ".fc") != NULL) {
@@ -62,7 +62,7 @@ X509_STORE* make_new_root_store() {
 	
 	/* load the store */
 	if (X509_STORE_load_locations(store, full_path, NULL) < 1) {
-		thlog(LOG_ERROR, "Unable to read the certificate store at %s", full_path);
+		tblog(LOG_ERROR, "Unable to read the certificate store at %s", full_path);
 		X509_STORE_free(store);
 		return NULL;
 	}
@@ -85,7 +85,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	int valid;
 
 	if (sk_X509_num(certs) <= 0) {
-		thlog(LOG_WARNING, "Got a stack of certs that was empty");
+		tblog(LOG_WARNING, "Got a stack of certs that was empty");
 		return PLUGIN_RESPONSE_ERROR;	
 	}
 
@@ -93,7 +93,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	
 	if (verify_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
 		if (verify_alternate_hostname(hostname, sk_X509_value(certs, 0)) < 1) {
-			thlog(LOG_INFO, "The hostname %s was found invalid", hostname);
+			tblog(LOG_INFO, "The hostname %s was found invalid", hostname);
 			return PLUGIN_RESPONSE_INVALID;
 		}
 	}
@@ -107,12 +107,12 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 	
 		ctx = X509_STORE_CTX_new();
 		if (!ctx) {
-			thlog(LOG_ERROR, "Unable to create new X509_STORE_CTX");
+			tblog(LOG_ERROR, "Unable to create new X509_STORE_CTX");
 			return PLUGIN_RESPONSE_ERROR;
 		}
 
 		if (X509_STORE_CTX_init(ctx, store, cert, certs) < 1) {
-			thlog(LOG_WARNING, "The certificate chain is invalid");
+			tblog(LOG_WARNING, "The certificate chain is invalid");
 			print_chain(certs);
 			X509_STORE_CTX_free(ctx);
 			return PLUGIN_RESPONSE_INVALID;
@@ -121,7 +121,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 		/* Verify the build certificate context */
 		valid = X509_verify_cert(ctx);
 		if (valid < 1) {
-			thlog(LOG_DEBUG, "A certificate gave an error %s. Certificate:", get_validation_errstr(X509_STORE_CTX_get_error(ctx)));	
+			tblog(LOG_DEBUG, "A certificate gave an error %s. Certificate:", get_validation_errstr(X509_STORE_CTX_get_error(ctx)));	
 			print_certificate(cert);
 			X509_STORE_CTX_free(ctx);
 			return PLUGIN_RESPONSE_INVALID;
@@ -133,7 +133,7 @@ int query_store(const char* hostname, STACK_OF(X509)* certs, X509_STORE* root_st
 		if (i > 0) {
 			/* This should be a CA */
 			if (X509_check_ca(cert) < 1) {
-				thlog(LOG_WARNING, "Found a certificate in the chain that is not a CA, but is signing");
+				tblog(LOG_WARNING, "Found a certificate in the chain that is not a CA, but is signing");
 				print_certificate(cert);
 				X509_STORE_CTX_free(ctx);
 				return PLUGIN_RESPONSE_INVALID;
@@ -170,7 +170,7 @@ int verify_alternate_hostname(const char* hostname, X509* cert) {
 			
 			/* check for null characters */
 			if (ASN1_STRING_length(current_alt_name->d.dNSName) != strlen(cn)) {
-				thlog(LOG_DEBUG, "Parsing a malformed certificate");
+				tblog(LOG_DEBUG, "Parsing a malformed certificate");
 				continue;
 			}
 			
@@ -211,7 +211,7 @@ int verify_hostname(const char* hostname, X509* cert) {
 		
 		/* check for null characters */
 		if (ASN1_STRING_length(data) != strlen(cn)) {
-			thlog(LOG_DEBUG, "Parsing a malformed certificate");
+			tblog(LOG_DEBUG, "Parsing a malformed certificate");
 			continue;
 		}
 
@@ -306,7 +306,7 @@ void print_certificate(X509* cert) {
         char issuer[MAX_LENGTH+1];
         X509_NAME_oneline(X509_get_subject_name(cert), subj, MAX_LENGTH);
         X509_NAME_oneline(X509_get_issuer_name(cert), issuer, MAX_LENGTH);
-        thlog(LOG_DEBUG, "Certificate :SUBJECT: %s :ISSUER: %s", subj, issuer);
+        tblog(LOG_DEBUG, "Certificate :SUBJECT: %s :ISSUER: %s", subj, issuer);
 }
 
 void print_chain(STACK_OF(X509)* in) {

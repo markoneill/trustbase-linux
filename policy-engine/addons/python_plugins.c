@@ -1,5 +1,5 @@
 #include <Python.h>
-#include "../trusthub_plugin.h"
+#include "../trustbase_plugin.h"
 #include "python_plugins.h"
 
 PyObject **plugin_functions;
@@ -17,10 +17,10 @@ const char *this_file = "python_plugins.o";
 
 int (*async_callback)(int,int,int);
 
-#include "../th_logging.h"
-int (*plog)(thlog_level_t level, const char* format, ... );
+#include "../tb_logging.h"
+int (*plog)(tblog_level_t level, const char* format, ... );
 
-int initialize(int count, char *plugin_dir, int (*callback)(int,int,int), const char *lib_file, int (*log_func)(thlog_level_t level, const char* format, ... )) {
+int initialize(int count, char *plugin_dir, int (*callback)(int,int,int), const char *lib_file, int (*log_func)(tblog_level_t level, const char* format, ... )) {
 	char python_stmt[128];
 	char *argv_path[] = {""};
 	Py_Initialize();

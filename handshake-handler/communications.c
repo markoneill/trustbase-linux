@@ -3,82 +3,82 @@
 #include <linux/semaphore.h>
 
 #include "handshake_handler.h"
-#include "../util/kth_logging.h" // For logging
+#include "../util/ktb_logging.h" // For logging
 #include "communications.h"
 
 
 #define IPV4_STR_LEN			15
 #define IPV6_STR_LEN			39
-int th_response(struct sk_buff* skb, struct genl_info* info);
-int th_query(struct sk_buff* skb, struct genl_info* info);
+int tb_response(struct sk_buff* skb, struct genl_info* info);
+int tb_query(struct sk_buff* skb, struct genl_info* info);
 
-static const struct nla_policy th_policy[TRUSTHUB_A_MAX + 1] = {
-	[TRUSTHUB_A_CERTCHAIN] = { .type = NLA_UNSPEC },
-	[TRUSTHUB_A_CLIENT_HELLO] = { .type = NLA_UNSPEC },
-	[TRUSTHUB_A_SERVER_HELLO] = { .type = NLA_UNSPEC },
-	[TRUSTHUB_A_IP] = { .type = NLA_NUL_STRING },
-	[TRUSTHUB_A_PORTNUMBER] = { .type = NLA_U16 },
-	[TRUSTHUB_A_RESULT] = { .type = NLA_U32 },
-	[TRUSTHUB_A_STATE_PTR] = { .type = NLA_U64 },
+static const struct nla_policy tb_policy[TRUSTBASE_A_MAX + 1] = {
+	[TRUSTBASE_A_CERTCHAIN] = { .type = NLA_UNSPEC },
+	[TRUSTBASE_A_CLIENT_HELLO] = { .type = NLA_UNSPEC },
+	[TRUSTBASE_A_SERVER_HELLO] = { .type = NLA_UNSPEC },
+	[TRUSTBASE_A_IP] = { .type = NLA_NUL_STRING },
+	[TRUSTBASE_A_PORTNUMBER] = { .type = NLA_U16 },
+	[TRUSTBASE_A_RESULT] = { .type = NLA_U32 },
+	[TRUSTBASE_A_STATE_PTR] = { .type = NLA_U64 },
 };
 
-static struct genl_family th_family = {
+static struct genl_family tb_family = {
 	.id = GENL_ID_GENERATE,
 	.hdrsize = 0,
-	.name = "TRUSTHUB",
+	.name = "TRUSTBASE",
 	.version = 1,
-	.maxattr = TRUSTHUB_A_MAX,
+	.maxattr = TRUSTBASE_A_MAX,
 };
 
-static struct genl_ops th_ops[] = {
+static struct genl_ops tb_ops[] = {
 	{
-		.cmd = TRUSTHUB_C_QUERY,
+		.cmd = TRUSTBASE_C_QUERY,
 		.flags = GENL_ADMIN_PERM,
-		.policy= th_policy,
-		.doit = th_query,
+		.policy= tb_policy,
+		.doit = tb_query,
 		.dumpit = NULL,
 	},
 	{
-		.cmd = TRUSTHUB_C_RESPONSE,
+		.cmd = TRUSTBASE_C_RESPONSE,
 		.flags = 0,
-		.policy = th_policy,
-		.doit = th_response,
+		.policy = tb_policy,
+		.doit = tb_response,
 		.dumpit = NULL,
 	},
 	{
-		.cmd = TRUSTHUB_C_QUERY_NATIVE,
+		.cmd = TRUSTBASE_C_QUERY_NATIVE,
 		.flags = 0,
-		.policy = th_policy,
-		.doit = th_query,
+		.policy = tb_policy,
+		.doit = tb_query,
 		.dumpit = NULL,
 	},
 };
 
-static const struct genl_multicast_group th_grps[] = {
-	[TRUSTHUB_QUERY] = { .name = "query", },
+static const struct genl_multicast_group tb_grps[] = {
+	[TRUSTBASE_QUERY] = { .name = "query", },
 };
 
-int th_query(struct sk_buff* skb, struct genl_info* info) {
-	kthlog(LOG_WARNING, "Kernel receieved a TrustHub query. This should never happen!");
+int tb_query(struct sk_buff* skb, struct genl_info* info) {
+	ktblog(LOG_WARNING, "Kernel receieved a Trustbase query. This should never happen!");
 	return -1;
 }
 
-int th_response(struct sk_buff* skb, struct genl_info* info) {
+int tb_response(struct sk_buff* skb, struct genl_info* info) {
 	struct nlattr* na;
 	uint64_t statedata;
 	handler_state_t* state;
 	int result;
 	if (info == NULL) {
-		kthlog(LOG_ERROR, "Message info is null");
+		ktblog(LOG_ERROR, "Message info is null");
 		return -1;
 	}
-	if ((na = info->attrs[TRUSTHUB_A_STATE_PTR]) == NULL) {
-		kthlog(LOG_ERROR, "Can't find state pointer in response");
+	if ((na = info->attrs[TRUSTBASE_A_STATE_PTR]) == NULL) {
+		ktblog(LOG_ERROR, "Can't find state pointer in response");
 		return -1;
 	}
 	statedata = nla_get_u64(na);
-	if ((na = info->attrs[TRUSTHUB_A_RESULT]) == NULL) {
-		kthlog(LOG_ERROR, "Can't find result in response");
+	if ((na = info->attrs[TRUSTBASE_A_RESULT]) == NULL) {
+		ktblog(LOG_ERROR, "Can't find result in response");
 		return -1;
 	}
 	result = nla_get_u32(na);
@@ -88,9 +88,9 @@ int th_response(struct sk_buff* skb, struct genl_info* info) {
 	return 0;
 }
 
-int th_register_netlink() {
+int tb_register_netlink() {
 	int rc;
-	rc = genl_register_family_with_ops_groups(&th_family, th_ops, th_grps);
+	rc = genl_register_family_with_ops_groups(&tb_family, tb_ops, tb_grps);
 	if (rc != 0) {
 		return -1;
 	}
@@ -98,44 +98,44 @@ int th_register_netlink() {
 	return 0;
 }
 
-void th_unregister_netlink() {
-	genl_unregister_family(&th_family);
+void tb_unregister_netlink() {
+	genl_unregister_family(&tb_family);
 }
 
-int th_send_certificate_query(handler_state_t* state, unsigned char* certificate, size_t length) {
+int tb_send_certificate_query(handler_state_t* state, unsigned char* certificate, size_t length) {
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
 	uint16_t port;
 	skb = genlmsg_new(length+strlen(state->ip)+state->client_hello_len+state->server_hello_len+250, GFP_ATOMIC); // size is port + client_hello + ip + chain + state pointer
-	//kthlog(LOG_DEBUG, "Trying to send a cert query");
+	//ktblog(LOG_DEBUG, "Trying to send a cert query");
 	if (skb == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg for sending the query");
+		ktblog(LOG_ERROR, "failed in genlmsg for sending the query");
 		nlmsg_free(skb);
 		return -1;
 	}
-	msg_head = genlmsg_put(skb, 0, 0, &th_family, 0, TRUSTHUB_C_QUERY);
+	msg_head = genlmsg_put(skb, 0, 0, &tb_family, 0, TRUSTBASE_C_QUERY);
 	if (msg_head == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg_put");
+		ktblog(LOG_ERROR, "failed in genlmsg_put");
 		nlmsg_free(skb);
 		return -1;
 	}
-	kthlog(LOG_DEBUG, "Trying to send client hello of length %d", state->client_hello_len);
-	rc = nla_put(skb, TRUSTHUB_A_CLIENT_HELLO, state->client_hello_len, state->client_hello);
+	ktblog(LOG_DEBUG, "Trying to send client hello of length %d", state->client_hello_len);
+	rc = nla_put(skb, TRUSTBASE_A_CLIENT_HELLO, state->client_hello_len, state->client_hello);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put for Client Hello");
+		ktblog(LOG_ERROR, "failed in nla_put for Client Hello");
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put(skb, TRUSTHUB_A_SERVER_HELLO, state->server_hello_len, state->server_hello);
+	rc = nla_put(skb, TRUSTBASE_A_SERVER_HELLO, state->server_hello_len, state->server_hello);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put for Server Hello");
+		ktblog(LOG_ERROR, "failed in nla_put for Server Hello");
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put_string(skb, TRUSTHUB_A_IP, state->ip);
+	rc = nla_put_string(skb, TRUSTBASE_A_IP, state->ip);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put_string");
+		ktblog(LOG_ERROR, "failed in nla_put_string");
 		nlmsg_free(skb);
 		return -1;
 	}
@@ -144,32 +144,32 @@ int th_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	} else {
 		port = ntohs((uint16_t)state->addr_v6.sin6_port);
 	}
-	rc = nla_put(skb, TRUSTHUB_A_CERTCHAIN, length, certificate);
+	rc = nla_put(skb, TRUSTBASE_A_CERTCHAIN, length, certificate);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put (chain)");
+		ktblog(LOG_ERROR, "failed in nla_put (chain)");
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put_u16(skb, TRUSTHUB_A_PORTNUMBER, port);
+	rc = nla_put_u16(skb, TRUSTBASE_A_PORTNUMBER, port);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put (port number)");
+		ktblog(LOG_ERROR, "failed in nla_put (port number)");
 		nlmsg_free(skb);
 		return -1;
 	}
 
 	sema_init(&state->sem, 0);
-	rc = nla_put_u64(skb, TRUSTHUB_A_STATE_PTR, (uint64_t)state);
+	rc = nla_put_u64(skb, TRUSTBASE_A_STATE_PTR, (uint64_t)state);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put (sem)");
+		ktblog(LOG_ERROR, "failed in nla_put (sem)");
 		nlmsg_free(skb);
 		return -1;
 	}
 
 	genlmsg_end(skb, msg_head);
 	// skbs are freed by genlmsg_multicast
-	rc = genlmsg_multicast(&th_family, skb, 0, TRUSTHUB_QUERY, GFP_ATOMIC);
+	rc = genlmsg_multicast(&tb_family, skb, 0, TRUSTBASE_QUERY, GFP_ATOMIC);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in genlmsg_multicast %d", rc);
+		ktblog(LOG_ERROR, "failed in genlmsg_multicast %d", rc);
 		return -1;
 	}
 
@@ -178,55 +178,55 @@ int th_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	return 0;
 }
 
-int th_send_shutdown() {
+int tb_send_shutdown() {
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
 	
 	skb = genlmsg_new(0, GFP_ATOMIC);
 	if (skb == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg for sending shutdown");
+		ktblog(LOG_ERROR, "failed in genlmsg for sending shutdown");
 		nlmsg_free(skb);
 		return -1;
 	}
-	msg_head = genlmsg_put(skb, 0, 0, &th_family, 0, TRUSTHUB_C_SHUTDOWN);
+	msg_head = genlmsg_put(skb, 0, 0, &tb_family, 0, TRUSTBASE_C_SHUTDOWN);
 	if (msg_head == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg_put");
+		ktblog(LOG_ERROR, "failed in genlmsg_put");
 		nlmsg_free(skb);
 		return -1;
 	}
 	genlmsg_end(skb, msg_head);
 	// skbs are freed by genlmsg_multicast
-	rc = genlmsg_multicast(&th_family, skb, 0, TRUSTHUB_QUERY, GFP_ATOMIC);
+	rc = genlmsg_multicast(&tb_family, skb, 0, TRUSTBASE_QUERY, GFP_ATOMIC);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in genlmsg_multicast %d", rc);
+		ktblog(LOG_ERROR, "failed in genlmsg_multicast %d", rc);
 		return -1;
 	}
 	return 0;
 }
 
-int th_send_is_starttls_query(struct handler_state_t* state) {
+int tb_send_is_starttls_query(struct handler_state_t* state) {
 	struct sk_buff* skb;
 	int rc;
 	void* msg_head;
 	uint16_t port;
 
 	skb = genlmsg_new(strlen(state->ip) + 250, GFP_ATOMIC);
-	kthlog(LOG_DEBUG, "Trying to send a shouldtls query for %s", state->ip);
+	ktblog(LOG_DEBUG, "Trying to send a shouldtls query for %s", state->ip);
 	if (skb == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg for starttls");
+		ktblog(LOG_ERROR, "failed in genlmsg for starttls");
 		nlmsg_free(skb);
 		return -1;
 	}
-	msg_head = genlmsg_put(skb, 0, 0, &th_family, 0, TRUSTHUB_C_SHOULDTLS);
+	msg_head = genlmsg_put(skb, 0, 0, &tb_family, 0, TRUSTBASE_C_SHOULDTLS);
 	if (msg_head == NULL) {
-		kthlog(LOG_ERROR, "failed in genlmsg_put");
+		ktblog(LOG_ERROR, "failed in genlmsg_put");
 		nlmsg_free(skb);
 		return -1;
 	}
-	rc = nla_put_string(skb, TRUSTHUB_A_IP, state->ip);
+	rc = nla_put_string(skb, TRUSTBASE_A_IP, state->ip);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put_string (ip)");
+		ktblog(LOG_ERROR, "failed in nla_put_string (ip)");
 		nlmsg_free(skb);
 		return -1;
 	}
@@ -236,25 +236,25 @@ int th_send_is_starttls_query(struct handler_state_t* state) {
 	else {
 		port = ntohs((uint16_t)state->addr_v6.sin6_port);
 	}
-	rc = nla_put_u16(skb, TRUSTHUB_A_PORTNUMBER, port);
+	rc = nla_put_u16(skb, TRUSTBASE_A_PORTNUMBER, port);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put (port number)");
+		ktblog(LOG_ERROR, "failed in nla_put (port number)");
 		nlmsg_free(skb);
 		return -1;
 	}
 	sema_init(&state->sem, 0);
-	rc = nla_put_u64(skb, TRUSTHUB_A_STATE_PTR, (uint64_t)state);
+	rc = nla_put_u64(skb, TRUSTBASE_A_STATE_PTR, (uint64_t)state);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in nla_put (sem)");
+		ktblog(LOG_ERROR, "failed in nla_put (sem)");
 		nlmsg_free(skb);
 		return -1;
 	}
 
 	genlmsg_end(skb, msg_head);
 	// skbs are freed by genlmsg_multicast
-	rc = genlmsg_multicast(&th_family, skb, 0, TRUSTHUB_QUERY, GFP_ATOMIC);
+	rc = genlmsg_multicast(&tb_family, skb, 0, TRUSTBASE_QUERY, GFP_ATOMIC);
 	if (rc != 0) {
-		kthlog(LOG_ERROR, "failed in genlmsg_multicast %d", rc);
+		ktblog(LOG_ERROR, "failed in genlmsg_multicast %d", rc);
 		return -1;
 	}
 

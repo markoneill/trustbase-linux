@@ -5,13 +5,13 @@
 #include <linux/in.h>
 #include <linux/in6.h>
 
-#define TH_TLS_HANDSHAKE_IDENTIFIER	0x16
-#define TH_TLS_RECORD_HEADER_SIZE		5
-#define TH_TLS_HANDSHAKE_IDENTIFIER_SIZE	1
-#define TH_TLS_CERTIFICATE_FIELD_SIZE		3
+#define TB_TLS_HANDSHAKE_IDENTIFIER	0x16
+#define TB_TLS_RECORD_HEADER_SIZE		5
+#define TB_TLS_HANDSHAKE_IDENTIFIER_SIZE	1
+#define TB_TLS_CERTIFICATE_FIELD_SIZE		3
 
 // STARTTLS entries
-#define TH_SMTP_READ_SIZE			1
+#define TB_SMTP_READ_SIZE			1
 
 typedef enum tls_state_t {
 	UNKNOWN,
@@ -77,21 +77,21 @@ typedef struct handler_state_t {
 	unsigned int server_hello_len;
 } handler_state_t;
 
-void* th_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
-void th_state_free(void* buf_state);
-int th_get_state(void* state);
-int th_give_to_handler_send(void* state, void* src_buf, size_t length);
-int th_give_to_handler_recv(void* state, void* src_buf, size_t length);
-int th_update_state_send(void* state);
-int th_update_state_recv(void* state);
-int th_fill_send_buffer(void* state, void** bufptr, size_t* length);
-int th_copy_to_user_buffer(void* state, void __user *dst_buf, size_t length);
-int th_num_bytes_to_forward_send(void* state);
-int th_num_bytes_to_forward_recv(void* state);
-int th_update_bytes_forwarded_send(void* state, size_t forwarded);
-int th_update_bytes_forwarded_recv(void* state, size_t forwarded);
-int th_get_bytes_to_read_send(void* state);
-int th_get_bytes_to_read_recv(void* state);
-struct sock* th_get_mitm_sock(void* state);
+void* tb_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len);
+void tb_state_free(void* buf_state);
+int tb_get_state(void* state);
+int tb_give_to_handler_send(void* state, void* src_buf, size_t length);
+int tb_give_to_handler_recv(void* state, void* src_buf, size_t length);
+int tb_update_state_send(void* state);
+int tb_update_state_recv(void* state);
+int tb_fill_send_buffer(void* state, void** bufptr, size_t* length);
+int tb_copy_to_user_buffer(void* state, void __user *dst_buf, size_t length);
+int tb_num_bytes_to_forward_send(void* state);
+int tb_num_bytes_to_forward_recv(void* state);
+int tb_update_bytes_forwarded_send(void* state, size_t forwarded);
+int tb_update_bytes_forwarded_recv(void* state, size_t forwarded);
+int tb_get_bytes_to_read_send(void* state);
+int tb_get_bytes_to_read_recv(void* state);
+struct sock* tb_get_mitm_sock(void* state);
 
 #endif

@@ -8,13 +8,13 @@
 #include <openssl/evp.h>
 #include <dirent.h>
 #include <libgen.h>
-#include "../../trusthub_plugin.h"
-#include "../../th_logging.h"
+#include "../../trustbase_plugin.h"
+#include "../../tb_logging.h"
 
 
 #define MAX_LENGTH	1024
 
-int (*plog)(thlog_level_t level, const char* format, ...);
+int (*plog)(tblog_level_t level, const char* format, ...);
 char* plugin_path;
 
 int initialize(init_data_t* idata);
@@ -27,7 +27,7 @@ static int pem_append(char* filename, STACK_OF(X509)* chain);
 
 int initialize(init_data_t* idata) {
 	plugin_path = idata->plugin_path;
-	plog = idata->thlog;
+	plog = idata->tblog;
 	plog(LOG_DEBUG, "Whitelist initilized");
 	return 0;
 }

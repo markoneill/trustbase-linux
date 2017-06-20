@@ -6,7 +6,7 @@
 #include <linux/hashtable.h> // For global conn state hash table
 #include <linux/slab.h> // For allocations
 #include "connection_state.h"
-#include "../util/kth_logging.h" // For logging
+#include "../util/ktb_logging.h" // For logging
 
 unsigned int allocsminusfrees;
 #define HASH_TABLE_BITSIZE	8
@@ -48,7 +48,7 @@ conn_state_t* conn_state_get(pid_t pid, struct socket* sock) {
 conn_state_t* conn_state_create(pid_t pid, struct socket* sock) {
 	conn_state_t* new_conn_state = NULL;
 	if ((new_conn_state = kmalloc(sizeof(conn_state_t), GFP_KERNEL)) == NULL) {
-		kthlog(LOG_ERROR, "kmalloc failed when creating connection state");
+		ktblog(LOG_ERROR, "kmalloc failed when creating connection state");
 		return NULL;
 	}
 	allocsminusfrees++;
@@ -72,7 +72,7 @@ void conn_state_print_all(void) {
 	int bkt;
 	conn_state_t* conn_state_it;
 	hash_for_each(conn_table, bkt, conn_state_it, hash) {
-		kthlog(LOG_INFO, "bucket [%d] has pid value %d and socket value %p", bkt, conn_state_it->pid, conn_state_it->sock);
+		ktblog(LOG_INFO, "bucket [%d] has pid value %d and socket value %p", bkt, conn_state_it->pid, conn_state_it->sock);
 	}
 	return;
 }
@@ -97,12 +97,12 @@ void conn_state_delete_all(void) {
 	struct hlist_node* tmpptr = &tmp;
 	spin_lock(&conn_state_lock);
 	hash_for_each_safe(conn_table, bkt, tmpptr, conn_state_it, hash) {
-		kthlog(LOG_INFO, "Deleting things in bucket [%d] with pid value %d and socket value %p", bkt, conn_state_it->pid, conn_state_it->sock);
+		ktblog(LOG_INFO, "Deleting things in bucket [%d] with pid value %d and socket value %p", bkt, conn_state_it->pid, conn_state_it->sock);
 		hash_del(&conn_state_it->hash);
 		conn_state_free(conn_state_it);
 	}
 	spin_unlock(&conn_state_lock);
-	kthlog(LOG_INFO, "kallocs minus kfrees: %i", allocsminusfrees);
+	ktblog(LOG_INFO, "kallocs minus kfrees: %i", allocsminusfrees);
 	return;
 }
 

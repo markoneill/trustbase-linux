@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
-#include "../trusthub_plugin.h"
+#include "../trustbase_plugin.h"
 
 int query(query_data_t* data);
 

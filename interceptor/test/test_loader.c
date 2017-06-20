@@ -4,7 +4,7 @@
 #include "../interceptor.h" // For registering/unregistering proxy functions
 #include "test_handler.h"
 
-// TrustHub interception operations
+// Trustbase interception operations
 proxy_handler_ops_t test_ops;
 
 static int __init loader_start(void);

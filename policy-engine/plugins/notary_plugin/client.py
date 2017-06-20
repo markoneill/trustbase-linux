@@ -12,7 +12,7 @@ import os
 
 
 sys.path.append(os.path.dirname(sys.path[0]))
-from trusthub_python import *
+from trustbase_python import *
 import socks
 import socket
 import ssl
@@ -26,7 +26,7 @@ import random
 random.seed(time.time())
 
 
-class NotaryPlugin(TrustHubPlugin):
+class NotaryPlugin(TrustbasePlugin):
     config_file = "./notaries.cfg"
     
     def _init_(self):
@@ -47,7 +47,7 @@ class NotaryPlugin(TrustHubPlugin):
         # get responses
         responses = []
         for n in self.known_notaries:
-            responses.append(self.runQuery(n['Address'],n['QueryPort'],proxy['Address'],proxy['ProxyPort'], '/home/jordan/trusthub-linux/policy-engine/plugins/notary_plugin/trusted_notaries.pem', host, port, cert_hash))
+            responses.append(self.runQuery(n['Address'],n['QueryPort'],proxy['Address'],proxy['ProxyPort'], '/home/jordan/trustbase-linux/policy-engine/plugins/notary_plugin/trusted_notaries.pem', host, port, cert_hash))
         print "responses", responses
         # congress the group
         return RESPONSE_VALID

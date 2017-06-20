@@ -14,15 +14,15 @@
 #include "linked_list.h"
 #include "plugins.h"
 #include "policy_response.h"
-#include "trusthub_plugin.h"
+#include "trustbase_plugin.h"
 #include "check_root_store.h"
-#include "th_logging.h"
+#include "tb_logging.h"
 #include "policy_engine.h"
 
 #include <unistd.h>
 #include <string.h>
 
-#define TRUSTHUB_PLUGIN_TIMEOUT	(2) // in seconds
+#define TRUSTBASE_PLUGIN_TIMEOUT	(2) // in seconds
 
 policy_context_t context;
 
@@ -64,23 +64,23 @@ int main(int argc, char* argv[]) {
 	keep_running = 1;
 	
 	/* Start Logging */
-	thlog_init("/var/log/trusthub.log", LOG_DEBUG);
-	thlog(LOG_INFO, "\n\n### Started Policy Engine ### Starting Logging ###\n");
-	pthread_create(&logging_thread, NULL, read_kthlog, NULL);
+	tblog_init("/var/log/trustbase.log", LOG_DEBUG);
+	tblog(LOG_INFO, "\n\n### Started Policy Engine ### Starting Logging ###\n");
+	pthread_create(&logging_thread, NULL, read_ktblog, NULL);
 	
 	load_config(&context, argv[1], username);
 	
 	if (prep_communication(username) != 0) {
-		thlog(LOG_ERROR, "Could not prepare the netlink socket, exiting...");
+		tblog(LOG_ERROR, "Could not prepare the netlink socket, exiting...");
 		pthread_kill(logging_thread, SIGTERM);
-		thlog_close();
+		tblog_close();
 		return -1;
 	}
 	
 	init_addons(context.addons, context.addon_count, context.plugin_count, async_callback);
 	init_plugins(context.addons, context.addon_count, context.plugins, context.plugin_count);
 	print_addons(context.addons, context.addon_count);
-	thlog(LOG_DEBUG, "Congress Threshold is %2.1lf", context.congress_threshold);
+	tblog(LOG_DEBUG, "Congress Threshold is %2.1lf", context.congress_threshold);
 	print_plugins(context.plugins, context.plugin_count);
 
 	/* Decider thread (runs CA system and aggregates plugin verdicts */
@@ -106,7 +106,7 @@ int main(int argc, char* argv[]) {
 	for (i = context.plugin_count - 1; i >= 0; i--) {
 		plugin_name = (char*)calloc(strlen(context.plugins[i].name) + 1, 1);
 		strcpy(plugin_name, context.plugins[i].name);
-		thlog(LOG_INFO, "canceling plugin thread %d", i);
+		tblog(LOG_INFO, "canceling plugin thread %d", i);
 		pthread_cancel(plugin_threads[i]);
 		pthread_join(plugin_threads[i], NULL);
 		free_queue(context.plugins[i].queue, plugin_name);
@@ -121,9 +121,9 @@ int main(int argc, char* argv[]) {
 	free(plugin_thread_params);
 	free(plugin_threads);
 
-	thlog(LOG_INFO, "\n\n### Closing Policy Engine ### Closing Logging ###\n");
+	tblog(LOG_INFO, "\n\n### Closing Policy Engine ### Closing Logging ###\n");
 	pthread_kill(logging_thread, SIGTERM);
-	thlog_close();
+	tblog_close();
 	return 0;
 }
 
@@ -145,22 +145,22 @@ void* plugin_thread_init(void* arg) {
 	if (plugin->generic_init_func != NULL) {
 		idata = (init_data_t*)malloc(sizeof(init_data_t));
 		if (idata == NULL) {
-			thlog(LOG_WARNING, "Unable to acllocate memory");
+			tblog(LOG_WARNING, "Unable to acllocate memory");
 		}
 		idata->plugin_id = plugin_id;
 		idata->plugin_path = plugin->path;
-		idata->thlog = thlog;
+		idata->tblog = tblog;
 		idata->callback = (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) ? NULL : async_callback;
 		plugin->init(idata);
 	}
 	// Set up our cleanup
 	pthread_cleanup_push(cleanup_plugin, plugin);
-	thlog(LOG_DEBUG, "Plugin %s ready", plugin->name);
+	tblog(LOG_DEBUG, "Plugin %s ready", plugin->name);
 	pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
 	while (keep_running == 1) {
 		query = dequeue(queue);
 		if (plugin->type == PLUGIN_TYPE_SYNCHRONOUS) {
-			thlog(LOG_DEBUG, "Querying synch plugin %s", plugin->name);
+			tblog(LOG_DEBUG, "Querying synch plugin %s", plugin->name);
 			result = query_plugin(plugin, plugin_id, query);
 			query->responses[plugin_id] = result;
 			pthread_mutex_lock(&query->mutex);
@@ -170,7 +170,7 @@ void* plugin_thread_init(void* arg) {
 			}
 			pthread_mutex_unlock(&query->mutex);
 		} else if (plugin->type == PLUGIN_TYPE_ASYNCHRONOUS) {
-			thlog(LOG_DEBUG, "Querying asynch plugin %s", plugin->name);
+			tblog(LOG_DEBUG, "Querying asynch plugin %s", plugin->name);
 			query_plugin(plugin, plugin_id, query);
 		}
 	}
@@ -198,13 +198,13 @@ void* decider_thread_init(void* arg) {
 		query = dequeue(queue);
 		ca_system_response =  query_store(query->data->hostname, query->data->chain, root_store);
 		gettimeofday(&now, NULL);
-		time_to_wait.tv_sec = now.tv_sec + TRUSTHUB_PLUGIN_TIMEOUT;
+		time_to_wait.tv_sec = now.tv_sec + TRUSTBASE_PLUGIN_TIMEOUT;
 		time_to_wait.tv_nsec = now.tv_usec*1000UL;
 		pthread_mutex_lock(&query->mutex);
 		while (query->num_responses < context.plugin_count) {
 			err = pthread_cond_timedwait(&query->threshold_met, &query->mutex, &time_to_wait);
 			if (err == ETIMEDOUT) {
-				thlog(LOG_DEBUG, "A plugin timed out!\n");
+				tblog(LOG_DEBUG, "A plugin timed out!\n");
 				break;
 			}
 		}
@@ -225,7 +225,7 @@ int async_callback(int plugin_id, int query_id, int result) {
 
 	query = list_get(context.timeout_list, query_id);
 	if (query == NULL) {
-		thlog(LOG_INFO, "Plugin %d timed out on query %d but sent data anyway", plugin_id, query_id);
+		tblog(LOG_INFO, "Plugin %d timed out on query %d but sent data anyway", plugin_id, query_id);
 		return 0; /* let plugin know this result timed out */
 	}
 	query->responses[plugin_id] = result;
@@ -247,20 +247,20 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	congress_total = 0;
 	for (i = 0; i < context.plugin_count; i++) {
 		if (query->responses[i] == PLUGIN_RESPONSE_VALID) {
-			thlog(LOG_INFO, "Plugin %s returned valid", context.plugins[i].name);
+			tblog(LOG_INFO, "Plugin %s returned valid", context.plugins[i].name);
 		} else if (query->responses[i] == PLUGIN_RESPONSE_ERROR) {
-			thlog(LOG_INFO, "Plugin %s returned with an error", context.plugins[i].name);
+			tblog(LOG_INFO, "Plugin %s returned with an error", context.plugins[i].name);
 		} else if (query->responses[i] == PLUGIN_RESPONSE_INVALID) {
-			thlog(LOG_INFO, "Plugin %s returned invalid", context.plugins[i].name);
+			tblog(LOG_INFO, "Plugin %s returned invalid", context.plugins[i].name);
 		} else if (query->responses[i] == PLUGIN_RESPONSE_ABSTAIN) {
-			thlog(LOG_INFO, "Plugin %s abstained", context.plugins[i].name);
+			tblog(LOG_INFO, "Plugin %s abstained", context.plugins[i].name);
 		}
 		switch (context.plugins[i].aggregation) {
 			case AGGREGATION_NECESSARY:
 				/* We don't need to count necessary plugins' responses.
  				 * If any of them don't say yes we just say no immediately */
 				if (query->responses[i] != PLUGIN_RESPONSE_VALID) {
-					thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s", query->data->hostname);
+					tblog(LOG_INFO, "Policy Engine reporting BAD cert for %s", query->data->hostname);
 					return POLICY_RESPONSE_INVALID;
 				}
 				break;
@@ -272,7 +272,7 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 				break;
 			case AGGREGATION_NONE:
 			default:
-				thlog(LOG_WARNING, "A plugin without an aggregation setting is running");
+				tblog(LOG_WARNING, "A plugin without an aggregation setting is running");
 				break;
 		}
 	}
@@ -280,16 +280,16 @@ int aggregate_responses(query_t* query, int ca_system_response) {
  	 * found were valid, otherwise we'd have returned already.  Therefore the decision
  	 * is in the hands of the congress plugins */
 	if (congress_total && (congress_approved_count / congress_total) < context.congress_threshold) {
-		thlog(LOG_INFO, "Policy Engine reporting BAD cert for %s", query->data->hostname);
+		tblog(LOG_INFO, "Policy Engine reporting BAD cert for %s", query->data->hostname);
 		return POLICY_RESPONSE_INVALID;
 	}
 
 	/* At this point we know the certificates are valid, but what we send back depends on
          * what the CA system said */
 	if (ca_system_response == PLUGIN_RESPONSE_INVALID) {
-		thlog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied", query->data->hostname);
+		tblog(LOG_INFO, "Policy Engine reporting good cert for %s but it needs to be proxied", query->data->hostname);
 		return POLICY_RESPONSE_VALID_PROXY;
 	}
-	thlog(LOG_INFO, "Policy Engine reporting good cert for %s", query->data->hostname);
+	tblog(LOG_INFO, "Policy Engine reporting good cert for %s", query->data->hostname);
 	return POLICY_RESPONSE_VALID;
 }

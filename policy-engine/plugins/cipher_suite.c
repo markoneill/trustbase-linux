@@ -3,8 +3,8 @@
 #include <string.h>
 #include <libconfig.h>
 #include <libgen.h>
-#include "../trusthub_plugin.h"
-#include "../th_logging.h"
+#include "../trustbase_plugin.h"
+#include "../tb_logging.h"
 
 #define CONFIG_FILE "/../plugin-config/cipher_suite.cfg"
 #define PLUGIN_INIT_ERROR -1
@@ -25,7 +25,7 @@ int initialize(init_data_t* idata);
 int query(query_data_t* data);
 int finalize(void);
 
-int (*plog)(thlog_level_t level, const char* format, ...);
+int (*plog)(tblog_level_t level, const char* format, ...);
 
 static void hexdump(char* data, size_t len);
 static void loadconfig(const char* config_path);
@@ -55,7 +55,7 @@ int initialize(init_data_t* idata) {
 	char* plugin_path;
 	char* config_path;
 	int i;
-	plog = idata->thlog;
+	plog = idata->tblog;
 
 	// make the path for our plugin
 	plugin_path = idata->plugin_path;

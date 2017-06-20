@@ -2,7 +2,7 @@
 #define PYTHON_PLUGINS_H_
 
 #include <stddef.h>
-#include "../trusthub_plugin.h"
+#include "../trustbase_plugin.h"
 
 
 /*
@@ -25,7 +25,7 @@
 *	returns EXIT_SUCCESS on success and EXIT_FAILURE on failure
 */
 //int initialize(int plugin_count, char *plugin_directory, int (*callback_pointer)(int,int,int), const char *lib_file);
-int initialize(int count, char *plugin_dir, int (*callback)(int,int,int), const char *lib_file, int (*log_func)(thlog_level_t level, const char* format, ... ));
+int initialize(int count, char *plugin_dir, int (*callback)(int,int,int), const char *lib_file, int (*log_func)(tblog_level_t level, const char* format, ... ));
 
 /*
 *	Finalizes the Python Interpreter and frees memory from plugin pointers.

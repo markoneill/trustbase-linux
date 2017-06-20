@@ -3,9 +3,9 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include "trusthub_plugin.h"
+#include "trustbase_plugin.h"
 
-typedef int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*, int(*plog)(thlog_level_t, const char*, ... ));
+typedef int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*, int(*plog)(tblog_level_t, const char*, ... ));
 typedef int (*addon_finalize)(void);
 typedef int (*addon_load_plugin)(int, char*, int);
 typedef int (*addon_query_plugin)(int, query_data_t*);
@@ -17,7 +17,7 @@ typedef struct addon_t {
 	char* desc;
 	char* ver;
 	char* type_handled;
-	int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*, int(*plog)(thlog_level_t, const char*, ... ));
+	int (*addon_initialize)(int, char*, int(*callback)(int,int,int), const char*, int(*plog)(tblog_level_t, const char*, ... ));
 	int (*addon_finalize)(void);
 	int (*addon_load_plugin)(int, char*, int);
 	int (*addon_query_plugin)(int, query_data_t*);

@@ -1,6 +1,6 @@
 #include <string.h>
 #include "sni_parser.h"
-#include "th_logging.h"
+#include "tb_logging.h"
 
 // Client Hello byte navigation
 #define SIZE_CLIENT_HELLO_HEAD_LEN	4
@@ -64,7 +64,7 @@ char* sni_get_hostname(char* client_hello, int client_hello_len) {
 				hostname = (char*)malloc(name_length+1);
 				memcpy(hostname, bufptr, name_length);
 				hostname[name_length] = '\0'; // null terminate it
-				thlog(LOG_DEBUG, "Found sni hostname %s", hostname);
+				tblog(LOG_DEBUG, "Found sni hostname %s", hostname);
 				break;
 			}
 			bufptr += extension_length; // advanced to the next extension

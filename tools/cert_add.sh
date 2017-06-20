@@ -4,7 +4,7 @@
 
 # Check Command Arguments
 if test "$#" -ne 1 || test "$1" = "-h"; then
-	echo "usage: $0 /path/to/trusthub.pem"
+	echo "usage: $0 /path/to/trustbase.pem"
 	echo "This tool will attempt to add the Trusthub Certificate into a few root stores"
 	exit 1
 fi

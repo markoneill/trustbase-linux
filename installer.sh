@@ -30,8 +30,8 @@ cd $DIR
 make && make install
 cd $CURDIR
 
-INSTALL_LOCATION=/usr/lib/trusthub-linux
+INSTALL_LOCATION=/usr/lib/trustbase-linux
 
 # Start Trusthub
-insmod $INSTALL_LOCATION/trusthub_linux.ko th_path="$INSTALL_LOCATION"
+insmod $INSTALL_LOCATION/trustbase_linux.ko tb_path="$INSTALL_LOCATION"
 echo "Trusthub started"

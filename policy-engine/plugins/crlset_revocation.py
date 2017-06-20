@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
-from trusthub_python import *
+from trustbase_python import *
 
 from ctypes import cdll
 import subprocess
@@ -17,7 +17,7 @@ import sys
 import select
 import subprocess
 
-class CRLSetPlugin(TrustHubPlugin):
+class CRLSetPlugin(TrustbasePlugin):
     crlsetFilePath = "/tmp/crlset"
     crlsetVersionFilePath = '/tmp/crlset-verison'
     crlsetDumpFilePath = '/tmp/crlset-dump'

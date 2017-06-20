@@ -1,9 +1,9 @@
-#ifndef _TH_QUERY_H
-#define _TH_QUERY_H
+#ifndef _TB_QUERY_H
+#define _TB_QUERY_H
 
 #include <stdint.h>
 #include <pthread.h>
-#include "trusthub_plugin.h"
+#include "trustbase_plugin.h"
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
 
