@@ -1,6 +1,7 @@
 #include <net/netlink.h>
 #include <net/genetlink.h>
 #include <linux/semaphore.h>
+#include <linux/version.h>
 
 #include "handshake_handler.h"
 #include "../util/ktb_logging.h" // For logging
@@ -20,14 +21,6 @@ static const struct nla_policy tb_policy[TRUSTBASE_A_MAX + 1] = {
 	[TRUSTBASE_A_PORTNUMBER] = { .type = NLA_U16 },
 	[TRUSTBASE_A_RESULT] = { .type = NLA_U32 },
 	[TRUSTBASE_A_STATE_PTR] = { .type = NLA_U64 },
-};
-
-static struct genl_family tb_family = {
-	.id = GENL_ID_GENERATE,
-	.hdrsize = 0,
-	.name = "TRUSTBASE",
-	.version = 1,
-	.maxattr = TRUSTBASE_A_MAX,
 };
 
 static struct genl_ops tb_ops[] = {
@@ -56,6 +49,22 @@ static struct genl_ops tb_ops[] = {
 
 static const struct genl_multicast_group tb_grps[] = {
 	[TRUSTBASE_QUERY] = { .name = "query", },
+};
+
+static struct genl_family tb_family = {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+	.module = THIS_MODULE,
+	.ops = tb_ops,
+	.n_ops = ARRAY_SIZE(tb_ops),
+	.mcgrps = tb_grps,
+	.n_mcgrps = ARRAY_SIZE(tb_grps),
+#else
+	.id = GENL_ID_GENERATE,
+#endif
+	.hdrsize = 0,
+	.name = "TRUSTBASE",
+	.version = 1,
+	.maxattr = TRUSTBASE_A_MAX,
 };
 
 int tb_query(struct sk_buff* skb, struct genl_info* info) {
@@ -90,7 +99,11 @@ int tb_response(struct sk_buff* skb, struct genl_info* info) {
 
 int tb_register_netlink() {
 	int rc;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
+	rc = genl_register_family(&tb_family);
+#else
 	rc = genl_register_family_with_ops_groups(&tb_family, tb_ops, tb_grps);
+#endif
 	if (rc != 0) {
 		return -1;
 	}
@@ -158,7 +171,11 @@ int tb_send_certificate_query(handler_state_t* state, unsigned char* certificate
 	}
 
 	sema_init(&state->sem, 0);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+	rc = nla_put_u64_64bit(skb, TRUSTBASE_A_STATE_PTR, (uint64_t)state, TRUSTBASE_A_PAD);
+#else
 	rc = nla_put_u64(skb, TRUSTBASE_A_STATE_PTR, (uint64_t)state);
+#endif
 	if (rc != 0) {
 		ktblog(LOG_ERROR, "failed in nla_put (sem)");
 		nlmsg_free(skb);
@@ -243,7 +260,11 @@ int tb_send_is_starttls_query(struct handler_state_t* state) {
 		return -1;
 	}
 	sema_init(&state->sem, 0);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 7, 0)
+	rc = nla_put_u64_64bit(skb, TRUSTBASE_A_STATE_PTR, (uint64_t)state, TRUSTBASE_A_PAD);
+#else
 	rc = nla_put_u64(skb, TRUSTBASE_A_STATE_PTR, (uint64_t)state);
+#endif
 	if (rc != 0) {
 		ktblog(LOG_ERROR, "failed in nla_put (sem)");
 		nlmsg_free(skb);

@@ -3,6 +3,7 @@
 
 #include <linux/pid.h>
 #include <linux/delay.h>
+#include <linux/sched/signal.h>
 
 #include "interceptor/interceptor.h" // For registering/unregistering proxy functions
 #include "handshake-handler/communications.h" // For registering/unregistering netlink family

@@ -6,13 +6,13 @@ trustbase_linux-objs := loader.o \
 		       util/utils.o \
 		       util/ktb_logging.o
 
-test_interceptor-objs := interceptor/test/test_loader.o \
-		         interceptor/interceptor.o \
-		         interceptor/connection_state.o \
-			 interceptor/test/test_handler.o \
-			 util/utils.o
+#test_interceptor-objs := interceptor/test/test_loader.o \
+#		         interceptor/interceptor.o \
+#		         interceptor/connection_state.o \
+#			 interceptor/test/test_handler.o \
+#			 util/utils.o
 
-obj-m += test_interceptor.o
+#obj-m += test_interceptor.o
 obj-m += trustbase_linux.o
 
 CC = gcc

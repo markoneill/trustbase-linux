@@ -57,7 +57,7 @@ int (*ref_tcp_recvmsg)(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, 
 #endif
 
 // Reference function for tcp v4 and v6 accept() calls
-struct sock *(*ref_inet_csk_accept)(struct sock *sk, int flags, int *err);
+struct sock *(*ref_inet_csk_accept)(struct sock *sk, int flags, int *err, bool kern);
 
 // TCP IPv4-specific reference functions
 int new_tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len);
@@ -74,7 +74,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, size_t len, int nonblock, int flags, int *addr_len);
 #endif
 // New function for tcp v4 and v6 accept() calls
-struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err);
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err, bool kern);
 
 
 // Helpers
@@ -118,7 +118,7 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 	tcp_prot.close = new_tcp_close;
 	tcp_prot.sendmsg = new_tcp_sendmsg;
 	tcp_prot.recvmsg = new_tcp_recvmsg;
-	tcp_prot.accept = new_inet_csk_accept;
+	//tcp_prot.accept = new_inet_csk_accept;
 	if ((tcpv6_prot_ptr = (void *)kallsyms_lookup_name("tcpv6_prot")) == 0) {
 		ktblog(LOG_WARNING, "tcpv6_prot lookup failed, not intercepting IPv6 traffic");
 	}
@@ -130,7 +130,7 @@ int proxy_register(proxy_handler_ops_t* reg_ops) {
 		tcpv6_prot_ptr->close = new_tcp_close;
 		tcpv6_prot_ptr->sendmsg = new_tcp_sendmsg;
 		tcpv6_prot_ptr->recvmsg = new_tcp_recvmsg;
-		tcpv6_prot_ptr->accept = new_inet_csk_accept;
+		//tcpv6_prot_ptr->accept = new_inet_csk_accept;
 	}
 	return 0;
 }
@@ -147,14 +147,14 @@ int proxy_unregister(void) {
 	tcp_prot.close = ref_tcp_close;
 	tcp_prot.sendmsg = ref_tcp_sendmsg;
 	tcp_prot.recvmsg = ref_tcp_recvmsg;
-	tcp_prot.accept = ref_inet_csk_accept;
+	//tcp_prot.accept = ref_inet_csk_accept;
 	if (tcpv6_prot_ptr != 0) {
 		tcpv6_prot_ptr->connect = ref_tcp_v6_connect;
 		tcpv6_prot_ptr->disconnect = ref_tcp_disconnect;
 		tcpv6_prot_ptr->close = ref_tcp_close;
 		tcpv6_prot_ptr->sendmsg = ref_tcp_sendmsg;
 		tcpv6_prot_ptr->recvmsg = ref_tcp_recvmsg;
-		tcpv6_prot_ptr->accept = ref_inet_csk_accept;
+		//tcpv6_prot_ptr->accept = ref_inet_csk_accept;
 	}
 
 	// Free up conn state memory
@@ -679,8 +679,8 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 
 }
 
-struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err) {
-	return ref_inet_csk_accept(sk, flags, err);
+struct sock* new_inet_csk_accept(struct sock *sk, int flags, int *err, bool kern) {
+	return ref_inet_csk_accept(sk, flags, err, kern);
 }
 
 int set_orig_dst(struct sock *sk, int cmd, void __user *user, unsigned int len) {

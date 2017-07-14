@@ -55,7 +55,7 @@ int main() {
 	//X509_sign(cert, new_pub_key, EVP_md5());
 	//cert->cert_info->key->public_key->length;
 	//cert->cert_info->key->public_key->data[0] = 0xFF;
-	cert->cert_info->enc.modified = 1;
+	//cert->cert_info->enc.modified = 1;
 	//printf("set_pubkey returned %d\n", ret);
 	EVP_PKEY_free(new_pub_key);
 
