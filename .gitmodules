@@ -1,4 +1,0 @@
-[submodule "sslsplit"]
-	path = sslsplit
-	url = https://github.com/markoneill/sslsplit.git
-	branch = master
