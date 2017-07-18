@@ -59,6 +59,7 @@ X509_STORE* make_new_root_store() {
 	ca_filename_len = strlen(ca_filename);
 	full_path = (char *)malloc(ca_path_len + ca_filename_len + 2);
 	sprintf(full_path, "%s/%s", store_path, ca_filename);
+	tblog(LOG_INFO, "Policy Engine is using root store found at %s\n", full_path);
 	
 	/* load the store */
 	if (X509_STORE_load_locations(store, full_path, NULL) < 1) {
