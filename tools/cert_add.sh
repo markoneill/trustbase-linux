@@ -47,6 +47,10 @@ if test $? -ne 0; then
 	fi
 fi
 
+#Newer versions of Fedora (26+)
+cp $1 /etc/pki/ca-trust/source/anchors/
+update-ca-trust
+
 # Firefox
 # Check if we can find the Firefox root store for each user
 for home_user in $(ls /home); do

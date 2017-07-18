@@ -101,7 +101,8 @@ void* tb_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr 
 	handler_state_t* state;
 
 	// Let policy engine and proxy daemon operate without handler
-	if (tgid == mitm_proxy_task->pid) {
+	//ktblog(LOG_INFO, "Task pid/tgid is %s/%d/%d and MITM proxy is %s/%d/%d", current->comm,pid,tgid,mitm_proxy_task->comm, mitm_proxy_task->pid,mitm_proxy_task->tgid);
+	if (strstr(current->comm, "sslsplit") != NULL) { // XXX bad fix for this
 		ktblog(LOG_INFO, "Detected a connection from the local proxy");
 		return NULL;
 	}
@@ -728,7 +729,7 @@ int copy_to_buf_state(buf_state_t* bs, void* src_buf, size_t length) {
 		ktblog(LOG_ERROR, "krealloc failed in copy_to_buf_state");
 		return -1;
 	}
-	memcpy(bs->buf + bs->buf_length, src_buf, length);
+	copy_from_user(bs->buf + bs->buf_length, src_buf, length);
 	bs->buf_length += length;
 	bs->last_payload_length = length;
 	return 0;

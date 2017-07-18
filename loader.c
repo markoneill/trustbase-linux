@@ -163,7 +163,7 @@ int start_mitm_proxy(char* path) {
                 "PATH=/sbin:/usr/sbin:/bin:/usr/bin",
                 NULL
         };
-        char* argv[10];
+        char* argv[11];
         snprintf(prog_path, 64, "%s/sslsplit/sslsplit", path);
 	ktblog(LOG_INFO, "Starting SSLSplit at %s", prog_path);
         snprintf(cert_path, 64, "%s/certs/ca.crt", path);
@@ -177,7 +177,8 @@ int start_mitm_proxy(char* path) {
         argv[6] = "0.0.0.0";
         argv[7] = "8888";
         argv[8] = "trustbase";
-        argv[9] = NULL;
+        argv[9] = "-d";
+        argv[10] = NULL;
         alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, mitm_proxy_init);
         return 0;
 }

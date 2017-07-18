@@ -365,9 +365,14 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 	// Pointer to data being sent by user.
 	new_data = msg->msg_iov->iov_base;
 	#endif
+	BUG_ON(new_data == NULL);
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+	//printk(KERN_ALERT "tes: %c", ((char*)new_data)[0]);
 
 	// XXX Enum this later
 	if (ops->get_state(conn_state->state) == 2) {
+		set_fs(oldfs);
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 		return ref_tcp_sendmsg(sk, msg, size);
 		#else
@@ -383,6 +388,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
+			set_fs(oldfs);
 			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 			return ref_tcp_sendmsg(sk, msg, size);
 			#else
@@ -395,6 +401,7 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX delete this connection, we can't handle it
 			// Do we try to send existing buffer data?
 			// Abort by calling original functionality
+			set_fs(oldfs);
 			#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 			return ref_tcp_sendmsg(sk, msg, size);
 			#else
@@ -428,12 +435,11 @@ int new_tcp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			stop_conn_state(conn_state); 
 	        }
 		// Tell the user we sent everything he wanted
+		set_fs(oldfs);
 		return size;
 	}
 	// Use real tcp_sendmsg call to transmit
 	// but do it via the persona of the kernel
-	oldfs = get_fs();
-	set_fs(KERNEL_DS);
 	#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 1, 0)
 	real_ret = ref_tcp_sendmsg(sk, &kmsg, iov.iov_len);
 	#else
@@ -615,7 +621,6 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 		iov_iter_kvec(&kmsg.msg_iter, READ | ITER_KVEC, &iov, 1, iov.iov_len);
 		ret = ref_tcp_recvmsg(sk, &kmsg, iov.iov_len, nonblock, flags, addr_len);
 		#endif
-		set_fs(oldfs);
 		
 		// 4) if operation failed then just return what we've sent so far
 		//    or the error code
@@ -624,12 +629,14 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			//ktblog(LOG_DEBUG, "tcp_rcv: failed on reading");
 			if (bytes_sent > 0) {
 				// error code is cached for next time
+				set_fs(oldfs);
 				return bytes_sent; 
 			}
 			else {
 				// Pretend no error for next time since we're
 				// sending it now
 				conn_state->queued_recv_ret = 1;
+				set_fs(oldfs);
 				return ret;
 			}
 		}
@@ -645,6 +652,7 @@ int new_tcp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg, siz
 			// XXX how do we fail here?
 		}
 
+		set_fs(oldfs);
 		// XXX Enum this	
 		if (ops->get_state(conn_state->state) == 2) {
 			//ktblog(LOG_DEBUG, "tcp_rcv: gonna proxy connection");
