@@ -15,7 +15,7 @@
 #include "plugins.h"
 #include "policy_response.h"
 #include "trustbase_plugin.h"
-#include "check_root_store.h"
+#include "ca_validation.h"
 #include "tb_logging.h"
 #include "policy_engine.h"
 

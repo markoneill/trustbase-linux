@@ -27,8 +27,8 @@ POLICY_ENGINE_SRC = policy-engine/plugins.c \
 		    policy-engine/query.c \
 		    policy-engine/query_queue.c \
 		    policy-engine/linked_list.c \
-		    policy-engine/check_root_store.c \
-		    policy-engine/reverse_dns.c \
+		    policy-engine/openssl_hostname_validation.c \
+		    policy-engine/ca_validation.c \
 		    policy-engine/tb_logging.c \
 		    policy-engine/notifications.c \
 		    policy-engine/sni_parser.c \
