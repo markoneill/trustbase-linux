@@ -211,9 +211,8 @@ int prep_communication(const char* username) {
 		return -1;
 	}
 	
-	sqlite3_close(db);
 	// drop root permissions
-	change_to_user(username);
+	//change_to_user(username);
 	return 0;
 }
 	
@@ -243,6 +242,7 @@ int listen_for_queries() {
 	}
 	nl_socket_free(netlink_sock);
 	tblog(LOG_DEBUG, "no longer listening for queries");
+	sqlite3_close(db);
 	return 0;
 }
 
