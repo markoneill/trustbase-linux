@@ -95,20 +95,48 @@ void set_orig_leaf_cert(handler_state_t* state, unsigned char* bufptr, unsigned 
 static void setup_ssl_proxy(handler_state_t* state);
 int kernel_tcp_send_buffer(struct socket *sock, const char *buffer,const size_t length);
 
+int pid_in_group(pid_t pid, struct task_struct* group_parent);
+int is_ancestor(struct task_struct* parent);
+
+int is_ancestor(struct task_struct* parent) {
+	struct task_struct* cur_task = current;
+	ktblog(LOG_INFO, "[parent is %s with PID %d and TGID %d", parent->comm, parent->pid, parent->tgid);
+	while (cur_task->pid != 0) {
+		ktblog(LOG_INFO, "[next ancestor is %s with PID %d and TGID %d]", cur_task->comm, cur_task->pid, cur_task->tgid);
+		if (cur_task == parent) return 1;
+		cur_task = cur_task->parent;
+	}
+	return 0;
+}
+
+int pid_in_group(pid_t pid, struct task_struct* group_parent) {
+	struct task_struct* task;
+	struct list_head* list;
+	ktblog(LOG_INFO, "[client is %s with PID %d and TGID %d] [group parent is %s with PID %d and TGID %d", current->comm, current->pid, current->tgid, group_parent->comm, group_parent->pid, group_parent->tgid);
+	if (group_parent == current) return 1;
+	list_for_each(list, &group_parent->children) {
+		task = list_entry(list, struct task_struct, sibling);
+	ktblog(LOG_INFO, "[client is %s with PID %d and TGID %d] [group parent is %s with PID %d and TGID %d", current->comm, current->pid, current->tgid, task->comm, task->pid, task->tgid);
+		if (task == current) return 1;
+	}
+	return 0;
+}
 
 // Main proxy functionality
 void* tb_state_init(pid_t pid, pid_t tgid, struct socket* sock, struct sockaddr *uaddr, int is_ipv6, int addr_len) {
 	handler_state_t* state;
 
-	// Let policy engine and proxy daemon operate without handler
-	//ktblog(LOG_INFO, "Task pid/tgid is %s/%d/%d and MITM proxy is %s/%d/%d", current->comm,pid,tgid,mitm_proxy_task->comm, mitm_proxy_task->pid,mitm_proxy_task->tgid);
-	if (strstr(current->comm, "sslsplit") != NULL) { // XXX bad fix for this
+	// Let policy engine and mitm proxy daemon operate without handler
+	// mitm daemon calls validation natively
+	if (is_ancestor(mitm_proxy_task)) {
+	//if (current->parent == mitm_proxy_task || current == mitm_proxy_task) {
 		ktblog(LOG_INFO, "Detected a connection from the local proxy");
 		return NULL;
 	}
+	BUG_ON(pid != current->pid);
 	
-	if (policy_engine_task != NULL && tgid == policy_engine_task->pid) {
-		ktblog(LOG_INFO, "Detected a connection from a plugin");
+	if (is_ancestor(policy_engine_task)) {
+		ktblog(LOG_INFO, "Detected a connection from policy engine or plugin");
 		return NULL;
 	}
 

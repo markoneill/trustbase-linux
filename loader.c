@@ -91,8 +91,11 @@ int __init loader_start(void) {
  */
 void __exit loader_end(void) {
 	int i;
+	struct task_struct* task;
+	struct list_head* list;
 	// Kill policy engine before killing IPC because
 	// the IPC is needed for shutdown message
+	ktblog(LOG_DEBUG, "Terminating the policy engine (PID: %d)", policy_engine_task->pid);
 	stop_task(policy_engine_task, SIGINT);
 	// Send shutdown message to policy_engine
 	tb_send_shutdown();
@@ -114,7 +117,13 @@ void __exit loader_end(void) {
 
 	// Unregister the IPC
 	tb_unregister_netlink();
-
+	
+	list_for_each(list, &mitm_proxy_task->children) {
+		task = list_entry(list, struct task_struct, sibling);
+		ktblog(LOG_DEBUG, "Terminating MITM proxy child task (PID: %d)", task->pid);
+		stop_task(task, SIGTERM);
+	}
+	ktblog(LOG_DEBUG, "Terminating MITM proxy task (PID: %d)", mitm_proxy_task->pid);
 	stop_task(mitm_proxy_task, SIGTERM);
 
 	// Remove the Proc File
@@ -177,7 +186,7 @@ int start_mitm_proxy(char* path) {
         argv[6] = "0.0.0.0";
         argv[7] = "8888";
         argv[8] = "trustbase";
-        argv[9] = "-d";
+	argv[9] = "-d";
         argv[10] = NULL;
         alt_call_usermodehelper(prog_path, argv, envp, UMH_WAIT_EXEC, mitm_proxy_init);
         return 0;
