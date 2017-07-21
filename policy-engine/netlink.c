@@ -238,7 +238,6 @@ int listen_for_queries() {
 			tblog(LOG_DEBUG, "nl_recv failed with code %i", err);
 			break;
 		}
-		tblog(LOG_DEBUG, ".");
 	}
 	nl_socket_free(netlink_sock);
 	tblog(LOG_DEBUG, "no longer listening for queries");
