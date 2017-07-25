@@ -41,7 +41,10 @@ int main(int argc, char* argv[]) {
 
 	// Test a single query using given certificate
 	query_id = 1;
-	trustbase_connect();
+	if (trustbase_connect()) {
+		fprintf(stderr, "unable to connect to trustbase\n");
+		return EXIT_FAILURE;
+	}
 	send_query_openssl(query_id, "google.com", 443, chain);
 	response = recv_response();
 	trustbase_disconnect();

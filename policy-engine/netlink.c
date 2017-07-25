@@ -212,7 +212,7 @@ int prep_communication(const char* username) {
 	}
 	
 	// drop root permissions
-	//change_to_user(username);
+	change_to_user(username);
 	return 0;
 }
 	

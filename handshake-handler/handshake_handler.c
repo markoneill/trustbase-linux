@@ -100,9 +100,9 @@ int is_ancestor(struct task_struct* parent);
 
 int is_ancestor(struct task_struct* parent) {
 	struct task_struct* cur_task = current;
-	ktblog(LOG_INFO, "[parent is %s with PID %d and TGID %d", parent->comm, parent->pid, parent->tgid);
+	//ktblog(LOG_INFO, "[parent is %s with PID %d and TGID %d", parent->comm, parent->pid, parent->tgid);
 	while (cur_task->pid != 0) {
-		ktblog(LOG_INFO, "[next ancestor is %s with PID %d and TGID %d]", cur_task->comm, cur_task->pid, cur_task->tgid);
+		//ktblog(LOG_INFO, "[next ancestor is %s with PID %d and TGID %d]", cur_task->comm, cur_task->pid, cur_task->tgid);
 		if (cur_task == parent) return 1;
 		cur_task = cur_task->parent;
 	}
@@ -112,11 +112,11 @@ int is_ancestor(struct task_struct* parent) {
 int pid_in_group(pid_t pid, struct task_struct* group_parent) {
 	struct task_struct* task;
 	struct list_head* list;
-	ktblog(LOG_INFO, "[client is %s with PID %d and TGID %d] [group parent is %s with PID %d and TGID %d", current->comm, current->pid, current->tgid, group_parent->comm, group_parent->pid, group_parent->tgid);
+	//ktblog(LOG_INFO, "[client is %s with PID %d and TGID %d] [group parent is %s with PID %d and TGID %d", current->comm, current->pid, current->tgid, group_parent->comm, group_parent->pid, group_parent->tgid);
 	if (group_parent == current) return 1;
 	list_for_each(list, &group_parent->children) {
 		task = list_entry(list, struct task_struct, sibling);
-	ktblog(LOG_INFO, "[client is %s with PID %d and TGID %d] [group parent is %s with PID %d and TGID %d", current->comm, current->pid, current->tgid, task->comm, task->pid, task->tgid);
+		//ktblog(LOG_INFO, "[client is %s with PID %d and TGID %d] [group parent is %s with PID %d and TGID %d", current->comm, current->pid, current->tgid, task->comm, task->pid, task->tgid);
 		if (task == current) return 1;
 	}
 	return 0;

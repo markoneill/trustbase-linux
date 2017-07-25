@@ -164,7 +164,7 @@ int trustbase_connect(void) {
 		return -1;
 	}
 
-	if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTBASE", "query")) < 0) {
+	/*if ((group = genl_ctrl_resolve_grp(netlink_sock, "TRUSTBASE", "query")) < 0) {
 		fprintf(stderr, "Failed to resolve group identifier\n");
 		return -1;
 	}
@@ -172,7 +172,7 @@ int trustbase_connect(void) {
 	if (nl_socket_add_membership(netlink_sock, group) < 0) {
 		fprintf(stderr, "Failed to add membership to group\n");
 		return -1;
-	}
+	}*/
 	return 0;
 }
 

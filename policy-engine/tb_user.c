@@ -42,8 +42,8 @@ int change_to_user(const char* username) {
 }
 
 int set_uid_with_cap(uid_t u_uid) {
-	cap_value_t root_caps[2] = { CAP_NET_ADMIN, CAP_SETUID }; // Capabilites to be set before the change
-	cap_value_t user_caps[1] = { CAP_NET_ADMIN }; // Capabilites to keep after the change
+	cap_value_t root_caps[3] = { CAP_NET_ADMIN, CAP_SETUID, CAP_DAC_OVERRIDE }; // Capabilites to be set before the change
+	cap_value_t user_caps[2] = { CAP_NET_ADMIN, CAP_DAC_OVERRIDE }; // Capabilites to keep after the change
 	cap_t       capabilities;
 
 	capabilities = cap_init();
