@@ -7,12 +7,13 @@
 #include "plugins.h"
 #include "tb_logging.h"
 #include "addons.h"
+#include "trustbase_plugin.h"
 
 #define CONFIG_FILE_NAME	"/etc/trustbase.cfg"
 
 static int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_path);
 static int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path);
-static int parse_aggregation(config_setting_t* aggregation_data, double* congress_threshold, plugin_t* plugins, int plugin_count);
+static int parse_aggregation(config_setting_t* aggregation_data, policy_context_t* policy_context);
 static int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin_name);
 static char* copy_string(const char* original);
 static char* cat_path(char* a, const char* b);
@@ -58,6 +59,8 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 		cfg_data = config_setting_get_elem(setting, i);
 		parse_addon(cfg_data, &addons[i], path);
 	}
+	policy_context->addons = addons;
+	policy_context->addon_count = addon_count;
 
 	// Plugin parsing
 	setting = config_lookup(&cfg, "plugins");
@@ -72,6 +75,8 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 		cfg_data = config_setting_get_elem(setting, i);
 		parse_plugin(cfg_data, &plugins[i], path);
 	}
+	policy_context->plugins = plugins;
+	policy_context->plugin_count = plugin_count;
 
 	// Aggregation parsing
 	setting = config_lookup(&cfg, "aggregation");
@@ -80,7 +85,7 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 		config_destroy(&cfg);
 		return 1;
 	}
-	parse_aggregation(setting, &policy_context->congress_threshold, plugins, plugin_count);
+	parse_aggregation(setting, policy_context);
 
 	// Username parsing
 	setting = config_lookup(&cfg, "username");
@@ -102,23 +107,20 @@ int load_config(policy_context_t* policy_context, char* path, char* username) {
 	// Free up config data
 	config_destroy(&cfg);
 
-	// Save parsed data
-	policy_context->plugins = plugins;
-	policy_context->plugin_count = plugin_count;
-	policy_context->addons = addons;
-	policy_context->addon_count = addon_count;
 
 	return 0;
 }
 
-int parse_aggregation(config_setting_t* aggregation_data, double* congress_threshold, plugin_t* plugins, int plugin_count) {
+int parse_aggregation(config_setting_t* aggregation_data, policy_context_t* policy_context) {
 	config_setting_t* sufficient_groups;
 	config_setting_t* group;
 	const char* plugin_name;
 	int plugin_id;
 	int i;
 	int group_count;
-	if (!(config_setting_lookup_float(aggregation_data, "congress_threshold", congress_threshold))) {
+	int plugin_count = policy_context->plugin_count;
+	plugin_t* plugins = policy_context->plugins; 
+	if (!(config_setting_lookup_float(aggregation_data, "congress_threshold", &policy_context->congress_threshold))) {
 		tblog(LOG_ERROR, "Syntax error in configuration file: section aggregation");
 		return 1;
 	}
@@ -178,12 +180,10 @@ int get_plugin_id(plugin_t* plugins, int plugin_count, const char* plugin_name) 
 int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) {
 	const char* name;
 	const char* desc;
-	const char* version;
 	const char* path;
 	const char* type_handled;
 	if (!(config_setting_lookup_string(plugin_data, "name", &name) &&
 	    config_setting_lookup_string(plugin_data, "description", &desc) &&
-	    config_setting_lookup_string(plugin_data, "version", &version) &&
 	    config_setting_lookup_string(plugin_data, "type", &type_handled) &&
 	    config_setting_lookup_string(plugin_data, "path", &path))) {
 		tblog(LOG_ERROR, "Syntax error in configuration file: section addons");
@@ -191,7 +191,7 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) 
 	}
 	addon->name = copy_string(name);
 	addon->desc = copy_string(desc);
-	addon->ver = copy_string(version);
+	addon->ver = NULL;
 	addon->type_handled = copy_string(type_handled);
 	addon->so_path = cat_path(root_path, path);
 	if (load_addon(cat_path(root_path, path), addon) != 0) {
@@ -204,26 +204,48 @@ int parse_addon(config_setting_t* plugin_data, addon_t* addon, char* root_path) 
 int parse_plugin(config_setting_t* plugin_data, plugin_t* plugin, char* root_path) {
 	const char* name;
 	const char* desc;
-	const char* version;
 	const char* type;
 	const char* handler;
+	const char* abstain_map;
+	const char* error_map;
 	int openSSL;
 	const char* path;
 	if (!(config_setting_lookup_string(plugin_data, "name", &name) &&
 	    config_setting_lookup_string(plugin_data, "description", &desc) &&
-	    config_setting_lookup_string(plugin_data, "version", &version) &&
 	    config_setting_lookup_string(plugin_data, "type", &type) &&
 	    config_setting_lookup_string(plugin_data, "handler", &handler) &&
 	    config_setting_lookup_int(plugin_data, "openssl", &openSSL) &&
+	    config_setting_lookup_string(plugin_data, "map_abstain_to", &abstain_map) &&
+	    config_setting_lookup_string(plugin_data, "map_error_to", &error_map) &&
 	    config_setting_lookup_string(plugin_data, "path", &path))) {
 		tblog(LOG_ERROR, "Syntax error in configuration file: section plugins");
 		return 1;
 	}
 
 	plugin->aggregation = AGGREGATION_NONE;
+	if (strncmp(abstain_map, "invalid", sizeof("invalid")) == 0) {
+		plugin->abstain_map = PLUGIN_RESPONSE_INVALID;
+	}
+	else if (strncmp(abstain_map, "valid", sizeof("valid")) == 0) {
+		plugin->abstain_map = PLUGIN_RESPONSE_VALID;
+	}
+	else {
+		tblog(LOG_ERROR, "Unknown plugin abstain mapping in configuration file");
+		return 1;
+	}
+	if (strncmp(error_map, "invalid", sizeof("invalid")) == 0) {
+		plugin->error_map = PLUGIN_RESPONSE_INVALID;
+	}
+	else if (strncmp(error_map, "valid", sizeof("valid")) == 0) {
+		plugin->error_map = PLUGIN_RESPONSE_VALID;
+	}
+	else {
+		tblog(LOG_ERROR, "Unknown plugin error mapping in configuration file");
+		return 1;
+	}
 	plugin->name = copy_string(name);
 	plugin->desc = copy_string(desc);
-	plugin->ver = copy_string(version);
+	plugin->ver = NULL;
 	plugin->handler_str = copy_string(handler);
 	plugin->path = cat_path(root_path, path);
 

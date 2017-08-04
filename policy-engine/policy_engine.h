@@ -6,13 +6,6 @@
 #include "query_queue.h"
 #include "linked_list.h"
 
-enum {
-	AGGREGATION_UNANIMITY,
-	AGGREGATION_CHAMPION,
-	AGGREGATION_THRESHOLD,
-};
-
-
 typedef struct policy_context_t {
 	plugin_t* plugins;
 	int plugin_count;

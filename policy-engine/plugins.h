@@ -62,6 +62,10 @@ typedef struct plugin_t {
 	char* path; // null-terminated path to plugin file
 	/* Aggregation group this plugin belongs to */
 	int aggregation;
+	/* Decision to map abstain decisions to */
+	int abstain_map;
+	/* Decision to map errors to */
+	int error_map;
 } plugin_t;
 
 void print_plugins(plugin_t* plugins, size_t plugin_count);

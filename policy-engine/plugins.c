@@ -26,7 +26,25 @@ void print_plugins(plugin_t* plugins, size_t plugin_count) {
 		else {
 			tblog(LOG_INFO, "\t\tAggregation Group: Unknown");
 		}
-		tblog(LOG_INFO, "\t\tVersion: %s", plugins[i].ver);
+		if (plugins[i].abstain_map == PLUGIN_RESPONSE_VALID) {
+			tblog(LOG_INFO, "\t\tAbstains map to: Valid");
+		}
+		else if (plugins[i].abstain_map == PLUGIN_RESPONSE_INVALID) {
+			tblog(LOG_INFO,	"\t\tAbstains map to: Invalid");
+		}
+		else {
+			tblog(LOG_INFO, "\t\tAbstains map to: Unknown");
+		}
+		if (plugins[i].error_map == PLUGIN_RESPONSE_VALID) {
+			tblog(LOG_INFO, "\t\tErrors map to: Valid");
+		}
+		else if (plugins[i].error_map == PLUGIN_RESPONSE_INVALID) {
+			tblog(LOG_INFO,	"\t\tErrors map to: Invalid");
+		}
+		else {
+			tblog(LOG_INFO, "\t\tErrors map to: Unknown");
+		}
+		//tblog(LOG_INFO, "\t\tVersion: %s", plugins[i].ver);
 		tblog(LOG_INFO, "\t\tPath: %s", plugins[i].path);
 		if (plugins[i].type == PLUGIN_TYPE_ASYNCHRONOUS) {
 			tblog(LOG_INFO, "\t\tType: Asynchronous");

@@ -248,13 +248,29 @@ int aggregate_responses(query_t* query, int ca_system_response) {
 	for (i = 0; i < context.plugin_count; i++) {
 		if (query->responses[i] == PLUGIN_RESPONSE_VALID) {
 			tblog(LOG_INFO, "Plugin %s returned valid", context.plugins[i].name);
-		} else if (query->responses[i] == PLUGIN_RESPONSE_ERROR) {
-			tblog(LOG_INFO, "Plugin %s returned with an error", context.plugins[i].name);
-		} else if (query->responses[i] == PLUGIN_RESPONSE_INVALID) {
-			tblog(LOG_INFO, "Plugin %s returned invalid", context.plugins[i].name);
-		} else if (query->responses[i] == PLUGIN_RESPONSE_ABSTAIN) {
-			tblog(LOG_INFO, "Plugin %s abstained", context.plugins[i].name);
 		}
+		else if (query->responses[i] == PLUGIN_RESPONSE_INVALID) {
+			tblog(LOG_INFO, "Plugin %s returned invalid", context.plugins[i].name);
+		}
+		else if (query->responses[i] == PLUGIN_RESPONSE_ERROR) {
+			if (context.plugins[i].error_map == PLUGIN_RESPONSE_INVALID) {
+				tblog(LOG_INFO, "Plugin %s returned with an error, which will be mapped to an invalid response", context.plugins[i].name);
+			}
+			else if (context.plugins[i].error_map == PLUGIN_RESPONSE_VALID) {
+				tblog(LOG_INFO, "Plugin %s returned with an error, which will be mapped to a valid response", context.plugins[i].name);
+			}
+			query->responses[i] = context.plugins[i].error_map;
+		}
+		else if (query->responses[i] == PLUGIN_RESPONSE_ABSTAIN) {
+			if (context.plugins[i].abstain_map == PLUGIN_RESPONSE_INVALID) {
+				tblog(LOG_INFO, "Plugin %s abstained, which will be mapped to an invalid response", context.plugins[i].name);
+			}
+			else if (context.plugins[i].abstain_map == PLUGIN_RESPONSE_VALID) {
+				tblog(LOG_INFO, "Plugin %s abstained, which will be mapped to a valid response", context.plugins[i].name);
+			}
+			query->responses[i] = context.plugins[i].abstain_map;
+		}
+
 		switch (context.plugins[i].aggregation) {
 			case AGGREGATION_NECESSARY:
 				/* We don't need to count necessary plugins' responses.
