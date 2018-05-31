@@ -162,6 +162,9 @@ install-addons: addons
 	cp -r certs $(PREFIX)/
 	cp sslsplit/sslsplit $(PREFIX)/sslsplit/
 	cp policy-engine/trustbase.cfg $(PREFIX)/policy-engine/trustbase.cfg
+
+.PHONY: link-config
+link-config: install-addons
 	ln -sf $(PREFIX)/policy-engine/trustbase.cfg /etc/trustbase.cfg
 
 .PHONY: install-trustbase
@@ -172,4 +175,4 @@ install-trustbase: trustbase
 	cp modules.order $(PREFIX)/
 
 .PHONY: install
-install: all install-addons install-trustbase
+install: all install-addons link-config install-trustbase
