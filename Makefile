@@ -92,7 +92,11 @@ CERT_TEST_EXE = cert_test
 
 ALL_PYTHON_PLUGIN_SRC = $(wildcard policy-engine/plugins/*.py)
 
-all: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(CIPHER_SUITE_PLUGIN_SO) $(WHITELIST_PINNING_HYBRID_PLUGIN_SO)
+all: addons trustbase
+
+addons: $(POLICY_ENGINE_EXE) $(NATIVE_LIB_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(SIMPLE_SERVER_EXE) $(SIMPLE_CLIENT_EXE) $(CERT_TEST_EXE) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(CIPHER_SUITE_PLUGIN_SO) $(WHITELIST_PINNING_HYBRID_PLUGIN_SO)
+
+trustbase:
 	make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 $(POLICY_ENGINE_EXE) : $(POLICY_ENGINE_OBJ)
@@ -146,20 +150,29 @@ PREFIX = /usr/lib/trustbase-linux
 
 INSTALL_FILES = $(POLICY_ENGINE_EXE) $(PYTHON_PLUGINS_ADDON_SO) $(ASYNC_TEST_PLUGIN_SO) $(OPENSSL_TEST_PLUGIN_SO) $(RAW_TEST_PLUGIN_SO) $(WHITELIST_PLUGIN_SO) $(CERT_PIN_PLUGIN_SO) $(CIPHER_SUITE_PLUGIN_SO) $(POLICY_ENGINE_EXE) $(ALL_PYTHON_PLUGIN_SRC)
 
-.PHONY: install
-install: all
+.PHONY: install-addons
+install-addons: addons
 	mkdir -p $(PREFIX)
 	mkdir -p $(PREFIX)/sslsplit
 	for FILE in $(INSTALL_FILES); do \
 		mkdir -p "`dirname "$(PREFIX)/$$FILE"`"; \
 		cp $$FILE $(PREFIX)/$$FILE; \
 	done
-	cp trustbase_linux.ko $(PREFIX)/
-	cp Module.symvers $(PREFIX)/
-	cp modules.order $(PREFIX)/
 	cp -r policy-engine/plugin-config $(PREFIX)/policy-engine/
 	cp -r certs $(PREFIX)/
 	cp sslsplit/sslsplit $(PREFIX)/sslsplit/
 	cp policy-engine/trustbase.cfg $(PREFIX)/policy-engine/trustbase.cfg
+
+.PHONY: link-config
+link-config: install-addons
 	ln -sf $(PREFIX)/policy-engine/trustbase.cfg /etc/trustbase.cfg
-	
+
+.PHONY: install-trustbase
+install-trustbase: trustbase
+	mkdir -p $(PREFIX)
+	cp trustbase_linux.ko $(PREFIX)/
+	cp Module.symvers $(PREFIX)/
+	cp modules.order $(PREFIX)/
+
+.PHONY: install
+install: all install-addons link-config install-trustbase
